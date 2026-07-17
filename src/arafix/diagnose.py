@@ -22,7 +22,7 @@ import re
 import unicodedata
 
 from .lamalef import detect_lam_alef_transposition
-from .types import Defect, Diagnosis, Evidence
+from .types import DETERMINISTIC_DEFECTS, Defect, Diagnosis, Evidence
 from .unicode_tables import (
     FINAL_ONLY_LETTERS,
     PF_JOINING_FORM,
@@ -302,8 +302,8 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
 
     if not text.strip():
         dg.defects.append(Defect.NO_TEXT_LAYER)
-        dg.confidence = 1.0
-        dg.evidence.append(Evidence("empty", 1.0, "لا طبقة نصية — مرشّح للدرجة ٤ (OCR)"))
+        dg.evidence.append(Evidence("empty", 1.0, "لا طبقة نصية — الدرجة ٤ غير منفَّذة"))
+        dg.confidence = _confidence(dg)  # لا مخرجَ يتخطّى حاسب الثقة
         return dg
 
     # الموجيبيك أولاً: إن وُجد فكل قياس بعده على نصٍّ مشوّه لا معنى له.
@@ -311,8 +311,8 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
     dg.evidence.append(ev)
     if is_moji:
         dg.defects.append(Defect.MOJIBAKE)
-        dg.confidence = 1.0
         dg.metrics["mojibake"] = True
+        dg.confidence = _confidence(dg)  # لا مخرجَ يتخطّى حاسب الثقة
         return dg
 
     pf_ratio, ev = detect_presentation_forms(text)
@@ -342,10 +342,20 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
     if tw_ratio > th["tatweel"]:
         dg.defects.append(Defect.TATWEEL_NOISE)
 
+    # نطبّع المفردات هنا لأجل الشواهد الحرفية وحدها، ونُبقي الخام شاهداً
+    # على الوصل. وبدون هذا يعمى شاهدان من ثلاثة — والتاء المربوطة أقواها
+    # وزناً — لأنها مخبوءةٌ خلف شكلها الرسومي U+FE93. قِسناه على سطرٍ
+    # واحد: 0.79 بشاهدٍ واحد، مقابل 0.93 بالثلاثة.
+    #
+    # ولا يُغيّر هذا النصَّ ولا يُطبّعه: `diagnose` لا يكتب شيئاً أبداً،
+    # وإنما يفتح عينه على طبقتين معاً كما يفعل الأنبوب.
+    from .normalize import fold_simple_forms
+
+    order_score, order_ev = detect_visual_order(
+        fold_simple_forms(text), shaped_source=text
+    )
     # حارسُ كفاية العيّنة يحرس الإحصاء وحده. أما هويّة الوصل فبرهانٌ،
     # والبرهانُ لا يحتاج عيّنةً: خرقٌ واحد في «توقف!» يكفي كخرقٍ في صفحة.
-    # فنُعفي البرهان من الحارس، ولا نُعفي منه ما سواه.
-    order_score, order_ev = detect_visual_order(text)
     proof = next(
         (e for e in order_ev if e.name == "joining_forms" and e.value > 0), None
     )
@@ -369,13 +379,39 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
 
 def _confidence(dg: Diagnosis) -> float:
     """
-    ثقة التشخيص = قوة أوضح شاهدٍ حاضر، مضروبةً في كفاية العيّنة.
+    يملأ `defect_confidence` ويُرجع أضعفَ حلقةٍ فيه.
 
-    مقصود ألّا تبلغ ١٫٠ إلا بعيّنةٍ وافية وشاهدٍ صريح.
+    القاعدة التي كانت غائبة: **افصل القاطع عن الظنّيّ.**
+
+    كانت الدالة تضرب كلَّ ثقةٍ في «كفاية العيّنة»، فتُخرج ٠٫٥٢ لتشخيصٍ
+    قاطعٍ لا شكّ فيه (فحصُ نطاقٍ حتميّ على «ﻣﺮﺣﺒﺎ»)، و٠٫٤٤ لنصٍّ سليم.
+    رقمٌ لا يعني شيئاً — والمكتبة التي تُصدر شهادات ثقة لا تُصدَّق إن كانت
+    شهادتُها لا تفرّق بين اليقين والظنّ.
+
+    والقسمة ثلاثيّة:
+
+      * **قاطعٌ** (نطاقٌ أو اختبارٌ جبريّ): ١٫٠ دائماً. حجمُ العيّنة لا
+        دخل له: فحصُ نطاقٍ على خمسة محارف قاطعٌ كفحصه على خمسة آلاف.
+      * **ظنّيّ** (الاتجاه): بدرجة شاهده.
+      * **شهادةُ نفي** («سليم»): وحدَها يحكمها حجمُ العيّنة، إذ هي
+        استدلالٌ بغياب الدليل. ولا تبلغ اليقين أبداً مهما طال النصّ —
+        فغيابُ العلّة ليس برهانَ سلامة. وهذا التماثلُ نفسه الذي نطبّقه
+        على الأدلّة في سائر المكتبة: **نَدحض ولا نُزكّي.**
     """
     if Defect.NONE in dg.defects:
-        base = 0.6
-    else:
-        base = max((abs(e.value) for e in dg.evidence), default=0.0)
-    sample = min(1.0, dg.char_count / 200.0)
-    return round(min(1.0, 0.5 * base + 0.5 * (base * sample) + 0.25 * sample), 3)
+        sample = min(1.0, dg.char_count / 300.0)
+        conf = round(0.30 + 0.60 * sample, 3)  # سقفُها ٠٫٩ عمداً
+        dg.defect_confidence[Defect.NONE] = conf
+        return conf
+
+    for d in dg.defects:
+        if d in DETERMINISTIC_DEFECTS:
+            dg.defect_confidence[d] = 1.0
+        elif d is Defect.VISUAL_ORDER:
+            dg.defect_confidence[d] = round(
+                min(1.0, abs(dg.metrics.get("order_score", 0.0))), 3
+            )
+        else:  # pragma: no cover - علّةٌ جديدة لم تُصنَّف بعد
+            dg.defect_confidence[d] = 0.5
+
+    return round(min(dg.defect_confidence.values()), 3)

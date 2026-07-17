@@ -599,3 +599,126 @@ class TestEvalReport:
 
     def test_accuracy_never_negative(self):
         assert evaluate_text("نص", "نصٌّ طويلٌ جداً مختلفٌ كلياً").cer.accuracy >= 0.0
+
+
+# ── مراجعةُ 0.5.0: ما صحّ من ملاحظات مراجعٍ خارجيّ ────────────────────
+
+class TestConfidenceSemantics:
+    """
+    كانت الثقة تضرب كلَّ شاهدٍ في «كفاية العيّنة»، فتُخرج ٠٫٥٢ لتشخيصٍ
+    قاطع و٠٫٤٤ لنصٍّ سليم — رقمٌ لا يعني شيئاً. والقسمة الصحيحة ثلاثيّة.
+    """
+
+    @pytest.mark.parametrize(
+        "text,defect",
+        [
+            ("\ufee3\ufeae\ufea3\ufe92\ufe8e", Defect.PRESENTATION_FORMS),
+            ("Ø§Ù„Ø³Ù„Ø§Ù…", Defect.MOJIBAKE),
+            ("\ue001\ue002\ue003 نص", Defect.BROKEN_CMAP),
+            ("االنترنيت", Defect.LAM_ALEF_TRANSPOSED),
+        ],
+    )
+    def test_deterministic_defects_are_certain(self, text, defect):
+        """فحصُ نطاقٍ على ٥ محارف قاطعٌ كفحصه على ٥٠٠٠. الحجم لا دخل له."""
+        d = diagnose(text)
+        assert d.has(defect)
+        assert d.confidence_in(defect) == 1.0
+
+    def test_probabilistic_defect_carries_its_evidence(self):
+        d = diagnose("\ufe8e\ufe92\ufea3\ufeae\ufee3" * 3)
+        assert d.has(Defect.VISUAL_ORDER)
+        assert 0.0 < d.confidence_in(Defect.VISUAL_ORDER) < 1.0
+
+    def test_healthy_verdict_scales_with_sample(self):
+        """شهادةُ النفي وحدَها يحكمها الحجم — فهي استدلالٌ بغياب الدليل."""
+        short = diagnose("نصٌّ عربيّ قصير")
+        long = diagnose("هذه دراسة مقارنة في السياسة العامة " * 12)
+        assert short.healthy and long.healthy
+        assert long.confidence > short.confidence
+
+    def test_healthy_never_reaches_certainty(self):
+        """
+        سقفُ ٠٫٩ عمداً: غيابُ العلّة ليس برهانَ سلامة. وهذا التماثلُ نفسه
+        الذي نطبّقه في سائر المكتبة — نَدحض ولا نُزكّي.
+        """
+        assert diagnose("دراسة مقارنة سليمة تماماً " * 200).confidence <= 0.9
+
+    def test_overall_is_the_weakest_link(self):
+        d = diagnose("\ufe8e\ufe92\ufea3\ufeae\ufee3" * 3)
+        assert d.confidence == min(d.defect_confidence.values())
+
+
+class TestDiagnoseSeesBothLayers:
+    def test_letter_signals_are_not_blind_to_shaping(self):
+        """
+        كان `diagnose` يرى شاهداً واحداً من ثلاثة: التاء المربوطة مخبوءة
+        خلف U+FE93. وهي أقوى الشواهد وزناً (0.50) وكانت عمياء تماماً.
+        """
+        shaped_visual = (
+            "\ufe94\ufeb3\ufe8e\ufeae\ufeaa \ufe94\ufee7\ufeae\ufe8e\ufede\ufee4"
+        )
+        d = diagnose(shaped_visual)
+        letter = next(e for e in d.evidence if e.name == "final_only_letters")
+        assert letter.value > 0, "الشاهد الحرفيّ يجب أن ينطق رغم الأشكال"
+
+    def test_diagnose_matches_what_the_pipeline_sees(self):
+        """تقريرُ التشخيص لا يجوز أن يكون أضعف مما يعمل به الأنبوب."""
+        from arafix.normalize import fold_simple_forms
+
+        shaped_visual = (
+            "\ufe94\ufeb3\ufe8e\ufeae\ufeaa \ufe94\ufee7\ufeae\ufe8e\ufede\ufee4"
+        )
+        pipeline_score, _ = detect_visual_order(
+            fold_simple_forms(shaped_visual), shaped_source=shaped_visual
+        )
+        assert diagnose(shaped_visual).metrics["order_score"] == pytest.approx(
+            pipeline_score
+        )
+
+
+class TestHealthyTextIsNeverTouched:
+    """
+    كان الاختبار الأصليّ يمرّ بجملةٍ واحدة نظيفة. والمحايداتُ والتشكيلُ
+    والكشيدة هي مواطنُ الأذى، فلتُجرَّب عليها.
+    """
+
+    @pytest.mark.parametrize(
+        "healthy",
+        [
+            "هذه دراسة مقارنة في السياسة العامة نُشرت عام 2024 بالعراق",
+            "(مقدمة الدراسة) والفقرة [أ-ج] من المادة {٣}",
+            "أولاً، ثانياً، ثالثاً؛ ثم توقف!",
+            "المتغيّر GDP_2024 يساوي 3.5% — ما رأيك؟",
+            "مُحَمَّدٌ رَسُولُ اللهِ صَلَّى اللهُ عَلَيْهِ وَسَلَّمَ",
+            "قال الباحث: «أفعالهم لا تطابق أقوالهم» ثم صمت.",
+            "الفقرة (١) من المادة [٢٣] — القانون رقم 20 لسنة 2009",
+            "جامعة تكريت - كلية العلوم السياسية",
+            "لآلئ منثورة في جمال الطبيعة بالموصل",
+        ],
+    )
+    def test_untouched(self, healthy):
+        r = repair_text(healthy)
+        assert r.text == healthy, f"عُطب: {r.notes}"
+        assert not r.changed
+
+
+class TestTatweel:
+    """الكشيدة زخرفةٌ بلا معنى دلاليّ — وحذفُها آمنٌ دائماً."""
+
+    def test_stripped_wherever_it_appears(self):
+        assert repair_text("مرحـــبا بكـم في الجامعـة").text == "مرحبا بكم في الجامعة"
+
+    def test_detected_as_defect(self):
+        assert diagnose("مرحـــبا بكـ__م" .replace("__", "")).has(Defect.TATWEEL_NOISE)
+
+    def test_single_tatweel_in_long_text_still_caught(self):
+        """
+        العتبة ٠٫٥٪ — والكشيدة لا تظهر صدفةً قطّ، فأيّ ظهورٍ لها مقصود.
+        اختبارٌ يوثّق أن العتبة ليست عالية إلى حدّ إفلات الكشيدة المفردة.
+        """
+        text = "دراسة مقارنة في السياسة العامة والإدارة المحليـة بالعراق"
+        assert diagnose(text).has(Defect.TATWEEL_NOISE)
+        assert "ـ" not in repair_text(text).text
+
+    def test_tatweel_removal_does_not_shift_diacritics(self):
+        assert repair_text("مُحَمَّـــد").text == "مُحَمَّد"

@@ -31,7 +31,7 @@ arafix — استرجاع النص العربي من ملفات PDF المعطو
 
 from __future__ import annotations
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 __license__ = "MIT"
 
 from .cmap import GlyphMap, build_glyph_map, decode_glyph_name

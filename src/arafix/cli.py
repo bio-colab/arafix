@@ -37,6 +37,9 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
                 "arabic_ratio": round(dg.arabic_ratio, 3),
                 "defects": [d.value for d in dg.defects],
                 "confidence": dg.confidence,
+                "defect_confidence": {
+                    k.value: v for k, v in dg.defect_confidence.items()
+                },
                 "fonts": raw.fonts,
                 "evidence": [
                     {"name": e.name, "value": round(e.value, 3), "detail": e.detail}
@@ -53,8 +56,10 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
 
     for r in report:
         print(f"── صفحة {r['page']} " + "─" * 40)
-        print(f"   العلل    : {'، '.join(r['defects'])}")
-        print(f"   الثقة    : {r['confidence']}")
+        conf = r["defect_confidence"]
+        detail = "، ".join(f"{d} ({conf.get(d, 0):.2f})" for d in r["defects"])
+        print(f"   العلل    : {detail}")
+        print(f"   الثقة    : {r['confidence']}  (أضعف حلقة)")
         print(f"   الحروف   : {r['chars']}  (عربية {r['arabic_ratio']:.0%})")
         if r["fonts"]:
             print(f"   الخطوط   : {', '.join(r['fonts'][:4])}")

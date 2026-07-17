@@ -66,12 +66,30 @@ class Evidence:
         return f"{self.name}={self.value:.3f} :: {self.detail}"
 
 
+#: العلل التي يقوم شاهدُها على فحصٍ **حتميّ** — نطاقٍ أو اختبارٍ جبريّ.
+#: لا دخل لحجم العيّنة بها: فحصُ نطاقٍ على خمسة محارف قاطعٌ كفحصه على
+#: خمسة آلاف. ومن خفّض ثقتها لصغر العيّنة خلط الإحصاء بالحساب.
+DETERMINISTIC_DEFECTS = frozenset({
+    Defect.PRESENTATION_FORMS,
+    Defect.BROKEN_CMAP,
+    Defect.MOJIBAKE,
+    Defect.TATWEEL_NOISE,
+    Defect.NO_TEXT_LAYER,
+    Defect.LAM_ALEF_TRANSPOSED,
+})
+
+
 @dataclass
 class Diagnosis:
     """حصيلة الدرجة صفر: ماذا في هذا النص، وبأيّ ثقة."""
 
     defects: list[Defect] = field(default_factory=list)
     evidence: list[Evidence] = field(default_factory=list)
+
+    #: ثقةُ كل علّةٍ على حدة. الرقمُ الواحد يُخفي أن بعض شواهدنا قاطعة
+    #: وبعضها ظنّيّ، فيظلم الأولى ويجمّل الثانية.
+    defect_confidence: dict[Defect, float] = field(default_factory=dict)
+
     confidence: float = 0.0
     char_count: int = 0
     arabic_ratio: float = 0.0
@@ -79,6 +97,10 @@ class Diagnosis:
 
     def has(self, defect: Defect) -> bool:
         return defect in self.defects
+
+    def confidence_in(self, defect: Defect) -> float:
+        """ثقةُ علّةٍ بعينها. أدقّ من `confidence` الجامع."""
+        return self.defect_confidence.get(defect, 0.0)
 
     @property
     def healthy(self) -> bool:

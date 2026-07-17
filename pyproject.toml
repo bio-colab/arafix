@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arafix"
-version = "0.4.0"
+version = "0.5.0"
 description = "استرجاع النص العربي من ملفات PDF المعطوبة — تشخيص أولاً، ثم علاج مُتدرّج"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -28,7 +28,8 @@ dependencies = []
 [project.optional-dependencies]
 pdf = ["pymupdf>=1.23"]        # الدرجة ٠–٢ على ملفات PDF
 cmap = ["fonttools>=4.40"]     # الدرجة ٣
-ocr = ["pytesseract>=0.3"]     # الدرجة ٤ (لم تُنفَّذ بعد)
+# لا حزمة «ocr» هنا عمداً: الدرجة ٤ غير منفَّذة، و`extra` يوحي بقدرةٍ
+# غير موجودة. لا نبيع تبعيّةً مقابل وعد.
 all = ["pymupdf>=1.23", "fonttools>=4.40"]
 dev = ["pymupdf>=1.23", "fonttools>=4.40", "pytest>=7", "ruff>=0.4", "mypy>=1.8"]
 

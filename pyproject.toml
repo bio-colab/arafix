@@ -1,0 +1,61 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "arafix"
+version = "0.1.0"
+description = "استرجاع النص العربي من ملفات PDF المعطوبة — تشخيص أولاً، ثم علاج مُتدرّج"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "bio-colab" }]
+keywords = ["arabic", "pdf", "text-extraction", "rtl", "unicode", "bidi", "nlp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Natural Language :: Arabic",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Processing :: Linguistic",
+]
+
+# النواة بلا تبعيّات — عمداً.
+# الدرجتان ٠ و١ و٢ بايثون قياسيّ خالص، فتعمل في أيّ بيئة مقيّدة.
+dependencies = []
+
+[project.optional-dependencies]
+pdf = ["pymupdf>=1.23"]        # الدرجة ٠–٢ على ملفات PDF
+cmap = ["fonttools>=4.40"]     # الدرجة ٣
+ocr = ["pytesseract>=0.3"]     # الدرجة ٤ (لم تُنفَّذ بعد)
+all = ["pymupdf>=1.23", "fonttools>=4.40"]
+dev = ["pymupdf>=1.23", "fonttools>=4.40", "pytest>=7", "ruff>=0.4", "mypy>=1.8"]
+
+[project.scripts]
+arafix = "arafix.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/bio-colab/arafix"
+Issues = "https://github.com/bio-colab/arafix/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/arafix"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --doctest-modules --doctest-glob=''"
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = false
+warn_unused_ignores = true
+ignore_missing_imports = true

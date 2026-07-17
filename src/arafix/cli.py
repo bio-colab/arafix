@@ -3,6 +3,7 @@
 
     arafix diagnose thesis.pdf
     arafix extract  thesis.pdf -o out.txt
+    arafix eval     thesis.pdf --truth thesis.txt --compare
     arafix text     "ﺎﺒﺣﺮﻣ"
     arafix fonts    thesis.pdf
 
@@ -95,6 +96,38 @@ def _cmd_text(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_eval(args: argparse.Namespace) -> int:
+    from .evaluate import EvalConfig, compare_extractors, evaluate_pdf
+
+    cfg = EvalConfig(
+        ignore_diacritics=args.ignore_diacritics,
+        ignore_punctuation=args.ignore_punctuation,
+    )
+    reports = (
+        compare_extractors(args.path, args.truth, cfg)
+        if args.compare
+        else [evaluate_pdf(args.path, args.truth, args.extractor, cfg)]
+    )
+
+    print("─" * 68)
+    for r in reports:
+        print(" ", r)
+    print("─" * 68)
+
+    best = reports[0]
+    if args.verbose and best.worst_lines:
+        print("\nأسوأ السطور في", best.label, ":")
+        for i, ref, hyp in best.worst_lines:
+            print(f"  سطر {i}")
+            print(f"    المرجع : {ref[:70]!r}")
+            print(f"    الناتج : {hyp[:70]!r}")
+
+    if len(reports) > 1:
+        gap = reports[-1].cer.rate - best.cer.rate
+        print(f"\nأفضل مسار: {best.label} — يسبق أسوأهم بـ {gap:.2%} في CER")
+    return 0 if best.cer.rate < 0.05 else 3
+
+
 def _cmd_fonts(args: argparse.Namespace) -> int:
     from .cmap import build_glyph_map
     from .extractors import get_extractor
@@ -144,6 +177,15 @@ def build_parser() -> argparse.ArgumentParser:
     t.add_argument("text", nargs="?")
     t.add_argument("-v", "--verbose", action="store_true")
     t.set_defaults(func=_cmd_text)
+
+    v = sub.add_parser("eval", help="قِس مقابل حقيقةٍ مرجعية (CER/WER)")
+    v.add_argument("path")
+    v.add_argument("--truth", required=True, help="ملفٌ نصّيّ فيه النصّ الصحيح")
+    v.add_argument("--compare", action="store_true", help="قِس كل المسارات ورتّبها")
+    v.add_argument("--ignore-diacritics", action="store_true")
+    v.add_argument("--ignore-punctuation", action="store_true")
+    v.add_argument("-v", "--verbose", action="store_true", help="اسرد أسوأ السطور")
+    v.set_defaults(func=_cmd_eval)
 
     f = sub.add_parser("fonts", help="افحص الخطوط المضمَّنة (الدرجة ٣)")
     f.add_argument("path")

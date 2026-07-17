@@ -125,3 +125,33 @@ def test_geometry_beats_mupdf_bidi_on_neutrals(broken_pdf):
     mu = extract_pdf(broken_pdf, PipelineConfig(extractor="_mupdf_bidi_test")).text
     assert target in geo
     assert target not in mu, "إن نجح مسار MuPDF فقد تغيّر، فأعِد القياس"
+
+
+def test_measured_not_asserted(broken_pdf, tmp_path):
+    """
+    القياس بدل الشهادة: نُخرج رقماً لا رأياً.
+
+    ويظلّ هذا رقماً على ملفٍ ولّدناه — وهو نصفُ حجّة. تمامُ الحجّة أن
+    يقيسه المستعمل على ملفاته: `arafix eval file.pdf --truth truth.txt`.
+    """
+    import sys
+    from pathlib import Path
+
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
+    from make_broken_pdf import SAMPLE
+
+    from arafix import compare_extractors
+
+    truth = tmp_path / "truth.txt"
+    truth.write_text("\n".join(SAMPLE), encoding="utf-8")
+
+    reports = compare_extractors(broken_pdf, str(truth))
+    best = reports[0]
+    assert best.label == "pymupdf", "القراءة الهندسية يجب أن تتصدّر"
+    assert best.cer.rate < 0.01, f"CER = {best.cer.rate:.2%}"
+
+    mupdf = next((r for r in reports if r.label == "mupdf-bidi"), None)
+    if mupdf:
+        assert mupdf.cer.rate > best.cer.rate * 5 + 0.05, (
+            "إن تقارب المساران فقد تغيّر MuPDF — أعِد القياس وراجع الافتراضيّ"
+        )

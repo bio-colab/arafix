@@ -528,3 +528,74 @@ class TestOrderProofNeedsNoSample:
         """
         visual = "!\ufed3\ufed7\ufeee\ufe97"
         assert repair_text(visual).text == "توقف!"
+
+
+# ── القياس ─────────────────────────────────────────────────────────────
+#
+# وُجدت هذه الطبقة بعد مقارنةٍ بمشاريع أخرى في هذا الباب: كلُّها تحمل
+# `evaluate` ونحن لا. وكان قولنا «٠ من ١٢» مقيساً على ملفاتٍ ولّدناها —
+# أي اختباراً يقارب الدائريّ. الرقمُ على ملفات المستعمل أصدقُ من كل شهادة.
+
+from arafix import EvalConfig, cer, evaluate_text, levenshtein, wer  # noqa: E402
+
+
+class TestEditDistance:
+    def test_identical_is_zero(self):
+        assert levenshtein(list("كتاب"), list("كتاب")) == 0
+
+    def test_lam_alef_transposition_costs_two(self):
+        """انقلابُ الرباط تبديلُ موضع: حذفٌ وإدراج."""
+        assert levenshtein(list("المجلات"), list("المجالت")) == 2
+
+    def test_symmetric(self):
+        a, b = list("دراسة"), list("دراسات")
+        assert levenshtein(a, b) == levenshtein(b, a)
+
+    def test_empty_reference(self):
+        assert levenshtein([], list("نص")) == 2
+        assert cer("", "نص").rate == 0.0  # لا قسمةَ على صفر
+
+
+class TestRates:
+    def test_perfect_extraction(self):
+        t = "دراسة مقارنة في السياسة العامة"
+        assert cer(t, t).rate == 0.0
+        assert wer(t, t).rate == 0.0
+
+    def test_wer_is_harsher_than_cer(self):
+        """
+        كلمةٌ انقلب فيها حرفان تكلّف ٢/٧ في CER وكلمةً كاملة في WER.
+        ونحن نُخطئ في الكلمات لا في الحروف، فليكن القياس حيث الخطأ.
+        """
+        ref, hyp = "قرأت المجلات العلمية", "قرأت المجالت العلمية"
+        assert wer(ref, hyp).rate > cer(ref, hyp).rate
+
+    def test_whitespace_collapsed_by_default(self):
+        """تباعدُ PDF ليس معنى — ولا نخفي غيره."""
+        assert cer("نص  عربي", "نص عربي").rate == 0.0
+
+    def test_punctuation_counted_by_default(self):
+        """
+        المحايدات أهشُّ ما في المكتبة، وإخفاؤها يمحو أصدق ما يقيسه
+        هذا الاختبار. فالتجاهل اختياريّ ومطفأ.
+        """
+        assert cer("(مقدمة)", "()مقدمة").rate > 0
+        assert cer("(مقدمة)", "()مقدمة", EvalConfig(ignore_punctuation=True)).rate == 0
+
+    def test_diacritics_counted_by_default(self):
+        assert cer("نُشرت", "نشُرت").rate > 0
+        assert cer("نُشرت", "نشُرت", EvalConfig(ignore_diacritics=True)).rate == 0
+
+
+class TestEvalReport:
+    def test_worst_lines_point_at_the_pattern(self):
+        """المعدّل يقول «٣٪ خطأ» ولا يقول أين. الأسوأ يدلّ على النمط."""
+        ref = "سطر سليم تماماً\nالمجلات العلمية\nسطر آخر سليم"
+        hyp = "سطر سليم تماماً\nالمجالت العلمية\nسطر آخر سليم"
+        rep = evaluate_text(ref, hyp)
+        assert rep.worst_lines
+        assert rep.worst_lines[0][0] == 2
+        assert "المجلات" in rep.worst_lines[0][1]
+
+    def test_accuracy_never_negative(self):
+        assert evaluate_text("نص", "نصٌّ طويلٌ جداً مختلفٌ كلياً").cer.accuracy >= 0.0

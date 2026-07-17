@@ -8,7 +8,13 @@ arafix — استرجاع النص العربي من ملفات PDF المعطو
     ٢ الاتجاه      fix_order()         بصريّ ← منطقيّ، بحماية الأرقام
     ١ب الرباطات    expand_ligatures()  ﻻ ← لا، بعد استقرار الترتيب
     ٣ الخريطة      build_glyph_map() إعادة بنائها من الخط المضمَّن
-    ٤ الـ OCR      (خارجيّ)          آخر الدواء، لا أوّله
+    ٤ الـ OCR      (خارجيّ)            آخر الدواء، لا أوّله
+
+وفوقها القياس — فرقمٌ على ملفاتك أصدقُ من كل شهاداتنا:
+
+    >>> from arafix import compare_extractors        # doctest: +SKIP
+    >>> for r in compare_extractors("t.pdf", "t.txt"):  # doctest: +SKIP
+    ...     print(r)                                  # doctest: +SKIP
 
 الاستعمال الأسرع:
 
@@ -25,7 +31,7 @@ arafix — استرجاع النص العربي من ملفات PDF المعطو
 
 from __future__ import annotations
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __license__ = "MIT"
 
 from .cmap import GlyphMap, build_glyph_map, decode_glyph_name
@@ -36,6 +42,16 @@ from .diagnose import (
     detect_pua,
     detect_visual_order,
     diagnose,
+)
+from .evaluate import (
+    EvalConfig,
+    EvalReport,
+    cer,
+    compare_extractors,
+    evaluate_pdf,
+    evaluate_text,
+    levenshtein,
+    wer,
 )
 from .extractors import Extractor, RawPage, get_extractor, register
 from .lamalef import (
@@ -120,6 +136,15 @@ __all__ = [
     "RepairResult",
     "PageResult",
     "DocumentResult",
+    # القياس
+    "evaluate_text",
+    "evaluate_pdf",
+    "compare_extractors",
+    "cer",
+    "wer",
+    "levenshtein",
+    "EvalConfig",
+    "EvalReport",
     # المحرّكات
     "Extractor",
     "RawPage",

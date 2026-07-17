@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from .types import RepairResult, Stage
 from .unicode_tables import (
-    LIGATURE_PF_TO_BASE,
+    DEFERRED_PF_TO_BASE,
     SIMPLE_PF_TO_BASE,
     TATWEEL,
     ZWJ,
@@ -37,6 +37,7 @@ __all__ = [
     "NormalizeConfig",
     "fold_presentation_forms",
     "fold_simple_forms",
+    "expand_deferred_forms",
     "expand_ligatures",
     "normalize_text",
 ]
@@ -61,7 +62,7 @@ class NormalizeConfig:
     #: حذف التشكيل. لا تفعّله إلا إن كنت تعرف لماذا.
     strip_diacritics: bool = False
 
-    #: فكّ الرباطات (ﻻ → لا). صحيحٌ افتراضياً لنصٍّ مستقرّ الترتيب.
+    #: تطبيع المؤجَّل (ﻻ → لا، وU+FE79 → ُ). صحيحٌ لنصٍّ مستقرّ الترتيب.
     #: يطفئه الأنبوب **مؤقتاً** في تمريرته الأولى ليُبقي الرباط ذرّةً
     #: حتى تفرغ الدرجة ٢، ثم يشعله في تمريرةٍ ثانية. انظر pipeline.py.
     expand_ligatures: bool = True
@@ -75,8 +76,8 @@ _ZERO_WIDTH = (ZWJ, ZWNJ, "\u200b", "\u200e", "\u200f", "\ufeff")
 
 
 _SIMPLE_TABLE = {ord(k): v for k, v in SIMPLE_PF_TO_BASE.items()}
-_LIGATURE_TABLE = {ord(k): v for k, v in LIGATURE_PF_TO_BASE.items()}
-_ALL_TABLE = {**_SIMPLE_TABLE, **_LIGATURE_TABLE}
+_DEFERRED_TABLE = {ord(k): v for k, v in DEFERRED_PF_TO_BASE.items()}
+_ALL_TABLE = {**_SIMPLE_TABLE, **_DEFERRED_TABLE}
 
 
 def fold_simple_forms(text: str) -> str:
@@ -97,16 +98,25 @@ def fold_simple_forms(text: str) -> str:
     return text.translate(_SIMPLE_TABLE) if text else text
 
 
-def expand_ligatures(text: str) -> str:
+def expand_deferred_forms(text: str) -> str:
     """
-    يفكّ الرباطات إلى حروفها. **لا تنادها قبل استقرار الترتيب.**
+    يطبّع ما أُجِّل: الرباطات وأشكال التشكيل الفاصلة.
 
-    >>> expand_ligatures("\ufefb")
+    **لا تنادها قبل استقرار الترتيب** — فهذه بعينها هي الأشكال التي
+    يغيّر تطبيعُها بنيةَ العنقود، فيقلب العكسُ ما فكّكناه.
+
+    >>> expand_deferred_forms("\ufefb")
     'لا'
-    >>> expand_ligatures("\ufef5")
+    >>> expand_deferred_forms("\ufef5")
     'لآ'
+    >>> expand_deferred_forms("\ufe79")   # ضمّةٌ فاصلة ← علامةٌ لاصقة
+    'ُ'
     """
-    return text.translate(_LIGATURE_TABLE) if text else text
+    return text.translate(_DEFERRED_TABLE) if text else text
+
+
+#: اسمٌ قديم أُبقي للتوافق. المظلّة أوسع من الرباطات، فالاسم الأدقّ أعلاه.
+expand_ligatures = expand_deferred_forms
 
 
 def fold_presentation_forms(text: str) -> str:
@@ -133,7 +143,7 @@ def normalize_text(text: str, config: NormalizeConfig | None = None) -> str:
     if cfg.fold_presentation_forms:
         out = fold_simple_forms(out)
         if cfg.expand_ligatures:
-            out = expand_ligatures(out)
+            out = expand_deferred_forms(out)
 
     if cfg.strip_tatweel:
         out = out.replace(TATWEEL, "")

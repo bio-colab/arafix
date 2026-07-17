@@ -20,7 +20,7 @@ from dataclasses import dataclass, field, replace
 from .diagnose import DEFAULT_THRESHOLDS, detect_mojibake, detect_visual_order, diagnose
 from .extractors import get_extractor
 from .lamalef import repair_lam_alef_transposition
-from .normalize import NormalizeConfig, expand_ligatures, normalize_text
+from .normalize import NormalizeConfig, expand_deferred_forms, normalize_text
 from .order import ReorderConfig, fix_order
 from .types import (
     Defect,
@@ -130,11 +130,11 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
 
     # --- الدرجة ١ب: الآن استقرّ الترتيب، فليُفكَّ الرباط بأمان ----------
     if cfg.enable_normalize and cfg.normalize.expand_ligatures:
-        expanded = expand_ligatures(current)
+        expanded = expand_deferred_forms(current)
         if expanded != current:
             current = expanded
             stages.append(Stage.EXPAND_LIGATURES)
-            notes.append("فُكَّت الرباطات (ﻻ ← لا) بعد استقرار الترتيب")
+            notes.append("طُبِّع المؤجَّل (الرباطات والتشكيل الفاصل) بعد استقرار الترتيب")
 
     # --- ترقيع ما وَرِثناه معطوباً من أداةٍ أخرى ------------------------
     lam_conf = 1.0

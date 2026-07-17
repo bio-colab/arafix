@@ -5,6 +5,8 @@
 من اسمه أيّ قرارٍ كسرت ولماذا اتُّخذ أوّلاً.
 """
 
+import unicodedata
+
 import pytest
 
 from arafix import (
@@ -396,3 +398,133 @@ class TestJoiningIdentity:
     def test_article_position_is_not_a_pardon(self):
         """«ولاية» ← «والية» انقلابٌ حقيقيّ في موقع الأداة. المعجم يفحصه."""
         assert repair_lam_alef_transposition("والية", {"ولاية"}).text == "ولاية"
+
+
+# ── المحايدات: الترقيم والأقواس والعلامات ──────────────────────────────
+#
+# سأل مستعملٌ سؤالاً بسيطاً — «أتبقى الأقواس حول كلمتها؟» — فكشف ثلاثة
+# أعطاب. المحايدات أهشّ ما في العربية داخل PDF: الحروف تخرج سليمةً وهي
+# مبعثرة، فلا يفضحها إلا من يقرأ.
+
+from arafix import (  # noqa: E402
+    MIRROR_PAIRS,
+    ReorderConfig,
+    expand_deferred_forms,
+    grapheme_clusters,
+)
+from arafix.unicode_tables import (  # noqa: E402
+    DEFERRED_PF_TO_BASE,
+    SPACING_MARK_PF_TO_BASE,
+)
+
+
+class TestPunctuationClasses:
+    """تصنيفُ يونيكود هو ما يقرّر المعاملة، لا الحدس."""
+
+    @pytest.mark.parametrize("ch", "()[]{}")
+    def test_brackets_are_mirrored(self, ch):
+        """المِرآتيّ وحده يُعكس شكله. وهذه هي كل قائمتنا."""
+        assert unicodedata.mirrored(ch)
+        assert ch in MIRROR_PAIRS
+
+    @pytest.mark.parametrize("ch", "؟؛!,._-")
+    def test_non_mirrored_are_left_alone(self, ch):
+        """
+        «؟» و«؛» عربيّتان أصلاً (صنف AL) ورسمُهما معكوسٌ سلفاً، فمرآتُهما
+        تخريب. و«!» و«.» و«_» متناظرة. ولا واحدةَ منها مِرآتيّة.
+        """
+        assert not unicodedata.mirrored(ch)
+        assert ch not in MIRROR_PAIRS
+
+    def test_arabic_punctuation_is_strong_not_neutral(self):
+        """
+        سرُّ نجاة «؟» و«؛» حيث تعطب «!» و«.»: الأولى صنف AL (قويّة
+        الاتجاه) والثانية محايدة يتنازعها ما حولها.
+        """
+        assert unicodedata.bidirectional("؟") == "AL"
+        assert unicodedata.bidirectional("؛") == "AL"
+        assert unicodedata.bidirectional("!") == "ON"
+        assert unicodedata.bidirectional(".") == "CS"
+
+
+class TestBracketMirroring:
+    def test_bracket_keeps_its_side(self):
+        """
+        السؤال الأصليّ: أينقلب أحد القوسين؟ لا — بشرط المرآة.
+
+        القوس في PDF يُخزَّن بجليفه المرسوم، وجليفُ أقصى اليسار في سطرٍ
+        عربيّ هو «(» وإن كان المحرف المنطقيّ هناك هو «)». فالعكس وحده
+        يعطي «)مقدمة(»، ولا يصلحها إلا مرآةُ الأقواس.
+        """
+        assert reverse_visual_line("(ةمدقم)") == "(مقدمة)"
+        assert reverse_visual_line("[ةمدقم]") == "[مقدمة]"
+
+    def test_without_mirroring_the_brackets_invert(self):
+        """توثيقُ ما تفعله المرآة، بإطفائها."""
+        cfg = ReorderConfig(mirror_brackets=False)
+        assert reverse_visual_line("(ةمدقم)", cfg) == ")مقدمة("
+
+    def test_nesting_survives(self):
+        assert reverse_visual_line("[(ةمدقم)]") == "[(مقدمة)]"
+
+
+class TestClusterAwareReversal:
+    def test_marks_stay_with_their_base(self):
+        """
+        وحدةُ العكس العنقودُ لا المحرف. علامةُ التشكيل عرضُها صفر
+        وتشترك في موضع حرفها، فعكسُ المحارف يُلصقها بالجار.
+        """
+        logical = "ثانياً."
+        visual = "".join(reversed(grapheme_clusters(logical)))
+        assert reverse_visual_line(visual) == logical
+
+    def test_codepoint_reversal_breaks_it(self):
+        """توثيقُ الجريمة: العكس على المحارف يفصل العلامة عن حرفها."""
+        cfg = ReorderConfig(cluster_aware=False)
+        visual = "".join(reversed(grapheme_clusters("ثانياً.")))
+        assert reverse_visual_line(visual, cfg) != "ثانياً."
+
+    def test_clusters_are_grapheme_not_codepoint(self):
+        assert grapheme_clusters("اً") == ["اً"]
+        assert len(grapheme_clusters("مُحَمَّد")) == 4
+
+
+class TestSpacingMarkForms:
+    """
+    U+FE70–FE7F: «تشكيلٌ بشكلٍ فاصل» — فئتها Lo لا Mn.
+
+    أي أنها **محرفٌ قائم بذاته** يشغل موضعاً، وتطبيعُها يحيلها علامةً
+    لاصقة. فتنقلب وحدةُ العكس من محرفٍ إلى جزءِ عنقود — وهي جريمة
+    الرباط نفسها بثوبٍ آخر، ويُفلتها معيارُ «طول التفكيك» وحده.
+    """
+
+    def test_spacing_marks_are_deferred_not_simple(self):
+        assert "\ufe79" in SPACING_MARK_PF_TO_BASE
+        assert "\ufe79" in DEFERRED_PF_TO_BASE
+        assert "\ufe79" not in SIMPLE_PF_TO_BASE
+
+    def test_criterion_is_category_change_not_length(self):
+        """
+        تفكيك U+FE79 = [كشيدة + ضمّة]، ونحن نطرح الكشيدة فيعود الطول
+        واحداً فيبدو بريئاً. فالمعيار الصحيح تغيُّرُ الفئة لا الطول.
+        """
+        assert len(DEFERRED_PF_TO_BASE["\ufe79"]) == 1     # الطول لا يفضحه
+        assert unicodedata.category("\ufe79") == "Lo"      # لكن الفئة تفضحه
+        assert unicodedata.category(DEFERRED_PF_TO_BASE["\ufe79"]) == "Mn"
+
+    def test_deferring_them_preserves_the_diacritic(self):
+        visual = "\ufe95\ufeae\ufeb8\ufe79\ufee7"          # نُشرت بصرياً
+        early = fix_order(fold_presentation_forms(visual))  # تطبيعٌ مبكر
+        late = expand_deferred_forms(fix_order(fold_simple_forms(visual)))
+        assert early == "نشُرت", "الجريمة"
+        assert late == "نُشرت", "العلاج: التأجيل"
+
+
+class TestOrderProofNeedsNoSample:
+    def test_short_text_judged_by_proof(self):
+        """
+        «توقف!» أربعةُ حروف — دون عتبة كفاية العيّنة. لكنّ هويّة الوصل
+        برهانٌ لا إحصاء، والبرهان لا يحتاج عيّنة.
+        """
+        visual = "!\ufed3\ufed7\ufeee\ufe97"
+        assert repair_text(visual).text == "توقف!"

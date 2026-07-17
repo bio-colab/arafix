@@ -342,15 +342,21 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
     if tw_ratio > th["tatweel"]:
         dg.defects.append(Defect.TATWEEL_NOISE)
 
-    if arabic_chars >= th["min_arabic_chars"]:
-        order_score, order_ev = detect_visual_order(text)
+    # حارسُ كفاية العيّنة يحرس الإحصاء وحده. أما هويّة الوصل فبرهانٌ،
+    # والبرهانُ لا يحتاج عيّنةً: خرقٌ واحد في «توقف!» يكفي كخرقٍ في صفحة.
+    # فنُعفي البرهان من الحارس، ولا نُعفي منه ما سواه.
+    order_score, order_ev = detect_visual_order(text)
+    proof = next(
+        (e for e in order_ev if e.name == "joining_forms" and e.value > 0), None
+    )
+    if arabic_chars >= th["min_arabic_chars"] or proof:
         dg.evidence.extend(order_ev)
         dg.metrics["order_score"] = order_score
         if order_score > th["visual_order"]:
             dg.defects.append(Defect.VISUAL_ORDER)
     else:
         dg.evidence.append(
-            Evidence("visual_order", 0.0, "العيّنة العربية أصغر من عتبة الحكم")
+            Evidence("visual_order", 0.0, "العيّنة العربية أصغر من عتبة الحكم، ولا برهان")
         )
         dg.metrics["order_score"] = 0.0
 

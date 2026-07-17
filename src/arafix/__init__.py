@@ -25,7 +25,7 @@ arafix — استرجاع النص العربي من ملفات PDF المعطو
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __license__ = "MIT"
 
 from .cmap import GlyphMap, build_glyph_map, decode_glyph_name
@@ -45,12 +45,19 @@ from .lamalef import (
 )
 from .normalize import (
     NormalizeConfig,
+    expand_deferred_forms,
     expand_ligatures,
     fold_presentation_forms,
     fold_simple_forms,
     normalize_text,
 )
-from .order import ReorderConfig, fix_order, reverse_visual_line
+from .order import (
+    MIRROR_PAIRS,
+    ReorderConfig,
+    fix_order,
+    grapheme_clusters,
+    reverse_visual_line,
+)
 from .pipeline import PipelineConfig, extract_pdf, repair_text
 from .types import (
     Defect,
@@ -62,9 +69,11 @@ from .types import (
     Stage,
 )
 from .unicode_tables import (
+    DEFERRED_PF_TO_BASE,
     LIGATURE_PF_TO_BASE,
     PF_TO_BASE,
     SIMPLE_PF_TO_BASE,
+    SPACING_MARK_PF_TO_BASE,
     JoiningForm,
     unicode_version,
 )
@@ -86,6 +95,7 @@ __all__ = [
     "normalize_text",
     "fold_presentation_forms",
     "fold_simple_forms",
+    "expand_deferred_forms",
     "expand_ligatures",
     "NormalizeConfig",
     # لام-ألف
@@ -95,6 +105,8 @@ __all__ = [
     # الدرجة ٢
     "fix_order",
     "reverse_visual_line",
+    "grapheme_clusters",
+    "MIRROR_PAIRS",
     "ReorderConfig",
     # الدرجة ٣
     "build_glyph_map",
@@ -116,7 +128,9 @@ __all__ = [
     # الجداول
     "PF_TO_BASE",
     "SIMPLE_PF_TO_BASE",
+    "DEFERRED_PF_TO_BASE",
     "LIGATURE_PF_TO_BASE",
+    "SPACING_MARK_PF_TO_BASE",
     "JoiningForm",
     "unicode_version",
 ]

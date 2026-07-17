@@ -82,3 +82,46 @@ def test_font_extraction_feeds_stage_three(broken_pdf):
     gm = build_glyph_map(data, name)
     assert gm.coverage > 0.0
     assert gm.lookup("alef") or gm.by_name, "الخريطة فارغة"
+
+
+# ── المحايدات عبر ملفٍ حقيقيّ ───────────────────────────────────────────
+
+def test_punctuation_and_brackets_survive_a_real_pdf(broken_pdf):
+    """
+    الاختبار الذي كشف ثلاثة أعطاب. الأقواس تلزم كلمتها، والعلامة تلزم
+    حرفها، والتعجّب يلزم آخر جملته.
+    """
+    text = extract_pdf(broken_pdf).text
+    for phrase in [
+        "(مقدمة الدراسة) والفقرة [أ-ج]",
+        "أولاً، ثانياً، ثالثاً؛ ثم توقف!",
+        "المتغيّر GDP_2024 يساوي 3.5% — ما رأيك؟",
+        "نُشرت هذه الدراسة",          # الضمّة على النون لا على الشين
+        "جامعة تكريت - كلية العلوم السياسية",  # ترتيب العبارتين حول الشرطة
+    ]:
+        assert phrase in text, f"لم يُسترجع: {phrase}"
+
+
+def test_geometry_beats_mupdf_bidi_on_neutrals(broken_pdf):
+    """
+    قياسٌ لا رأي: نُشغّل المسارين على الملف نفسه ونعدّ.
+
+    ثنائيّ الاتجاه في MuPDF يُخرج العربية سليمةً ويبعثر محايداتها؛
+    والقراءة الهندسية تتركنا نعكس بمنطقنا. هذا الاختبار يوثّق الفرق
+    كي لا يعود أحدٌ إلى الافتراضيّ القديم ظانّاً أنه أسلم.
+    """
+    from arafix import PipelineConfig
+    from arafix.extractors import PyMuPDFExtractor, register
+
+    @register
+    class _MuPDFBidi(PyMuPDFExtractor):
+        name = "_mupdf_bidi_test"
+
+        def __init__(self):
+            super().__init__(bidi="mupdf")
+
+    target = "(مقدمة الدراسة) والفقرة [أ-ج]"
+    geo = extract_pdf(broken_pdf).text
+    mu = extract_pdf(broken_pdf, PipelineConfig(extractor="_mupdf_bidi_test")).text
+    assert target in geo
+    assert target not in mu, "إن نجح مسار MuPDF فقد تغيّر، فأعِد القياس"

@@ -3,9 +3,10 @@ arafix — استرجاع النص العربي من ملفات PDF المعطو
 
 سلّم من خمس درجات، لا مطرقة واحدة:
 
-    ٠ التشخيص     diagnose()       لا تعالج قبل أن تعرف
-    ١ التطبيع      normalize_text() الأشكال الرسومية ← الحروف الأصلية
-    ٢ الاتجاه      fix_order()      بصريّ ← منطقيّ، بحماية الأرقام
+    ٠ التشخيص     diagnose()         لا تعالج قبل أن تعرف
+    ١أ التطبيع     fold_simple_forms() الأشكال المفردة؛ الرباطُ ذرّةٌ بعد
+    ٢ الاتجاه      fix_order()         بصريّ ← منطقيّ، بحماية الأرقام
+    ١ب الرباطات    expand_ligatures()  ﻻ ← لا، بعد استقرار الترتيب
     ٣ الخريطة      build_glyph_map() إعادة بنائها من الخط المضمَّن
     ٤ الـ OCR      (خارجيّ)          آخر الدواء، لا أوّله
 
@@ -24,7 +25,7 @@ arafix — استرجاع النص العربي من ملفات PDF المعطو
 
 from __future__ import annotations
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __license__ = "MIT"
 
 from .cmap import GlyphMap, build_glyph_map, decode_glyph_name
@@ -37,7 +38,18 @@ from .diagnose import (
     diagnose,
 )
 from .extractors import Extractor, RawPage, get_extractor, register
-from .normalize import NormalizeConfig, fold_presentation_forms, normalize_text
+from .lamalef import (
+    LamAlefReport,
+    detect_lam_alef_transposition,
+    repair_lam_alef_transposition,
+)
+from .normalize import (
+    NormalizeConfig,
+    expand_ligatures,
+    fold_presentation_forms,
+    fold_simple_forms,
+    normalize_text,
+)
 from .order import ReorderConfig, fix_order, reverse_visual_line
 from .pipeline import PipelineConfig, extract_pdf, repair_text
 from .types import (
@@ -49,7 +61,13 @@ from .types import (
     RepairResult,
     Stage,
 )
-from .unicode_tables import PF_TO_BASE, JoiningForm, unicode_version
+from .unicode_tables import (
+    LIGATURE_PF_TO_BASE,
+    PF_TO_BASE,
+    SIMPLE_PF_TO_BASE,
+    JoiningForm,
+    unicode_version,
+)
 
 __all__ = [
     "__version__",
@@ -64,10 +82,16 @@ __all__ = [
     "detect_pua",
     "detect_visual_order",
     "DEFAULT_THRESHOLDS",
-    # الدرجة ١
+    # الدرجة ١ (تمريرتان: مفردات ← اتجاه ← رباطات)
     "normalize_text",
     "fold_presentation_forms",
+    "fold_simple_forms",
+    "expand_ligatures",
     "NormalizeConfig",
+    # لام-ألف
+    "detect_lam_alef_transposition",
+    "repair_lam_alef_transposition",
+    "LamAlefReport",
     # الدرجة ٢
     "fix_order",
     "reverse_visual_line",
@@ -91,6 +115,8 @@ __all__ = [
     "register",
     # الجداول
     "PF_TO_BASE",
+    "SIMPLE_PF_TO_BASE",
+    "LIGATURE_PF_TO_BASE",
     "JoiningForm",
     "unicode_version",
 ]

@@ -224,3 +224,175 @@ class TestPipeline:
         r = repair_text("نص عربي سليم تماماً لا يحتاج عكساً البتة", cfg)
         assert Stage.REORDER in r.stages_applied
         assert r.confidence <= 0.5
+
+
+# ── لام-ألف: العطب الذي أفلت من ٤٥ اختباراً ────────────────────────────
+#
+# ما أفلته أوّلاً لم يكن نقصاً في الكود بل نقصاً في **الشهادة**: مولّد
+# العيّنات لم يكن يُنتج رباطات، فكنّا نختبر المكتبة على عالمٍ لا «لا»
+# فيه. هذه الطبقة تسدّ الثغرة، وتبدأ بالكلمات الأربع التي بلّغ بها
+# مستعملٌ حقيقيّ — تُخلَّد في الحزمة كي لا تعود.
+
+from arafix import (  # noqa: E402
+    detect_lam_alef_transposition,
+    expand_ligatures,
+    fold_simple_forms,
+    repair_lam_alef_transposition,
+)
+from arafix.unicode_tables import (  # noqa: E402
+    LIGATURE_PF_TO_BASE,
+    SIMPLE_PF_TO_BASE,
+)
+
+LAM_ALEF_ISO = "\ufefb"   # ﻻ
+LAM_ALEF_FIN = "\ufefc"   # ﻼ
+
+
+class TestLigatureTables:
+    def test_split_is_derived_from_decomposition_length(self):
+        """القسمة مشتقّة لا مكتوبة بيد: طولُ التفكيك هو المعيار."""
+        assert all(len(v) == 1 for v in SIMPLE_PF_TO_BASE.values())
+        assert all(len(v) > 1 for v in LIGATURE_PF_TO_BASE.values())
+        assert len(LIGATURE_PF_TO_BASE) > 400  # ليست لام-ألف وحدها
+
+    def test_all_lam_alef_forms_are_ligatures(self):
+        for pf in (LAM_ALEF_ISO, LAM_ALEF_FIN, "\ufef7", "\ufef9", "\ufef5"):
+            assert pf in LIGATURE_PF_TO_BASE
+            assert pf not in SIMPLE_PF_TO_BASE
+
+
+class TestTwoPassNormalization:
+    def test_simple_pass_keeps_ligature_atomic(self):
+        """
+        القرار الحاسم: الرباط ذرّةٌ لا تُشقّ حتى يستقرّ الترتيب.
+
+        فالتمريرة الأولى تطبّع المفردات وحدها — تفتح عين الدرجة ٢
+        ولا تسلّمها سكيناً.
+        """
+        assert fold_simple_forms(LAM_ALEF_ISO) == LAM_ALEF_ISO
+        assert fold_simple_forms("\ufe93") == "ة"  # المفرد يُطبَّع
+
+    def test_expand_pass_splits_ligature(self):
+        assert expand_ligatures(LAM_ALEF_ISO) == "لا"
+        assert expand_ligatures("\ufef5") == "لآ"
+
+    def test_the_bug_reproduced_if_order_is_wrong(self):
+        """
+        توثيقُ الجريمة نفسها، مُخلَّدةً في الحزمة.
+
+        هذا ما كانت تفعله النسخة السابقة: تفكّ ثم تعكس. نُبقيه اختباراً
+        كي يبقى السبب مرئياً لمن يعيد ترتيب المراحل يوماً.
+        """
+        from arafix import fix_order, fold_presentation_forms
+
+        visual = "\ufe95" + LAM_ALEF_FIN + "\ufea0\ufee4\ufedf\ufe8d"  # المجلات بصرياً
+        wrong = fix_order(fold_presentation_forms(visual))   # فكّ ثم عكس
+        assert wrong == "المجالت", "هذه هي الجريمة"
+        right = expand_ligatures(fix_order(fold_simple_forms(visual)))
+        assert right == "المجلات", "وهذا هو العلاج: العكس بين التمريرتين"
+
+
+class TestUserReportedWords:
+    """الكلمات الأربع التي بلّغ بها مستعملٌ حقيقيّ. لا تُحذف أبداً."""
+
+    @pytest.mark.parametrize(
+        "damaged,expected",
+        [
+            ("االنترنيت", "الانترنيت"),
+            ("األطاريح", "الأطاريح"),
+            ("اإلجراء", "الإجراء"),
+            ("االن", "الان"),
+        ],
+    )
+    def test_decisive_repair(self, damaged, expected):
+        assert repair_lam_alef_transposition(damaged).text == expected
+
+    def test_ambiguous_word_is_reported_not_guessed(self):
+        """«المجالت» لا يحسمها إلا معجم. نُبلِغ ولا نخمّن."""
+        r = repair_lam_alef_transposition("المجالت")
+        assert r.text == "المجالت"
+        assert r.suspects_left == 1
+        assert "المجالت" in r.suspect_words
+        assert r.confidence < 1.0
+
+    def test_lexicon_resolves_the_ambiguous(self):
+        r = repair_lam_alef_transposition("المجالت", {"المجلات"})
+        assert r.text == "المجلات"
+        assert r.fixed_by_lexicon == 1
+
+    def test_pipeline_repairs_inherited_damage(self):
+        r = repair_text("االنترنيت واألطاريح واإلجراء في الجامعة العراقية")
+        assert "الانترنيت" in r.text
+        assert "الأطاريح" in r.text
+        assert "الإجراء" in r.text
+        assert Stage.REPAIR_LAM_ALEF in r.stages_applied
+
+
+class TestLamAlefFalsePositives:
+    """أخطر ما في الترقيع: أن يُفسد ما كان صحيحاً."""
+
+    @pytest.mark.parametrize(
+        "healthy",
+        [
+            "أفعالهم لا تطابق أقوالهم",   # «ال» أصيلة وسط الكلمة
+            "قال الباحث إن أطفال المدارس",
+            "جمال الطبيعة في الموصل",
+            "استعمال الوسائل الإحصائية",
+            "لآلئ منثورة",
+            "لا توجد بيانات كافية",
+        ],
+    )
+    def test_legit_text_untouched(self, healthy):
+        assert repair_lam_alef_transposition(healthy).text == healthy
+        assert repair_text(healthy).text == healthy
+
+    def test_lexicon_never_touches_known_words(self):
+        """
+        شرطان معاً قبل أيّ مبادلة: أن تغيب الكلمة عن المعجم، وأن تحضر
+        بديلتُها فيه. الشرط الأول وحده هو ما يحمي «أفعالهم».
+        """
+        r = repair_lam_alef_transposition("أفعالهم", {"أفعالهم", "أفعلاهم"})
+        assert r.text == "أفعالهم"
+
+
+class TestJoiningIdentity:
+    """
+    هويّة الوصل: joins_forward(a) == joins_backward(b) لكل متجاورين.
+
+    برهانٌ لا أمارة — وقد كان فحصُ الطرفين وحده يُفلت كلماتٍ كـ«الإجراء».
+    """
+
+    def test_violation_proves_visual_order(self):
+        shaped = "\ufee3\ufeae\ufea3\ufe92\ufe8e"  # مرحبا مشكولة، منطقية
+        assert detect_visual_order(shaped)[0] < 0
+        assert detect_visual_order(shaped[::-1])[0] > 0
+
+    def test_shaped_source_carries_the_evidence_across_normalization(self):
+        """
+        التطبيع يفتح عيناً ويفقأ أخرى: يكشف التاء المربوطة ويمحو صيغ
+        الوصل. فيُمرَّر الأصلُ شاهداً مستقلاً.
+        """
+        shaped_visual = "\ufe8e\ufe92\ufea3\ufeae\ufee3"
+        folded = fold_simple_forms(shaped_visual)
+        assert detect_visual_order(folded)[0] == 0.0  # عمي بعد التطبيع
+        assert detect_visual_order(folded, shaped_source=shaped_visual)[0] > 0
+
+    def test_detects_lam_alef_defect(self):
+        n, _, _ = detect_lam_alef_transposition("االنترنيت")
+        assert n == 1
+        assert diagnose("االنترنيت والمجالت واألطاريح هنا").has(
+            Defect.LAM_ALEF_TRANSPOSED
+        )
+
+    def test_article_noise_is_counted_not_listed(self):
+        """
+        «وال» التعريف تتصدّر آلاف الكلمات. لو أنذرنا عن كلٍّ منها لأغرقنا
+        التقرير حتى لا يُقرأ — ومن لا يُقرأ لا ينفع.
+        """
+        r = repair_lam_alef_transposition("االنترنيت واألطاريح والمجالت العلمية")
+        assert r.suspect_words == ["والمجالت"]   # إصبعٌ على المشكلة وحدها
+        assert r.article_like == 2               # تُعدّ ولا تُسرَد
+
+    def test_article_position_is_not_a_pardon(self):
+        """«ولاية» ← «والية» انقلابٌ حقيقيّ في موقع الأداة. المعجم يفحصه."""
+        assert repair_lam_alef_transposition("والية", {"ولاية"}).text == "ولاية"

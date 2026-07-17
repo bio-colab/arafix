@@ -14,11 +14,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from collections.abc import Iterable
+from dataclasses import dataclass, field, replace
 
 from .diagnose import DEFAULT_THRESHOLDS, detect_mojibake, detect_visual_order, diagnose
 from .extractors import get_extractor
-from .normalize import NormalizeConfig, normalize_text
+from .lamalef import repair_lam_alef_transposition
+from .normalize import NormalizeConfig, expand_ligatures, normalize_text
 from .order import ReorderConfig, fix_order
 from .types import (
     Defect,
@@ -42,6 +44,14 @@ class PipelineConfig:
     enable_mojibake_fix: bool = True
     enable_normalize: bool = True
     enable_reorder: bool = True
+
+    #: ترقيع انقلاب لام-ألف الوارد من أدواتٍ أخرى («المجالت» ← «المجلات»).
+    #: لا يلزم لِما تعالجه هذه المكتبة من أوّله — إنما لِما وَرِثته معطوباً.
+    enable_lam_alef_repair: bool = True
+
+    #: معجمُ كلماتٍ عربية صحيحة. بدونه يُصلَح القاطعُ وحده ويُبلَّغ عن
+    #: المُبهَم. ومعه تُحسَم المواضع الوسطية كـ«المجالت» أيضاً.
+    lexicon: Iterable[str] | None = None
 
     #: اعكس النص ولو لم يُشخَّص معكوساً. للحالات التي تعرفها يقيناً.
     force_reorder: bool = False
@@ -86,20 +96,26 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     elif dg.has(Defect.MOJIBAKE):
         notes.append("كُشف موجيبيك ولم يُصلَح (المفتاح مطفأ)")
 
-    # --- الدرجة ١: التطبيع قبل الاتجاه، وهذا شرطٌ لا ترتيب ذوق --------
-    if cfg.enable_normalize and dg.has(Defect.PRESENTATION_FORMS):
-        current = normalize_text(current, cfg.normalize)
+    # --- الدرجة ١أ: الأشكال المفردة وحدها -----------------------------
+    #
+    # التطبيع قبل الاتجاه شرطٌ (كاشف الاتجاه يحتاج التاء المربوطة مكشوفة)،
+    # لكنّ التطبيع **الكامل** قبل الاتجاه عطبٌ: يفكّ «ﻻ» إلى حرفين فيعكسهما
+    # العكسُ إلى «ال». فنقسم الدرجة ١ تمريرتين، والدرجة ٢ بينهما:
+    #
+    #     ١أ مفردات  →  ٢ اتجاه  →  ١ب رباطات
+    #
+    # فتُفتَح عينُ الدرجة ٢ ولا تُسلَّم سكيناً.
+    shaped_source = current  # الطبقة الرسومية — شاهدةُ الدرجة ٢، تُحفظ قبل محوها
+    needs_norm = dg.has(Defect.PRESENTATION_FORMS) or dg.has(Defect.TATWEEL_NOISE)
+    if cfg.enable_normalize and needs_norm:
+        current = normalize_text(current, replace(cfg.normalize, expand_ligatures=False))
         stages.append(Stage.NORMALIZE)
-        notes.append("طُبِّعت الأشكال الرسومية إلى حروفها الأصلية")
-    elif cfg.enable_normalize and dg.has(Defect.TATWEEL_NOISE):
-        current = normalize_text(current, cfg.normalize)
-        stages.append(Stage.NORMALIZE)
-        notes.append("حُذفت الكشيدة الزخرفية")
+        notes.append("طُبِّعت الأشكال المفردة؛ أُبقيت الرباطات ذرّاتٍ حتى يستقرّ الترتيب")
 
     # --- الدرجة ٢: يُعاد التشخيص لأن الدرجة ١ غيّرت المعطيات ----------
     order_conf = 1.0
     if cfg.enable_reorder:
-        score, _ = detect_visual_order(current)
+        score, _ = detect_visual_order(current, shaped_source=shaped_source)
         if cfg.force_reorder or score > th["visual_order"]:
             current = fix_order(current, cfg.reorder)
             stages.append(Stage.REORDER)
@@ -112,6 +128,37 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
         else:
             notes.append(f"لم يُمسّ الاتجاه (درجة {score:+.2f} دون العتبة)")
 
+    # --- الدرجة ١ب: الآن استقرّ الترتيب، فليُفكَّ الرباط بأمان ----------
+    if cfg.enable_normalize and cfg.normalize.expand_ligatures:
+        expanded = expand_ligatures(current)
+        if expanded != current:
+            current = expanded
+            stages.append(Stage.EXPAND_LIGATURES)
+            notes.append("فُكَّت الرباطات (ﻻ ← لا) بعد استقرار الترتيب")
+
+    # --- ترقيع ما وَرِثناه معطوباً من أداةٍ أخرى ------------------------
+    lam_conf = 1.0
+    if cfg.enable_lam_alef_repair and dg.has(Defect.LAM_ALEF_TRANSPOSED):
+        rep = repair_lam_alef_transposition(current, cfg.lexicon)
+        current = rep.text
+        stages.append(Stage.REPAIR_LAM_ALEF)
+        lam_conf = rep.confidence
+        notes.append(
+            f"رُدَّ {rep.fixed_decisive} انقلابَ لام-ألف بشاهدٍ قاطع (ألفان متجاورتان)"
+        )
+        if rep.fixed_by_lexicon:
+            notes.append(f"وحُسم {rep.fixed_by_lexicon} موضعاً مُبهَماً بالمعجم")
+        if rep.suspects_left:
+            notes.append(
+                f"بقي {rep.suspects_left} موضعاً مُبهَماً لم يُمسّ: "
+                + "، ".join(rep.suspect_words[:5])
+                + " — مرِّر lexicon= لحسمها"
+            )
+        if rep.article_like:
+            notes.append(
+                f"و{rep.article_like} موضعاً في موقع «ال» التعريف — غالباً سليمة، لم تُسرَد"
+            )
+
     # --- الدرجة ٣: نُصرّح بالحاجة ولا ندّعي القدرة في هذا المسار -------
     if dg.has(Defect.BROKEN_CMAP):
         notes.append(
@@ -122,7 +169,7 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     if dg.has(Defect.NO_TEXT_LAYER):
         notes.append("لا طبقة نصية — هذه حالة الدرجة ٤ (OCR) الوحيدة المشروعة.")
 
-    confidence = _final_confidence(dg, order_conf, stages)
+    confidence = min(_final_confidence(dg, order_conf, stages), lam_conf)
 
     return RepairResult(
         text=current,

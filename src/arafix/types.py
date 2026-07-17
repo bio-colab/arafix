@@ -29,6 +29,7 @@ class Defect(str, Enum):
     PRESENTATION_FORMS = "presentation_forms"   # حروف مطبوخة U+FB50–FEFF
     VISUAL_ORDER = "visual_order"               # النص مخزَّن معكوساً
     MOJIBAKE = "mojibake"                       # UTF-8 فُكّ بـ Latin-1
+    LAM_ALEF_TRANSPOSED = "lam_alef_transposed" # «لا» صارت «ال» — رباطٌ فُكّ قبل العكس
     BROKEN_CMAP = "broken_cmap"                 # PUA / خرائط مفقودة
     TATWEEL_NOISE = "tatweel_noise"             # كشيدة زخرفية
     NO_TEXT_LAYER = "no_text_layer"             # صفحة ممسوحة ضوئياً
@@ -41,6 +42,8 @@ class Stage(str, Enum):
     DIAGNOSE = "diagnose"          # ٠ — لا تعالج قبل أن تعرف
     NORMALIZE = "normalize"        # ١ — تطبيع الأشكال الرسومية
     REORDER = "reorder"            # ٢ — إصلاح الاتجاه
+    EXPAND_LIGATURES = "expand_ligatures"  # ١ب — فكّ الرباطات، بعد استقرار الترتيب
+    REPAIR_LAM_ALEF = "repair_lam_alef"    # ترقيع عطبٍ أوقعته أداةٌ أخرى
     REBUILD_CMAP = "rebuild_cmap"  # ٣ — إعادة بناء الخريطة من الخط
     OCR = "ocr"                    # ٤ — آخر الدواء
 

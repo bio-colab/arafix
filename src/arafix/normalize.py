@@ -25,14 +25,21 @@ from dataclasses import dataclass
 
 from .types import RepairResult, Stage
 from .unicode_tables import (
-    PF_TO_BASE,
+    LIGATURE_PF_TO_BASE,
+    SIMPLE_PF_TO_BASE,
     TATWEEL,
     ZWJ,
     ZWNJ,
     is_arabic_diacritic,
 )
 
-__all__ = ["NormalizeConfig", "fold_presentation_forms", "normalize_text"]
+__all__ = [
+    "NormalizeConfig",
+    "fold_presentation_forms",
+    "fold_simple_forms",
+    "expand_ligatures",
+    "normalize_text",
+]
 
 
 @dataclass
@@ -54,6 +61,11 @@ class NormalizeConfig:
     #: حذف التشكيل. لا تفعّله إلا إن كنت تعرف لماذا.
     strip_diacritics: bool = False
 
+    #: فكّ الرباطات (ﻻ → لا). صحيحٌ افتراضياً لنصٍّ مستقرّ الترتيب.
+    #: يطفئه الأنبوب **مؤقتاً** في تمريرته الأولى ليُبقي الرباط ذرّةً
+    #: حتى تفرغ الدرجة ٢، ثم يشعله في تمريرةٍ ثانية. انظر pipeline.py.
+    expand_ligatures: bool = True
+
     #: تطبيع NFC ختامي لضمّ المحارف المركّبة.
     apply_nfc: bool = True
 
@@ -62,26 +74,55 @@ _ALEF_VARIANTS = "أإآٱ"
 _ZERO_WIDTH = (ZWJ, ZWNJ, "\u200b", "\u200e", "\u200f", "\ufeff")
 
 
+_SIMPLE_TABLE = {ord(k): v for k, v in SIMPLE_PF_TO_BASE.items()}
+_LIGATURE_TABLE = {ord(k): v for k, v in LIGATURE_PF_TO_BASE.items()}
+_ALL_TABLE = {**_SIMPLE_TABLE, **_LIGATURE_TABLE}
+
+
+def fold_simple_forms(text: str) -> str:
+    """
+    يطبّع الأشكال **المفردة** وحدها، ويترك الرباطات ذرّاتٍ لا تُشقّ.
+
+    هذه هي التمريرة التي تسبق إصلاح الاتجاه. تكفي لفتح عين الدرجة ٢
+    (فالتاء المربوطة شكلٌ مفرد يظهر بعدها)، ولا تسلّمها سكيناً.
+
+    >>> fold_simple_forms("\ufee3\ufeae\ufea3\ufe92\ufe8e")
+    'مرحبا'
+
+    والرباط يبقى كما هو — وهذا هو المقصود بالضبط:
+
+    >>> fold_simple_forms("\ufefb") == "\ufefb"
+    True
+    """
+    return text.translate(_SIMPLE_TABLE) if text else text
+
+
+def expand_ligatures(text: str) -> str:
+    """
+    يفكّ الرباطات إلى حروفها. **لا تنادها قبل استقرار الترتيب.**
+
+    >>> expand_ligatures("\ufefb")
+    'لا'
+    >>> expand_ligatures("\ufef5")
+    'لآ'
+    """
+    return text.translate(_LIGATURE_TABLE) if text else text
+
+
 def fold_presentation_forms(text: str) -> str:
     """
-    يعيد كل شكل رسومي إلى حرفه الأصلي، وحده دون أن يمسّ سواه.
+    يطبّع كل الأشكال — المفردة والرباطات معاً.
+
+    آمنةٌ للنصّ المستقرّ الترتيب فقط. إن كان نصّك بصريّ الترتيب، فهذه
+    الدالة **تُعطِبه**: تفكّ «ﻻ» إلى «لا» ثم يعكسها العكسُ إلى «ال».
+    استعمل `repair_text()` وهي تتولّى التوقيت عنك.
 
     >>> fold_presentation_forms("\ufee3\ufeae\ufea3\ufe92\ufe8e")
     'مرحبا'
-
-    ويفكّ لام-ألف إلى حرفين كما ينبغي:
-
     >>> fold_presentation_forms("\ufefb")
     'لا'
     """
-    if not text:
-        return text
-    # `str.translate` بجدولٍ مبنيّ مسبقاً أسرع من الحلقة، والقيمة سلسلة
-    # فتُفكّ لام-ألف إلى حرفين تلقائياً.
-    return text.translate(_TRANSLATE_TABLE)
-
-
-_TRANSLATE_TABLE = {ord(k): v for k, v in PF_TO_BASE.items()}
+    return text.translate(_ALL_TABLE) if text else text
 
 
 def normalize_text(text: str, config: NormalizeConfig | None = None) -> str:
@@ -90,7 +131,9 @@ def normalize_text(text: str, config: NormalizeConfig | None = None) -> str:
     out = text
 
     if cfg.fold_presentation_forms:
-        out = fold_presentation_forms(out)
+        out = fold_simple_forms(out)
+        if cfg.expand_ligatures:
+            out = expand_ligatures(out)
 
     if cfg.strip_tatweel:
         out = out.replace(TATWEEL, "")

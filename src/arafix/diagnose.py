@@ -19,11 +19,14 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 
+from .lamalef import detect_lam_alef_transposition
 from .types import Defect, Diagnosis, Evidence
 from .unicode_tables import (
     FINAL_ONLY_LETTERS,
     PF_JOINING_FORM,
+    PF_TO_BASE,
     TATWEEL,
     JoiningForm,
     is_arabic,
@@ -153,33 +156,60 @@ def _signal_final_only_letters(tokens: list[str]) -> tuple[float, str] | None:
     return score, f"ة/ى في أول {head} كلمة مقابل آخر {tail} كلمة"
 
 
+def _joins_forward(f: JoiningForm) -> bool:
+    return f in (JoiningForm.INITIAL, JoiningForm.MEDIAL)
+
+
+def _joins_backward(f: JoiningForm) -> bool:
+    return f in (JoiningForm.MEDIAL, JoiningForm.FINAL)
+
+
 def _signal_joining_forms(text: str) -> tuple[float, str] | None:
     """
-    الشاهد الثاني: إن كان النص أشكالاً رسومية، فالشكل نفسه يفضح الترتيب.
+    الشاهد الثاني: هويّةُ الوصل — وهي **برهانٌ** لا أمارة.
 
-    الشكل FINAL لا يقع إلا آخر الكلمة، وINITIAL لا يقع إلا أوّلها —
-    هكذا صرّح يونيكود. فمواقعها في النص المخزَّن تكشف اتجاهه دون
-    الحاجة إلى معجم ولا إلى معرفةٍ لغوية.
+    في العربية قاعدةٌ لا تتخلّف: إن وصلَ حرفٌ بما بعده، فتاليه موصولٌ
+    بما قبله ولا بدّ. وبلغة صيغ يونيكود:
+
+        joins_forward(a)  ==  joins_backward(b)      لكل حرفين متجاورين
+
+    هذه هويّةٌ تصدق في **كل** نصٍّ منطقيّ الترتيب بلا استثناء. فخرقُها
+    مرّةً واحدة يُثبت أن الترتيب ليس منطقياً. ولذلك الشاهد **لا تماثليّ**:
+
+        خرقٌ واحد        →  برهانُ انعكاس     (يقين)
+        صفرُ خروق        →  اتّساقٌ مع المنطقيّ (لا برهانَ عليه)
+
+    وهذا أقوى من فحص طرفَي الكلمة وحدهما — وقد كلّفنا ضعفُ الفحص
+    القديم عطباً: «الإجراء» طرفاها منفصلان فلا ينطقان، فأفلتت.
+
+    ونستثني التشكيل: أشكاله (U+FE70–FE7F) تحمل وسوماً لا تصف وصلاً
+    فتكسر السلسلة كذباً.
     """
     correct = wrong = 0
     for token in _ARABIC_TOKEN.findall(text):
-        forms = [PF_JOINING_FORM.get(c) for c in token]
-        forms = [f for f in forms if f and f != JoiningForm.UNKNOWN]
-        if len(forms) < 2:
-            continue
-        first, last = forms[0], forms[-1]
-        if first is JoiningForm.INITIAL:
-            correct += 1
-        elif first is JoiningForm.FINAL:
-            wrong += 1
-        if last is JoiningForm.FINAL:
-            correct += 1
-        elif last is JoiningForm.INITIAL:
-            wrong += 1
-    if correct + wrong == 0:
+        forms = []
+        for c in token:
+            f = PF_JOINING_FORM.get(c)
+            if f is None or f is JoiningForm.UNKNOWN:
+                continue
+            base = PF_TO_BASE.get(c, c)
+            if base and unicodedata.category(base[0]) == "Mn":
+                continue  # تشكيل — لا شهادة له في الوصل
+            forms.append(f)
+        for a, b in zip(forms, forms[1:]):
+            if _joins_forward(a) == _joins_backward(b):
+                correct += 1
+            else:
+                wrong += 1
+
+    pairs = correct + wrong
+    if pairs == 0:
         return None
-    score = (wrong - correct) / (correct + wrong)
-    return score, f"صيغ الوصل: {wrong} في غير موضعها مقابل {correct} في موضعها"
+    if wrong:
+        # خرقٌ واحد يكفي برهاناً؛ وكثرتها ترفع الثقة لا أصل الحكم.
+        score = min(1.0, 0.6 + 0.4 * wrong / pairs)
+        return score, f"خُرقت هويّة الوصل {wrong} مرة من {pairs} تجاوراً — برهانُ انعكاس"
+    return -1.0, f"هويّة الوصل سليمة في {pairs} تجاوراً — متّسقٌ مع الترتيب المنطقي"
 
 
 def _signal_definite_article(tokens: list[str]) -> tuple[float, str] | None:
@@ -205,18 +235,33 @@ _ORDER_WEIGHTS = {
 }
 
 
-def detect_visual_order(text: str) -> tuple[float, list[Evidence]]:
+def detect_visual_order(
+    text: str, shaped_source: str | None = None
+) -> tuple[float, list[Evidence]]:
     """
     يُرجع درجة في [-1, 1]:  +1 معكوس يقيناً، -1 منطقيّ يقيناً، 0 لا دليل.
 
-    الدرجة مرجَّحة بأوزان الشواهد المتوفرة **فقط**، فغياب شاهدٍ لا
-    يُحسب صفراً (وهو خطأ شائع يمُيّع النتيجة)، بل يُعاد التطبيع على
-    مجموع أوزان الحاضرين.
+    :param shaped_source: النصّ **قبل** التطبيع، إن توفّر.
+
+    ولِمَ معاملان لنصٍّ واحد؟ لأن الشواهد الثلاثة لا تعيش في طبقةٍ واحدة:
+
+      * `final_only_letters` و`definite_article` يحتاجان الحروف **الأصلية**،
+        فالتاء المربوطة مخبوءةٌ خلف U+FE93 ما لم تُطبَّع.
+      * `joining_forms` يحتاج الأشكال **الرسومية**، فالتطبيع يمحوها ويمحو
+        شهادتها معها.
+
+    فالتطبيع يفتح عيناً ويفقأ أخرى. وقد كلّفنا هذا الدرسُ عطباً حقيقياً:
+    كانت كلمةٌ مفردةٌ بلا تاءٍ مربوطة تُفلت من الكشف بعد التطبيع، لأن
+    شاهدها الوحيد (صيغ الوصل) كان قد مُحي قبل أن يُستشهَد به.
+
+    فمرِّر الطبقتين معاً تشهدا معاً.
     """
     tokens = _ARABIC_TOKEN.findall(text)
     signals = {
         "final_only_letters": _signal_final_only_letters(tokens),
-        "joining_forms": _signal_joining_forms(text),
+        "joining_forms": _signal_joining_forms(
+            shaped_source if shaped_source is not None else text
+        ),
         "definite_article": _signal_definite_article(tokens),
     }
 
@@ -281,6 +326,16 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
     dg.metrics["pua_ratio"] = pua_ratio
     if pua_ratio > th["pua"]:
         dg.defects.append(Defect.BROKEN_CMAP)
+
+    # انقلاب لام-ألف: يُفحص على الأصل لأن شاهده (الألف المزدوجة) قاطع،
+    # ولأنه إن وُجد فقد وقع **قبل** أن يصلنا النص — أي أن أداةً أخرى
+    # فكّت الرباط ثم عكست. نحن لا نُوقعه، لكنّا نرثه.
+    decisive, ambiguous, ev = detect_lam_alef_transposition(text)
+    dg.evidence.append(ev)
+    dg.metrics["lam_alef_decisive"] = decisive
+    dg.metrics["lam_alef_ambiguous"] = ambiguous
+    if decisive:
+        dg.defects.append(Defect.LAM_ALEF_TRANSPOSED)
 
     tw_ratio, ev = detect_tatweel(text)
     dg.evidence.append(ev)

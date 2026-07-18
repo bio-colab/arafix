@@ -1,0 +1,81 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # المصفوفة هي ما يجعل `requires-python = ">=3.9"` **ادّعاءً مُثبَتاً**
+    # لا نيّةً حسنة. الكود لا يستعمل شيئاً بعد 3.9 نظرياً — والنظريّ ليس
+    # اختباراً. ونُشغّل على ويندوز ولينكس معاً لأن أمرين قِيسا مختلفَين
+    # بينهما: زمنُ `decode_glyph_name`، وأسطرُ الأسطر (CRLF).
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        os: [ubuntu-latest]
+        include:
+          - python: "3.12"
+            os: windows-latest
+          - python: "3.12"
+            os: macos-latest
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+
+      - name: تثبيت الحزمة وتبعيّات التطوير
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: التدقيق اللغويّ للشيفرة
+        run: ruff check src tests examples
+
+      - name: الاختبارات و doctests
+        run: pytest tests --doctest-modules src/arafix -q
+
+      - name: النواة تعمل بلا تبعيّات — وهذا وعدٌ يُختبَر
+        # الدرجات ٠–٢ يجب أن تعمل في بيئةٍ مقيّدة بلا PyMuPDF ولا fontTools.
+        # وعدٌ بلا اختبارٍ ليس وعداً، ولذلك نُنشئ بيئةً عاريةً ونتحقق.
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          python -m venv /tmp/bare
+          /tmp/bare/bin/pip install --quiet .
+          /tmp/bare/bin/python - <<'PY'
+          import importlib.util as u
+          assert u.find_spec("fitz") is None, "PyMuPDF تسرّبت إلى النواة"
+          assert u.find_spec("fontTools") is None, "fontTools تسرّبت إلى النواة"
+          from arafix import repair_text
+          out = repair_text("\ufee3\ufeae\ufea3\ufe92\ufe8e").text
+          assert out == "مرحبا", out
+          print("النواة بلا تبعيّات ✅")
+          PY
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build twine
+      - run: python -m build
+      - run: python -m twine check --strict dist/*

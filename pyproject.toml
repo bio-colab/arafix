@@ -8,16 +8,22 @@ version = "0.6.0"
 description = "استرجاع النص العربي من ملفات PDF المعطوبة — تشخيص أولاً، ثم علاج مُتدرّج"
 readme = "README.md"
 requires-python = ">=3.9"
-license = { text = "MIT" }
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "bio-colab" }]
 keywords = ["arabic", "pdf", "text-extraction", "rtl", "unicode", "bidi", "nlp"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Natural Language :: Arabic",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Operating System :: OS Independent",
     "Topic :: Text Processing :: Linguistic",
 ]
 
@@ -39,6 +45,20 @@ arafix = "arafix.cli:main"
 [project.urls]
 Homepage = "https://github.com/bio-colab/arafix"
 Issues = "https://github.com/bio-colab/arafix/issues"
+Changelog = "https://github.com/bio-colab/arafix/blob/main/CHANGELOG.md"
+
+[tool.hatch.build.targets.sdist]
+# تُشحن الاختبارات والأمثلة داخل الـ sdist عمداً: مَن حمّل المصدر يجب أن
+# يستطيع تشغيل `pytest` عليه فيتحقق بنفسه، لا أن يصدّق شهادتنا.
+include = [
+    "src/",
+    "tests/",
+    "examples/",
+    "README.md",
+    "CHANGELOG.md",
+    "RELEASING.md",
+    "LICENSE",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/arafix"]

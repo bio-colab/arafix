@@ -8,12 +8,13 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 
-> ⚠️ **تنبيه تسمية.** الاسم `arafix` **مأخوذ فعلياً** على GitHub بأربعة
+> ⚠️ **تنبيه تسمية — والقرار عاجل.** الاسم `arafix` **مأخوذ فعلياً** على GitHub بأربعة
 > مستودعات، وأحدها ([AraFix-V3.0](https://github.com/Basma2423/AraFix-V3.0))
 > يوفّر حزمة بايثون عليا اسمها `arafix` بالحرف. تثبيتهما معاً يكسر
 > أحدهما — ومن يستورد `arafix` لا يدري أيّهما جاءه. الاسم على PyPI شاغرٌ
-> بعدُ، لكن **إعادة التسمية قبل النشر أسلم من بعده**. انظر
-> [التسمية والجيران](#التسمية-والجيران).
+> بعدُ — لكنّ **الناشر المعلَّق على PyPI لا يحجز الاسم**، وإعادة التسمية
+> قبل النشر أسلم منها بعده بمراتب. انظر [التسمية والجيران](#التسمية-والجيران)
+> و[RELEASING.md](RELEASING.md).
 
 ---
 
@@ -98,6 +99,16 @@ pip install "arafix[all]"
 git clone https://github.com/bio-colab/arafix
 cd arafix && pip install -e ".[dev]" && pytest
 ```
+
+<div dir="rtl">
+
+الـ sdist يحمل الاختبارات والأمثلة عمداً: مَن حمّل المصدر يجب أن يستطيع
+تشغيل `pytest` عليه فيتحقق بنفسه، لا أن يصدّق شهادتنا. وللنشر انظر
+[RELEASING.md](RELEASING.md).
+
+</div>
+
+```bash
 
 <div dir="rtl">
 

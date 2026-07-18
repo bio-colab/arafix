@@ -1,0 +1,140 @@
+name: publish
+
+# النشر الموثوق (OIDC) — لا توكن ولا كلمة سرّ في أيّ مكان.
+#
+# تُصدر GitHub رمزاً قصير العمر لهذا المستودع وهذا الملف بعينه، وتتحقق
+# منه PyPI مباشرةً. فليس ثمّ سرٌّ يُخزَّن، ولا سرٌّ يُسرَّب، ولا سرٌّ
+# يُنسى فينتهي.
+#
+# **اسم هذا الملف جزءٌ من العقد**: هو ما تكتبه في خانة "Workflow name"
+# على PyPI. تغييرُ اسمه يكسر النشر حتى تُحدَّث الإعدادات هناك.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      target:
+        description: أين نَنشر
+        required: true
+        default: testpypi
+        type: choice
+        options: [testpypi, pypi]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    # حارسٌ قبل كل شيء: PyPI **لا تسمح برفع نسخةٍ مرّتين، أبداً**. فخطأٌ
+    # هنا لا يُصلَح — يُهجَر ويُرفع رقمٌ جديد. فليقع الخطأ قبل الرفع.
+    name: التحقق قبل الرفع
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: قراءة النسخة من الشيفرة
+        id: v
+        run: |
+          V=$(python -c "import re,pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('src/arafix/__init__.py').read_text())[1])")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "النسخة في الشيفرة: $V"
+
+      - name: النسخة يجب أن تطابق وسم الإصدار
+        if: github.event_name == 'release'
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          CODE="${{ steps.v.outputs.version }}"
+          if [ "$TAG" != "$CODE" ]; then
+            echo "::error::الوسم ($TAG) لا يطابق __version__ ($CODE)."
+            echo "::error::رفعُ نسخةٍ برقمٍ خاطئ لا يُصلَح — PyPI لا تقبل الاستبدال."
+            exit 1
+          fi
+
+      - name: هذه النسخة يجب ألّا تكون منشورةً سلفاً
+        run: |
+          NAME=$(python -c "import re,pathlib; print(re.search(r'^name = \"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text(), re.M)[1])")
+          CODE="${{ steps.v.outputs.version }}"
+          CODEHTTP=$(curl -s -o /dev/null -w "%{http_code}" "https://pypi.org/pypi/$NAME/$CODE/json")
+          if [ "$CODEHTTP" = "200" ]; then
+            echo "::error::$NAME $CODE منشورةٌ على PyPI سلفاً. ارفع الرقم."
+            exit 1
+          fi
+
+      - name: سجلّ التغييرات يجب أن يذكر هذه النسخة
+        # لا نُصدر إصداراً لا يقول للناس ما تغيّر فيه.
+        run: |
+          grep -q "^## ${{ steps.v.outputs.version }}" CHANGELOG.md || {
+            echo "::error::لا مدخلَ للنسخة ${{ steps.v.outputs.version }} في CHANGELOG.md"
+            exit 1
+          }
+
+  test:
+    name: الاختبارات
+    needs: guard
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.9", "3.13"]  # الطرفان — وما بينهما يغطّيه ci.yml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests examples
+      - run: pytest tests --doctest-modules src/arafix -q
+
+  build:
+    name: البناء
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build twine
+      - run: python -m build
+      - run: python -m twine check --strict dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    name: نشرٌ إلى TestPyPI
+    needs: build
+    if: github.event_name == 'workflow_dispatch' && inputs.target == 'testpypi'
+    runs-on: ubuntu-latest
+    environment: testpypi
+    permissions:
+      id-token: write  # ← بدونه لا رمزَ OIDC ولا نشر
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
+
+  pypi:
+    name: نشرٌ إلى PyPI
+    needs: build
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.target == 'pypi')
+    runs-on: ubuntu-latest
+    environment: pypi  # ← بيئةٌ مخصّصة: تُشترط موافقةٌ يدوية قبل الرفع
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1

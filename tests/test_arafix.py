@@ -5,6 +5,7 @@
 من اسمه أيّ قرارٍ كسرت ولماذا اتُّخذ أوّلاً.
 """
 
+import pathlib
 import unicodedata
 
 import pytest
@@ -536,7 +537,14 @@ class TestOrderProofNeedsNoSample:
 # `evaluate` ونحن لا. وكان قولنا «٠ من ١٢» مقيساً على ملفاتٍ ولّدناها —
 # أي اختباراً يقارب الدائريّ. الرقمُ على ملفات المستعمل أصدقُ من كل شهادة.
 
-from arafix import EvalConfig, cer, evaluate_text, levenshtein, wer  # noqa: E402
+from arafix import (  # noqa: E402
+    EvalConfig,
+    cer,
+    evaluate_text,
+    levenshtein,
+    levenshtein_reference,
+    wer,
+)
 
 
 class TestEditDistance:
@@ -722,3 +730,113 @@ class TestTatweel:
 
     def test_tatweel_removal_does_not_shift_diacritics(self):
         assert repair_text("مُحَمَّـــد").text == "مُحَمَّد"
+
+
+# ── الأداء: ما صحّ من بنشمارك خارجيّ ──────────────────────────────────
+#
+# قِيسَت المكتبة خارجياً فخرج تقريرٌ بثمانِ توصيات. القياسُ على **صفحةٍ
+# واقعية** (٣١٩٥ محرفاً) قلبَ أولويّاتِه: عنقُ الزجاجة واحدٌ لا ثمانية.
+#
+#     cer        2462 ms/صفحة  →  ١٢ دقيقة لأطروحة   ← الوحيدُ المهمّ
+#     diagnose      6.5 ms/صفحة  →  ٢ ثانية لأطروحة   ← «أولوية عالية» عندهم
+#
+# والقاعدةُ التي تحكم هذه الطبقة: **الذكاءُ في الكود يُختبَر بالبلاهة.**
+# مايرز الشعاعية-البِتّية والمجموعاتُ المبنيّة مسبقاً كلاهما ذكيّ، فلكلٍّ
+# منهما تنفيذٌ مرجعيّ بليدٌ يُقارَن به.
+
+import random  # noqa: E402
+
+from arafix.evaluate import _myers  # noqa: E402
+from arafix.unicode_tables import (  # noqa: E402
+    ARABIC_RANGES,
+    PRESENTATION_RANGES,
+    in_ranges,
+    is_arabic,
+    is_presentation_form,
+)
+
+ARABIC_ALPHABET = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي .()2024GDPـً"
+
+
+class TestLevenshteinIsExact:
+    """
+    استُبدلت المصفوفة الكاملة بخوارزمية مايرز الشعاعية-البِتّية. والفرق
+    ٤١٠× — لكن السرعة بلا ضبطٍ لا قيمة لها، فالضامنُ هو المرجع البليد.
+    """
+
+    def test_fuzz_against_reference(self):
+        random.seed(1789)
+        for _ in range(3000):
+            a = [random.choice(ARABIC_ALPHABET) for _ in range(random.randint(0, 40))]
+            b = [random.choice(ARABIC_ALPHABET) for _ in range(random.randint(0, 40))]
+            assert levenshtein(a, b) == levenshtein_reference(a, b), (
+                f"اختلاف: {''.join(a)!r} vs {''.join(b)!r}"
+            )
+
+    @pytest.mark.parametrize(
+        "a,b",
+        [
+            ("", ""),
+            ("", "نص"),
+            ("نص", ""),
+            ("ا", "اا"),
+            ("اااااااااا", "ااااااااااب"),
+            ("المجلات", "المجالت"),
+            ("دراسة" * 40, "دراسه" * 40),
+        ],
+    )
+    def test_edge_cases_match_reference(self, a, b):
+        assert levenshtein(list(a), list(b)) == levenshtein_reference(list(a), list(b))
+
+    def test_myers_agrees_with_reference_directly(self):
+        """اختبارُ النواة نفسها، لا الغلافِ الذي يقتطع المشترك قبلها."""
+        random.seed(31)
+        for _ in range(500):
+            a = [random.choice("ابتث") for _ in range(random.randint(1, 25))]
+            b = [random.choice("ابتث") for _ in range(random.randint(0, 25))]
+            assert _myers(a, b) == levenshtein_reference(a, b)
+
+    def test_trim_does_not_change_the_answer(self):
+        """اقتطاعُ البادئة واللاحقة تحسينٌ لا تقريب."""
+        pre, post = "مقدمة طويلة مشتركة ", " وخاتمة طويلة مشتركة"
+        a, b = list(pre + "المجلات" + post), list(pre + "المجالت" + post)
+        assert levenshtein(a, b) == levenshtein_reference(a, b) == 2
+
+    def test_no_optional_accelerator_is_smuggled_in(self):
+        """
+        قِيسَت RapidFuzz فكانت أسرع ١١× — ولم تُؤخَذ. مايرز تُنهي أطروحةً
+        في ١٫٧ ثانية، والمكسبُ نزولٌ بها إلى ٠٫١٦ — لأحدٍ لا وجود له.
+        وهذه غلطةُ `arafix[ocr]` عينها: تبعيّةٌ لحاجةٍ افتراضية.
+        """
+        import arafix.evaluate as ev
+
+        src = pathlib.Path(ev.__file__).read_text(encoding="utf-8")
+        assert "import rapidfuzz" not in src
+        assert "from rapidfuzz" not in src
+
+
+class TestFastClassificationMatchesReference:
+    """
+    `is_arabic` و`is_presentation_form` تُناديان مرّةً لكل محرف. استُبدل
+    بمسح النطاقات فحصُ عضويةٍ في مجموعةٍ مبنيّةٍ مسبقاً — ٥٫٥× على صفحة.
+
+    والمجموعتان مبنيّتان من النطاقات **نفسها** لا مكتوبتين، وهذا الاختبار
+    يقارنهما بالمرجعيّ على **كل** نقطة كودٍ في يونيكود — لا على عيّنة.
+    """
+
+    def test_agrees_on_every_codepoint_in_unicode(self):
+        for cp in range(0x110000):
+            ch = chr(cp)
+            assert is_arabic(ch) == in_ranges(cp, ARABIC_RANGES), hex(cp)
+            assert is_presentation_form(ch) == in_ranges(cp, PRESENTATION_RANGES), hex(
+                cp
+            )
+
+    def test_memory_price_is_bounded(self):
+        """
+        ١٢٣٢ نقطةً للعربية والأشكال — ٦٤ كيلوبايت. ولا مجموعةَ لـ PUA
+        عمداً: نطاقاتها ١٣٧ ألف نقطة، ثمنٌ لا يشتري شيئاً.
+        """
+        from arafix.unicode_tables import _ARABIC_CPS, _PRESENTATION_CPS
+
+        assert len(_ARABIC_CPS) + len(_PRESENTATION_CPS) < 4000

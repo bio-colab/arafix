@@ -431,7 +431,7 @@ class PdfMinerExtractor(Extractor):
 </div>
 
 ```bash
-pytest                      # ١٤٢ اختباراً (١٢٩ + ١٣ doctest)
+pytest                      # ١٥٥ اختباراً (١٤٢ + ١٣ doctest)
 pytest --doctest-modules src/arafix
 ruff check src tests
 ```

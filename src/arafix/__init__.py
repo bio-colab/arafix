@@ -31,7 +31,7 @@ arafix — استرجاع النص العربي من ملفات PDF المعطو
 
 from __future__ import annotations
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 __license__ = "MIT"
 
 from .cmap import GlyphMap, build_glyph_map, decode_glyph_name
@@ -51,6 +51,7 @@ from .evaluate import (
     evaluate_pdf,
     evaluate_text,
     levenshtein,
+    levenshtein_reference,
     wer,
 )
 from .extractors import Extractor, RawPage, get_extractor, register
@@ -143,6 +144,7 @@ __all__ = [
     "cer",
     "wer",
     "levenshtein",
+    "levenshtein_reference",
     "EvalConfig",
     "EvalReport",
     # المحرّكات

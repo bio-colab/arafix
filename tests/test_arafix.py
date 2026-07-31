@@ -520,6 +520,14 @@ class TestSpacingMarkForms:
         assert early == "نشُرت", "الجريمة"
         assert late == "نُشرت", "العلاج: التأجيل"
 
+    def test_isolated_damma_form_no_leading_space(self):
+        """U+FE78 كان يُفكَّك إلى مسافة+ضمّة — يُطرح الفراغ الآن."""
+        assert DEFERRED_PF_TO_BASE["\ufe78"] == "\u064f"
+        assert DEFERRED_PF_TO_BASE["\ufe7c"] == "\u0651"
+        visual = "\ufe95\ufeae\ufeb8\ufe78\ufee7"  # ضمّة معزولة لا متوسطة
+        assert expand_deferred_forms(fix_order(fold_simple_forms(visual))) == "نُشرت"
+        assert repair_text(visual).text == "نُشرت"
+
 
 class TestOrderProofNeedsNoSample:
     def test_short_text_judged_by_proof(self):

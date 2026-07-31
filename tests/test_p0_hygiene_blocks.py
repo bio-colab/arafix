@@ -74,6 +74,13 @@ class TestHygiene:
         assert sanitize_extraction(raw) == raw
         assert "\u066c" in repair_text(raw).text
 
+    def test_does_not_early_fold_spacing_damma(self):
+        """تشكيل PF يبقى إلى ما بعد العكس — وإلا نشُرت."""
+        visual = "\ufe95\ufeae\ufeb8\ufe79\ufee7"
+        # hygiene alone must NOT convert FE79 (that would break reverse)
+        assert "\ufe79" in sanitize_extraction(visual)
+        assert repair_text(visual).text == "نُشرت"
+
 
 class TestRepairBlocks:
     def test_independent_cells(self):

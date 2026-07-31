@@ -166,6 +166,8 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                 bits.append(f"{arts['soft_hyphen']} soft-hyphen→-")
             if arts.get("thousands_as_comma"):
                 bits.append(f"{arts['thousands_as_comma']} ٬→،")
+            if arts.get("replacement"):
+                bits.append(f"{arts['replacement']} U+FFFD")
             notes.append(
                 "نُظِّفت آثار الاستخراج: " + ("، ".join(bits) if bits else "ترقيم/مسافات")
             )

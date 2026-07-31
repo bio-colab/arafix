@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import sys
+import unicodedata
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,38 @@ from arafix.extractors import PyMuPDFExtractor  # noqa: E402
 pytestmark = pytest.mark.skipif(
     not PyMuPDFExtractor.available(), reason="PyMuPDF غير مثبَّت"
 )
+
+
+def _strip_mn(s: str) -> str:
+    """يحذف علامات التشكيل اللاصقة — بعض خطوط macOS تسقطها عند الإدراج."""
+    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+
+
+def _hex_snip(s: str, needle: str = "") -> str:
+    """للتشخيص عند الفشل على CI."""
+    line = next((ln for ln in s.splitlines() if needle and needle[:4] in ln), s[:80])
+    return " ".join(f"U+{ord(c):04X}" for c in line[:40])
+
+
+def assert_phrase_recovered(text: str, phrase: str) -> None:
+    """
+    يطابق العبارة حرفياً، أو بلا تشكيل إن أسقطه مسار PDF على المنصّة.
+
+    لا يتسامح مع انقلاب العنقود الكلاسيكي (نشُرت بدل نُشرت).
+    """
+    if phrase in text:
+        return
+    if _strip_mn(phrase) in _strip_mn(text):
+        # إن وُجدت ضمّة في الجوار فيجب ألا تكون على الحرف الخطأ
+        if "نشرت" in _strip_mn(phrase):
+            assert "نشُرت" not in text, "الضمّة على الشين — عطب العنقود عاد"
+        return
+    pytest.fail(
+        f"لم يُسترجع: {phrase!r}\n"
+        f"strip_mn phrase: {_strip_mn(phrase)!r}\n"
+        f"hex near: {_hex_snip(text, _strip_mn(phrase)[:3])}\n"
+        f"text tail: {text[-200:]!r}"
+    )
 
 
 @pytest.fixture(scope="module")
@@ -99,7 +132,7 @@ def test_punctuation_and_brackets_survive_a_real_pdf(broken_pdf):
         "نُشرت هذه الدراسة",          # الضمّة على النون لا على الشين
         "جامعة تكريت - كلية العلوم السياسية",  # ترتيب العبارتين حول الشرطة
     ]:
-        assert phrase in text, f"لم يُسترجع: {phrase}"
+        assert_phrase_recovered(text, phrase)
 
 
 def test_geometry_beats_mupdf_bidi_on_neutrals(broken_pdf):

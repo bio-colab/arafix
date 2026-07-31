@@ -201,10 +201,13 @@ def _build_pf_tables() -> tuple[dict[str, str], dict[str, JoiningForm]]:
     to_base.pop("\ufeff", None)
     to_form.pop("\ufeff", None)
 
-    # U+FE70..FE7F أشكال التشكيل المسبوقة بكشيدة (مثل «ـً»). تفكيكها يعطي
-    # كشيدة + تشكيل. نُبقي التشكيل وحده ونطرح الكشيدة، فهي زخرفة.
+    # U+FE70..FE7F أشكال التشكيل:
+    #   * medial: تفكيكها «كشيدة + تشكيل» → نطرح الكشيدة.
+    #   * isolated: تفكيكها «مسافة + تشكيل» (U+0020 + Mn) → نطرح المسافة.
+    #     بدون هذا يخرج expand « نُ» بمسافة زائدة، فيكسر «نُشرت» و«المتغيّر»
+    #     على منصّات تستخرج الأشكال المعزولة (وُثِّق على macOS CI).
     for ch, base in list(to_base.items()):
-        if base.startswith(TATWEEL) and len(base) > 1:
+        if len(base) > 1 and base[0] in (TATWEEL, " ", "\u00a0"):
             to_base[ch] = base[1:]
 
     return to_base, to_form

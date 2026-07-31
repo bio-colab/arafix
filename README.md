@@ -1,12 +1,73 @@
-<div dir="rtl">
-
 # arafix
-
-**استرجاع النص العربي من ملفات PDF المعطوبة.**
-سلّمٌ من خمس درجات، لا مطرقةٌ واحدة.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
+![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
+![Typing](https://img.shields.io/badge/typing-py.typed-blue)
+
+**Recover broken Arabic text from PDFs** — diagnose first, then apply a graded repair ladder. Not a single hammer, and not “just run OCR.”
+
+| | |
+|---|---|
+| **Core** | Zero dependencies (stdlib only) for text stages 0–2 |
+| **PDF** | `pip install "arafix[pdf]"` — geometric extract + Arabic repair |
+| **Layout** | Multi-column RTL, headers/footers, simple tables (`layout=auto`) |
+| **Status** | **Alpha 0.8** — production-curious, still evolving |
+
+### Install
+
+```bash
+pip install arafix              # text repair only
+pip install "arafix[pdf]"       # recommended — PDF extract
+pip install "arafix[all]"       # + fonttools (CMap / stage 3)
+```
+
+### 30-second start
+
+```python
+from arafix import repair_text, extract_pdf
+
+# Presentation-form garbage → readable Arabic
+print(repair_text("\ufee3\ufeae\ufea3\ufe92\ufe8e").text)  # مرحبا
+
+# Native (not scanned) Arabic PDF
+doc = extract_pdf("thesis.pdf")
+print(doc.text)
+print(doc.confidence, doc.pages[0].n_columns)
+```
+
+```bash
+arafix diagnose thesis.pdf -v
+arafix extract  thesis.pdf -o out.txt
+arafix extract  paper.pdf --layout full -v --tables
+```
+
+### What it fixes (and what it doesn’t)
+
+| Symptom | Cause | Stage |
+|---|---|---|
+| Reversed letter order | Visual storage order | 2 |
+| Isolated Arabic glyphs (`ﻣﺮﺣﺒﺎ`) | Presentation forms | 1 |
+| `Ø§Ù„…` mojibake | UTF-8 read as Latin-1 | 0 |
+| `المجالت` / `االنترنيت` | Lam-alef ligature broken before reorder | 1a→2→1b |
+| `()مقدمة` | Engine bidi vs neutrals | geometric read |
+| Two columns mixed | Line-joined gutters | layout (0.8) |
+| Empty / PUA soup | Broken ToUnicode / scan | 3 / 4 (OCR not shipped) |
+
+**Philosophy:** never invent characters; never “fix just in case”; every decision carries evidence and confidence.
+
+Further reading: [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md)
+
+> **Name note:** other GitHub projects may also expose an `arafix` import. See the Arabic naming section and [RELEASING.md](RELEASING.md). Publish promptly after configuring the PyPI publisher — a pending publisher does **not** reserve the name.
+
+---
+
+<div dir="rtl">
+
+# arafix — التوثيق العربي
+
+**استرجاع النص العربي من ملفات PDF المعطوبة.**
+سلّمٌ من خمس درجات، لا مطرقةٌ واحدة.
 
 > ⚠️ **تنبيه تسمية — والقرار عاجل.** الاسم `arafix` **مأخوذ فعلياً** على GitHub بأربعة
 > مستودعات، وأحدها ([AraFix-V3.0](https://github.com/Basma2423/AraFix-V3.0))
@@ -95,6 +156,9 @@ pip install "arafix[pdf]"
 # كل شيء بما فيه الدرجة ٣
 pip install "arafix[all]"
 
+# جسر MarkItDown (إضافة PDF عربية + post-process)
+pip install "arafix[markitdown]"
+
 # من المصدر
 git clone https://github.com/bio-colab/arafix
 cd arafix && pip install -e ".[dev]" && pytest
@@ -107,8 +171,6 @@ cd arafix && pip install -e ".[dev]" && pytest
 [RELEASING.md](RELEASING.md).
 
 </div>
-
-```bash
 
 <div dir="rtl">
 
@@ -166,8 +228,43 @@ r = repair_text(broken_text)
 r.text                          # النص بعد العلاج
 r.diagnosis.summary()           # 'presentation_forms، visual_order'
 r.confidence                    # 0.94
-[s.value for s in r.stages_applied]   # ['diagnose', 'normalize', 'reorder']
+[s.value for s in r.stages_applied]   # ['hygiene', 'diagnose', 'normalize', 'reorder']
 r.notes                         # لماذا فُعل كل شيء
+```
+
+<div dir="rtl">
+
+### كتلًا / جدولاً (كل خلية مستقلة)
+
+</div>
+
+```python
+from arafix import repair_blocks, fix_table, TextBlock
+
+fix_table([["خلية معطوبة", "سليمة"], ["…", "…"]])
+
+out = repair_blocks([
+    TextBlock(cell, id=f"r{i}c{j}", role="cell")
+    for i, row in enumerate(grid)
+    for j, cell in enumerate(row)
+])
+out.by_id()["r0c1"].text
+```
+
+<div dir="rtl">
+
+### بعد MarkItDown أو أيّ مستخرج
+
+انظر [INTEGRATING.md](INTEGRATING.md).
+
+</div>
+
+```python
+from arafix import fix_markitdown, fix_any
+from markitdown import MarkItDown  # اختياري
+
+fixed = fix_markitdown(MarkItDown().convert("thesis.pdf"))
+# أو: fix_any(open("paste.txt", encoding="utf-8").read())
 ```
 
 <div dir="rtl">
@@ -427,6 +524,11 @@ class PdfMinerExtractor(Extractor):
 - [ ] استخراج بنيويّ (جداول، حواشٍ، أعمدة)
 - [ ] محرّكات: pdfminer، pypdf، pdftotext
 - [x] القياس — CER/WER ومقارنةُ المسارات على ملفك (0.4.0)
+- [x] نظافة الاستخراج — NBSP / soft-hyphen (0.7.0)
+- [x] `repair_blocks` / جداول — إصلاحٌ مستقلّ لكل خلية (0.7.0)
+- [x] معجم الوثيقة الداخليّ يحسم «المجالت» عبر الصفحات (0.7.0)
+- [x] جسر MarkItDown — plugin + `fix_markitdown` (0.7.0)
+- [x] أعمدة RTL + ترويسة/تذييل + جداول بنيوية (0.8.0)
 - [ ] حزمة ملفات مرجعية (corpus) عامّة لقياس الانحدار
 - [ ] حسمُ «المجالت» بنموذج n-gram على مستوى المحرف (اقتباساً من CAMeL)
 - [ ] إخراج PDF قابل للبحث بالنصّ المصحَّح
@@ -442,7 +544,7 @@ class PdfMinerExtractor(Extractor):
 </div>
 
 ```bash
-pytest                      # ١٥٥ اختباراً (١٤٢ + ١٣ doctest)
+pytest                      # ~١٨٠ اختباراً (+ hygiene/blocks/plugin)
 pytest --doctest-modules src/arafix
 ruff check src tests
 ```
@@ -469,10 +571,9 @@ ruff check src tests
   `االنترنيت`) يقيناً، ويُبلّغ عن المُبهَم (`المجالت`) ولا يخمّنه — إذ لا
   قاعدةَ إملائية تميّزه عن «أفعالهم». مرِّر `lexicon=` ليُحسم. **والوقاية
   وحدها تامّة**: ما تعالجه المكتبة من أوّله يخرج سليماً بلا معجم.
-- **الأعمدة المتعدّدة والجداول** خارج النطاق: القراءة الهندسية تضمّ
-  الجليفات بالخطّ الأساس، فتخلط عمودين متجاورين. عالجها بـ
-  `PipelineConfig(extractor=...)` ومحرّكٍ يفهم الأعمدة، أو انتظر
-  استخراجاً بنيوياً.
+- **الأعمدة والجداول** مدعومة منذ 0.8.0 عبر `layout="auto"|"columns"|"full"`
+  (ميزاب أفقي + RTL). الكشف إحصائيّ: صفحات بثلاثة أعمدة متداخلة أو
+  جداول بلا فجوات واضحة قد تحتاج ضبط `LayoutConfig`.
 - **لم تُختبر إلا على ملفاتٍ مولَّدة**، وكلُّ رقمٍ في هذا الملف مقيسٌ
   عليها. وهو نصفُ حجّة. `arafix eval --compare` موجودٌ لتُتمّها أنت على
   ملفاتك. وإن كسرَتها ملفاتُك، افتح issue بها — هذا أنفع إسهامٍ ممكن:

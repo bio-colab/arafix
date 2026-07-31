@@ -1,5 +1,92 @@
 # سجلّ التغييرات
 
+## 0.8.0
+
+**الدرجة البنيوية** — أعمدة RTL، ترويسة/تذييل، جداول من هندسة الجليفات.
+
+**جاهزية النشر:** `py.typed`، وصف إنجليزي على PyPI، README ثنائي اللغة،
+`DEPLOY.md` / `CONTRIBUTING.md`، مصنّفات أوضح.
+
+### المشكلة
+
+القراءة الهندسية كانت تضمّ كل جليفات السطر الأفقي معاً. في صحيفة
+بعمودين يخرج «يسار+يمين» سطراً واحداً ممسوخاً. والجداول تُسطَّح.
+والترويسة تختلط بالجسد.
+
+### الحل: `layout.py` — تقسيم بالميزاب لا بمراكز الأسطر
+
+1. **ميازب أفقية (gutters)** على الجليفات أولاً → أعمدة حقيقية  
+2. **ترتيب قراءة RTL** (الأيمن فالأيسر) — قابل لـ `ltr`  
+3. **شريط ترويسة/تذييل** (٨٪ أعلى/أسفل) يُعزل قبل الأعمدة  
+4. **جداول** من محاذاة خلايا داخل العمود → Markdown + `page.tables`  
+5. **`repair_per_block`**: كل سطر/خلية تُشخَّص وحدها ثم يُعاد التجميع  
+
+```python
+from arafix import extract_pdf, PipelineConfig, LayoutConfig
+
+doc = extract_pdf("paper.pdf", PipelineConfig(
+    layout="auto",           # linear | columns | full
+    layout_config=LayoutConfig(reading_order="rtl"),
+))
+doc.pages[0].n_columns
+doc.all_tables
+```
+
+```bash
+arafix extract paper.pdf --layout full --reading-order rtl -v --tables
+python examples/make_multicolumn_pdf.py multi.pdf
+```
+
+`layout="auto"` (الافتراضي): صفحة عمود واحد تبقى كما في 0.7 — بلا مفاجآت.
+`PageResult.layout` / `.blocks` / `.tables` للبنية الكاملة.
+
+## 0.7.0
+
+طبقةُ الاسترجاع تصير **قابلة للتركيب** — نظافة استخراج، كتلٌ مستقلة،
+معجم وثيقة، وجسر MarkItDown. بلا كسرٍ لوعد النواة صفر-التبعيّات.
+
+### بوابة النظافة (`hygiene`)
+
+محرّكات PDF تُخرج `U+00A0` بدل المسافة و`U+00AD` بدل الشرطة — فتفشل
+مقارنةُ السلاسل وCER يظنّ الخطأ عربياً وهو ترميز. صارت:
+
+| الأثر | العلاج |
+|---|---|
+| NBSP ومسافات يونيكود | → مسافة عادية |
+| soft hyphen | → `-` |
+
+مرحلة `Stage.HYGIENE` تُبلَّغ في التقرير. تُطفأ بـ
+`PipelineConfig(enable_hygiene=False)` إن كنت تقيس المحرّك لا تريد إخفاءه.
+**اختبارات تكامل PDF على ويندوز خضراء.**
+
+### `repair_blocks` / `fix_table`
+
+كل كتلة (خلية، سطر، تسمية) تُشخَّص وحدها. خليةٌ معكوسة لا تعكس جارةً
+سليمة. يقبل `str` و`TextBlock` و`(id, text)` و`dict`.
+
+```python
+from arafix import repair_blocks, fix_table, TextBlock
+fix_table([["…", "OK"]])
+```
+
+وأمر CLI: `arafix blocks` (stdin: سطر = كتلة).
+
+### معجم الوثيقة الداخليّ
+
+`harvest_document_lexicon` + `PipelineConfig(harvest_document_lexicon=True)`
+(افتراضيّ في `extract_pdf` و`repair_blocks`): كلمات الصفحة/الكتلة
+الصحيحة تحسم «المجالت» في غيرها — بلا ملف معجم خارجيّ.
+
+### MarkItDown
+
+- entry point: `markitdown.plugin` → `arafix`
+- `pip install "arafix[markitdown]"` ثم `MarkItDown(enable_plugins=True)`
+- `fix_markitdown(result)` و`fix_any` و`wrap_callable` في
+  `arafix.adapters` / `arafix.integrations`
+- [INTEGRATING.md](INTEGRATING.md)
+
+الاختبارات: ١٥٥ ← +٣٠ تقريباً.
+
 ## 0.6.0
 
 بنشمارك خارجيّ جادّ (٣٠ تكراراً، فتراتُ ثقة، اختبارات Welch، cProfile)

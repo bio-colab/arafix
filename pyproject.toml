@@ -4,20 +4,35 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arafix"
-version = "0.6.0"
-description = "استرجاع النص العربي من ملفات PDF المعطوبة — تشخيص أولاً، ثم علاج مُتدرّج"
+version = "0.8.0"
+description = "Recover broken Arabic text from PDFs — diagnose first, then graded repair (bidi, presentation forms, layout)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "bio-colab" }]
-keywords = ["arabic", "pdf", "text-extraction", "rtl", "unicode", "bidi", "nlp"]
+keywords = [
+    "arabic",
+    "pdf",
+    "text-extraction",
+    "rtl",
+    "unicode",
+    "bidi",
+    "nlp",
+    "ocr-alternative",
+    "markitdown",
+    "presentation-forms",
+    "lam-alef",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
     "Natural Language :: Arabic",
+    "Natural Language :: English",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -25,31 +40,45 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Operating System :: OS Independent",
     "Topic :: Text Processing :: Linguistic",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
 ]
 
-# النواة بلا تبعيّات — عمداً.
-# الدرجتان ٠ و١ و٢ بايثون قياسيّ خالص، فتعمل في أيّ بيئة مقيّدة.
+# Core is dependency-free on purpose (stages 0–2 = pure stdlib).
 dependencies = []
 
 [project.optional-dependencies]
-pdf = ["pymupdf>=1.23"]        # الدرجة ٠–٢ على ملفات PDF
-cmap = ["fonttools>=4.40"]     # الدرجة ٣
-# لا حزمة «ocr» هنا عمداً: الدرجة ٤ غير منفَّذة، و`extra` يوحي بقدرةٍ
-# غير موجودة. لا نبيع تبعيّةً مقابل وعد.
+pdf = ["pymupdf>=1.23"]
+cmap = ["fonttools>=4.40"]
+# Enables the MarkItDown plugin entry point; not imported by the core.
+markitdown = ["markitdown>=0.1.0a1", "pymupdf>=1.23"]
+# No fake ``ocr`` extra: stage 4 is not implemented.
 all = ["pymupdf>=1.23", "fonttools>=4.40"]
-dev = ["pymupdf>=1.23", "fonttools>=4.40", "pytest>=7", "ruff>=0.4", "mypy>=1.8"]
+dev = [
+    "pymupdf>=1.23",
+    "fonttools>=4.40",
+    "pytest>=7",
+    "ruff>=0.4",
+    "mypy>=1.8",
+    "build>=1.0",
+    "twine>=5.0",
+]
 
 [project.scripts]
 arafix = "arafix.cli:main"
 
+[project.entry-points."markitdown.plugin"]
+arafix = "arafix.integrations.markitdown_plugin"
+
 [project.urls]
 Homepage = "https://github.com/bio-colab/arafix"
+Documentation = "https://github.com/bio-colab/arafix#readme"
 Issues = "https://github.com/bio-colab/arafix/issues"
 Changelog = "https://github.com/bio-colab/arafix/blob/main/CHANGELOG.md"
+"Release notes" = "https://github.com/bio-colab/arafix/releases"
 
 [tool.hatch.build.targets.sdist]
-# تُشحن الاختبارات والأمثلة داخل الـ sdist عمداً: مَن حمّل المصدر يجب أن
-# يستطيع تشغيل `pytest` عليه فيتحقق بنفسه، لا أن يصدّق شهادتنا.
+# Ship tests + examples so anyone can verify the sdist independently.
 include = [
     "src/",
     "tests/",
@@ -57,6 +86,9 @@ include = [
     "README.md",
     "CHANGELOG.md",
     "RELEASING.md",
+    "INTEGRATING.md",
+    "DEPLOY.md",
+    "CONTRIBUTING.md",
     "LICENSE",
 ]
 
@@ -80,3 +112,4 @@ python_version = "3.9"
 strict = false
 warn_unused_ignores = true
 ignore_missing_imports = true
+packages = ["arafix"]

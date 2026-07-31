@@ -1,39 +1,37 @@
 """
-arafix — استرجاع النص العربي من ملفات PDF المعطوبة.
+arafix — recover broken Arabic text from PDFs.
 
-سلّم من خمس درجات، لا مطرقة واحدة:
+Graded ladder (not one hammer)::
 
-    ٠ التشخيص     diagnose()         لا تعالج قبل أن تعرف
-    ١أ التطبيع     fold_simple_forms() الأشكال المفردة؛ الرباطُ ذرّةٌ بعد
-    ٢ الاتجاه      fix_order()         بصريّ ← منطقيّ، بحماية الأرقام
-    ١ب الرباطات    expand_ligatures()  ﻻ ← لا، بعد استقرار الترتيب
-    ٣ الخريطة      build_glyph_map() إعادة بنائها من الخط المضمَّن
-    ٤ الـ OCR      (خارجيّ)            آخر الدواء، لا أوّله
+    0  diagnose()          know before you fix
+    1a fold_simple_forms() presentation forms; keep ligatures atomic
+    2  fix_order()         visual → logical, protect LTR runs
+    1b expand_ligatures()  ﻻ → لا after order is stable
+    3  build_glyph_map()   rebuild from embedded font
+    4  OCR                 last resort (not shipped)
 
-وفوقها القياس — فرقمٌ على ملفاتك أصدقُ من كل شهاداتنا:
-
-    >>> from arafix import compare_extractors        # doctest: +SKIP
-    >>> for r in compare_extractors("t.pdf", "t.txt"):  # doctest: +SKIP
-    ...     print(r)                                  # doctest: +SKIP
-
-الاستعمال الأسرع:
+Quick start::
 
     >>> from arafix import repair_text
     >>> repair_text("\ufee3\ufeae\ufea3\ufe92\ufe8e").text
     'مرحبا'
 
+    >>> from arafix import repair_blocks
+    >>> repair_blocks(["\ufee3\ufeae\ufea3\ufe92\ufe8e"]).texts[0]
+    'مرحبا'
+
     >>> from arafix import extract_pdf           # doctest: +SKIP
     >>> doc = extract_pdf("thesis.pdf")          # doctest: +SKIP
-    >>> print(doc.text, doc.confidence)          # doctest: +SKIP
 
-الترخيص: MIT.
+MIT license. Primary long-form docs are in Arabic (README).
 """
 
 from __future__ import annotations
 
-__version__ = "0.6.0"
+__version__ = "0.8.0"
 __license__ = "MIT"
 
+from .adapters import as_blocks, fix_any, fix_markitdown, fix_table
 from .cmap import GlyphMap, build_glyph_map, decode_glyph_name
 from .diagnose import (
     DEFAULT_THRESHOLDS,
@@ -55,10 +53,22 @@ from .evaluate import (
     wer,
 )
 from .extractors import Extractor, RawPage, get_extractor, register
+from .hygiene import count_artifacts, sanitize_extraction
 from .lamalef import (
     LamAlefReport,
     detect_lam_alef_transposition,
     repair_lam_alef_transposition,
+)
+from .layout import (
+    Glyph,
+    LayoutColumn,
+    LayoutConfig,
+    LayoutLine,
+    LayoutTable,
+    PageLayout,
+    analyze_layout,
+    cluster_to_lines,
+    table_to_markdown,
 )
 from .normalize import (
     NormalizeConfig,
@@ -75,8 +85,16 @@ from .order import (
     grapheme_clusters,
     reverse_visual_line,
 )
-from .pipeline import PipelineConfig, extract_pdf, repair_text
+from .pipeline import (
+    PipelineConfig,
+    extract_pdf,
+    harvest_document_lexicon,
+    repair_blocks,
+    repair_text,
+)
 from .types import (
+    BlockResult,
+    BlocksResult,
     Defect,
     Diagnosis,
     DocumentResult,
@@ -84,6 +102,7 @@ from .types import (
     PageResult,
     RepairResult,
     Stage,
+    TextBlock,
 )
 from .unicode_tables import (
     DEFERRED_PF_TO_BASE,
@@ -99,8 +118,28 @@ __all__ = [
     "__version__",
     # الأنبوب
     "repair_text",
+    "repair_blocks",
     "extract_pdf",
     "PipelineConfig",
+    "harvest_document_lexicon",
+    # مهايئات
+    "fix_any",
+    "fix_markitdown",
+    "fix_table",
+    "as_blocks",
+    # نظافة الاستخراج
+    "sanitize_extraction",
+    "count_artifacts",
+    # البنية
+    "Glyph",
+    "LayoutLine",
+    "LayoutColumn",
+    "LayoutTable",
+    "PageLayout",
+    "LayoutConfig",
+    "analyze_layout",
+    "cluster_to_lines",
+    "table_to_markdown",
     # الدرجة ٠
     "diagnose",
     "detect_mojibake",
@@ -137,6 +176,9 @@ __all__ = [
     "RepairResult",
     "PageResult",
     "DocumentResult",
+    "TextBlock",
+    "BlockResult",
+    "BlocksResult",
     # القياس
     "evaluate_text",
     "evaluate_pdf",

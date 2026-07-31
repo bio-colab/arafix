@@ -20,6 +20,9 @@ __all__ = [
     "RepairResult",
     "PageResult",
     "DocumentResult",
+    "TextBlock",
+    "BlockResult",
+    "BlocksResult",
 ]
 
 
@@ -39,6 +42,7 @@ class Defect(str, Enum):
 class Stage(str, Enum):
     """درجات سلّم العلاج. كل درجة مستقلة وقابلة للتخطي منفردة."""
 
+    HYGIENE = "hygiene"            # بوابة — NBSP/soft-hyphen قبل التشخيص
     DIAGNOSE = "diagnose"          # ٠ — لا تعالج قبل أن تعرف
     NORMALIZE = "normalize"        # ١ — تطبيع الأشكال الرسومية
     REORDER = "reorder"            # ٢ — إصلاح الاتجاه
@@ -135,6 +139,13 @@ class PageResult:
     page_number: int
     repair: RepairResult
     fonts: list[str] = field(default_factory=list)
+    #: تحليل بنيويّ (أعمدة/جداول/ترويسة) — إن فُعّل المسار البنيويّ.
+    layout: Any = None
+    #: كتل مُصلَحة مستقلة (سطور/خلايا) مع معرّفاتها.
+    blocks: BlocksResult | None = None
+    n_columns: int = 1
+    #: جداول مُصلَحة: قائمة شبكات [صف][عمود].
+    tables: list[list[list[str]]] = field(default_factory=list)
 
     @property
     def text(self) -> str:
@@ -157,3 +168,65 @@ class DocumentResult:
     def confidence(self) -> float:
         """أدنى ثقة في الصفحات — أضعف حلقةٍ تحكم على السلسلة."""
         return min((p.repair.confidence for p in self.pages), default=0.0)
+
+    @property
+    def all_tables(self) -> list[list[list[str]]]:
+        """كل جداول المستند بالترتيب."""
+        out: list[list[list[str]]] = []
+        for p in self.pages:
+            out.extend(p.tables)
+        return out
+
+
+@dataclass
+class TextBlock:
+    """
+    وحدة نصّية تُعالَج **مستقلة** — خلية جدول، سطر، تسمية، حاشية.
+
+    ``id`` و``meta`` و``bbox`` للمُضيف (markitdown، مستخرج جداول…):
+    نُرجعها كما وصلت؛ لا نفسّرها. الاستقلال مقصود: خليةٌ معكوسة لا
+    يجوز أن تُفسِد جارةً سليمة بتشخيصٍ جَمعيّ.
+    """
+
+    text: str
+    id: str | None = None
+    role: str | None = None  # "cell" | "line" | "heading" | "caption" | …
+    bbox: tuple[float, float, float, float] | None = None  # x0, y0, x1, y1
+    meta: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class BlockResult:
+    """حصيلة إصلاح كتلةٍ واحدة مع هويّتها الأصلية."""
+
+    block: TextBlock
+    repair: RepairResult
+
+    @property
+    def text(self) -> str:
+        return self.repair.text
+
+    @property
+    def id(self) -> str | None:
+        return self.block.id
+
+
+@dataclass
+class BlocksResult:
+    """حصيلة ``repair_blocks`` — قائمة مرتَّبة كما وصلت."""
+
+    blocks: list[BlockResult] = field(default_factory=list)
+
+    @property
+    def texts(self) -> list[str]:
+        return [b.text for b in self.blocks]
+
+    @property
+    def confidence(self) -> float:
+        return min((b.repair.confidence for b in self.blocks), default=0.0)
+
+    def by_id(self) -> dict[str, BlockResult]:
+        return {b.id: b for b in self.blocks if b.id is not None}
+
+    def join(self, sep: str = "\n") -> str:
+        return sep.join(b.text for b in self.blocks)

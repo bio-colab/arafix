@@ -70,7 +70,15 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
 
 
 def _cmd_extract(args: argparse.Namespace) -> int:
-    cfg = PipelineConfig(extractor=args.extractor, force_reorder=args.force_reorder)
+    from .layout import LayoutConfig
+
+    lay_cfg = LayoutConfig(reading_order=args.reading_order)
+    cfg = PipelineConfig(
+        extractor=args.extractor,
+        force_reorder=args.force_reorder,
+        layout=args.layout,
+        layout_config=lay_cfg,
+    )
     doc = extract_pdf(args.path, cfg)
 
     out = doc.text
@@ -82,6 +90,26 @@ def _cmd_extract(args: argparse.Namespace) -> int:
         print(out)
 
     print(f"الثقة الدنيا عبر {len(doc.pages)} صفحة: {doc.confidence}", file=sys.stderr)
+    if args.verbose:
+        print(
+            f"بنية: أعمدة≤{doc.metadata.get('max_columns', 1)} "
+            f"جداول={doc.metadata.get('table_count', 0)} "
+            f"layout={doc.metadata.get('layout')}",
+            file=sys.stderr,
+        )
+        for p in doc.pages:
+            if p.n_columns > 1 or p.tables:
+                print(
+                    f"  صفحة {p.page_number}: {p.n_columns} عمود، "
+                    f"{len(p.tables)} جدول",
+                    file=sys.stderr,
+                )
+        if args.tables and doc.all_tables:
+            print("\n── جداول ──", file=sys.stderr)
+            for i, grid in enumerate(doc.all_tables):
+                print(f"جدول {i + 1}: {len(grid)}×{len(grid[0]) if grid else 0}", file=sys.stderr)
+                for row in grid:
+                    print("  | " + " | ".join(row) + " |")
     if doc.confidence < 0.5:
         print("تحذير: ثقة منخفضة — راجع `arafix diagnose -v`", file=sys.stderr)
         return 2
@@ -98,6 +126,28 @@ def _cmd_text(args: argparse.Namespace) -> int:
         print(f"─ الثقة: {r.confidence}", file=sys.stderr)
         for n in r.notes:
             print(f"  · {n}", file=sys.stderr)
+    return 0
+
+
+def _cmd_blocks(args: argparse.Namespace) -> int:
+    """أصلح سطوراً/خلايا من stdin (سطر = كتلة) — للجداول والأنابيب."""
+    from .pipeline import repair_blocks
+    from .types import TextBlock
+
+    lines = [ln.rstrip("\n\r") for ln in sys.stdin]
+    if args.skip_empty:
+        lines = [ln for ln in lines if ln.strip()]
+    blocks = [TextBlock(text=ln, id=f"L{i}", role="line") for i, ln in enumerate(lines)]
+    out = repair_blocks(blocks)
+    for b in out.blocks:
+        print(b.text)
+    if args.verbose:
+        print(
+            f"─ {len(out.blocks)} كتلة · ثقة دنيا {out.confidence}",
+            file=sys.stderr,
+        )
+        n_changed = sum(1 for b in out.blocks if b.repair.changed)
+        print(f"─ تغيّر منها: {n_changed}", file=sys.stderr)
     return 0
 
 
@@ -176,12 +226,38 @@ def build_parser() -> argparse.ArgumentParser:
     x.add_argument("path")
     x.add_argument("-o", "--output")
     x.add_argument("--force-reorder", action="store_true", help="اعكس بلا شاهد")
+    x.add_argument(
+        "--layout",
+        choices=["auto", "linear", "columns", "full"],
+        default="auto",
+        help="تحليل البنية: auto|linear|columns|full",
+    )
+    x.add_argument(
+        "--reading-order",
+        choices=["rtl", "ltr"],
+        default="rtl",
+        help="ترتيب قراءة الأعمدة (افتراضي rtl)",
+    )
+    x.add_argument("-v", "--verbose", action="store_true", help="اعرض ملخص البنية")
+    x.add_argument("--tables", action="store_true", help="اطبع الجداول المستخرجة")
     x.set_defaults(func=_cmd_extract)
 
     t = sub.add_parser("text", help="أصلح نصاً مباشراً أو من stdin")
     t.add_argument("text", nargs="?")
     t.add_argument("-v", "--verbose", action="store_true")
     t.set_defaults(func=_cmd_text)
+
+    b = sub.add_parser(
+        "blocks",
+        help="أصلح كتلًا مستقلة من stdin (سطر=كتلة) — جداول وأنابيب",
+    )
+    b.add_argument("-v", "--verbose", action="store_true")
+    b.add_argument(
+        "--skip-empty",
+        action="store_true",
+        help="تجاهل الأسطر الفارغة",
+    )
+    b.set_defaults(func=_cmd_blocks)
 
     v = sub.add_parser("eval", help="قِس مقابل حقيقةٍ مرجعية (CER/WER)")
     v.add_argument("path")

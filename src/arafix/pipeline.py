@@ -14,24 +14,55 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 
 from .diagnose import DEFAULT_THRESHOLDS, detect_mojibake, detect_visual_order, diagnose
 from .extractors import get_extractor
+from .hygiene import count_artifacts, sanitize_extraction
 from .lamalef import repair_lam_alef_transposition
+from .layout import LayoutConfig, LayoutMode
 from .normalize import NormalizeConfig, expand_deferred_forms, normalize_text
 from .order import ReorderConfig, fix_order
 from .types import (
+    BlockResult,
+    BlocksResult,
     Defect,
     Diagnosis,
     DocumentResult,
     PageResult,
     RepairResult,
     Stage,
+    TextBlock,
 )
 
-__all__ = ["PipelineConfig", "repair_text", "extract_pdf"]
+__all__ = [
+    "PipelineConfig",
+    "repair_text",
+    "repair_blocks",
+    "extract_pdf",
+    "harvest_document_lexicon",
+]
+
+
+_ARABIC_WORD = re.compile(r"[\u0621-\u064A\u0671-\u06D3]{3,}")
+
+
+def _is_lam_alef_suspect_word(word: str) -> bool:
+    """
+    أكلمةٌ مرشّحة لانقلاب لام-ألف مُبهَم؟ لا تُدخَل في معجم الوثيقة.
+
+    وإلا حصدْنا «المجالت» من الصفحة المعطوبة فحمتْ نفسها من الإصلاح
+    بقاعدة «إن كانت في المعجم اتركها» — وهي قاعدة صحيحة للمعجم الخارجيّ
+    (أفعالهم) وخاطئة للحصاد الداخليّ.
+    """
+    from .lamalef import _AMBIGUOUS, _looks_like_article
+
+    return any(
+        not _looks_like_article(word, hit.start())
+        for hit in _AMBIGUOUS.finditer(word)
+    )
 
 
 @dataclass
@@ -45,6 +76,10 @@ class PipelineConfig:
     enable_normalize: bool = True
     enable_reorder: bool = True
 
+    #: بوابة النظافة (NBSP / soft-hyphen / مسافات يونيكود). مطفأة فقط
+    #: إن كنت تقيس آثار المحرّك نفسه لا تريد إخفاءها.
+    enable_hygiene: bool = True
+
     #: ترقيع انقلاب لام-ألف الوارد من أدواتٍ أخرى («المجالت» ← «المجلات»).
     #: لا يلزم لِما تعالجه هذه المكتبة من أوّله — إنما لِما وَرِثته معطوباً.
     enable_lam_alef_repair: bool = True
@@ -53,6 +88,10 @@ class PipelineConfig:
     #: المُبهَم. ومعه تُحسَم المواضع الوسطية كـ«المجالت» أيضاً.
     lexicon: Iterable[str] | None = None
 
+    #: بعد إصلاح كل الصفحات: ابنِ معجماً من كلمات الملف نفسه وأعِد
+    #: ترقيع لام-ألف المُبهَم. بلا نموذج خارجيّ — الوثيقة تشهد لنفسها.
+    harvest_document_lexicon: bool = True
+
     #: اعكس النص ولو لم يُشخَّص معكوساً. للحالات التي تعرفها يقيناً.
     force_reorder: bool = False
 
@@ -60,6 +99,35 @@ class PipelineConfig:
     thresholds: dict = field(default_factory=dict)
 
     extractor: str = "auto"
+
+    #: التحليل البنيويّ: ``auto`` | ``linear`` | ``columns`` | ``full``.
+    #: ``auto`` يفعّل الأعمدة عند اكتشاف ميزاب؛ الصفحة ذات العمود الواحد
+    #: تبقى مطابقةً للسلوك الخطّيّ السابق.
+    layout: LayoutMode = "auto"
+
+    #: إعدادات التفصيل للأعمدة/الترويسة/الجداول.
+    layout_config: LayoutConfig = field(default_factory=LayoutConfig)
+
+    #: أصلح كل سطر/خلية كتلةً مستقلة ثم أعد التجميع (أقوى للجداول).
+    repair_per_block: bool = True
+
+
+def harvest_document_lexicon(texts: Iterable[str]) -> set[str]:
+    """
+    يجمع كلماتٍ عربية ≥ ٣ أحرف من نصوصٍ **بعد** الإصلاح الأوليّ.
+
+    الفكرة: إن ظهرت «المجلات» صحيحةً في صفحة، و«المجالت» في أخرى،
+    فالمعجم الداخليّ يحسم الثانية بلا ملفٍ خارجيّ.
+
+    **لا تُحصد** الكلمات المشتبهة بانقلاب لام-ألف — وإلا حمتِ المعطوبةُ
+    نفسها من الإصلاح.
+    """
+    vocab: set[str] = set()
+    for t in texts:
+        for w in _ARABIC_WORD.findall(t):
+            if not _is_lam_alef_suspect_word(w):
+                vocab.add(w)
+    return vocab
 
 
 def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult:
@@ -73,6 +141,8 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     'مرحبا'
     >>> Stage.NORMALIZE in r.stages_applied
     True
+    >>> repair_text("دراسة\u00a0مقارنة").text
+    'دراسة مقارنة'
     """
     cfg = config or PipelineConfig()
     th = {**DEFAULT_THRESHOLDS, **cfg.thresholds}
@@ -81,6 +151,20 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     current = text
     stages: list[Stage] = []
     notes: list[str] = []
+
+    # --- بوابة النظافة: قبل التشخيص، كي لا تشوّش الشواهد ---------------
+    if cfg.enable_hygiene:
+        arts = count_artifacts(current)
+        cleaned = sanitize_extraction(current)
+        if cleaned != current:
+            current = cleaned
+            stages.append(Stage.HYGIENE)
+            bits = []
+            if arts["nbsp_like"]:
+                bits.append(f"{arts['nbsp_like']} مسافة يونيكود")
+            if arts["soft_hyphen"]:
+                bits.append(f"{arts['soft_hyphen']} soft-hyphen→-")
+            notes.append("نُظِّفت آثار الاستخراج: " + "، ".join(bits))
 
     # --- الدرجة ٠ -------------------------------------------------------
     dg: Diagnosis = diagnose(current, th)
@@ -181,6 +265,88 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     )
 
 
+def repair_blocks(
+    blocks: Sequence[TextBlock | str | tuple[str, str] | dict],
+    config: PipelineConfig | None = None,
+) -> BlocksResult:
+    """
+    يصلح كتلاً **مستقلة** — كلٌّ تُشخَّص وحدها فلا تُلوَّث جارتها.
+
+    هذا مدخل الجداول والأعمدة وmarkitdown: الخلية المعكوسة تُصلَح،
+    والسليمة لا تُمسّ، حتى لو جاورتْها في الصفحة نفسها.
+
+    يقبل أشكالاً مرنة::
+
+        repair_blocks(["نص", "آخر"])
+        repair_blocks([TextBlock("…", id="r0c1", role="cell")])
+        repair_blocks([("r0c1", "…"), ("r0c2", "…")])
+        repair_blocks([{"text": "…", "id": "a", "role": "cell"}])
+
+    >>> out = repair_blocks(["\ufee3\ufeae\ufea3\ufe92\ufe8e", "مرحبا"])
+    >>> out.texts[0]
+    'مرحبا'
+    """
+    cfg = config or PipelineConfig()
+    results: list[BlockResult] = []
+
+    for raw in blocks:
+        block = _coerce_block(raw)
+        rep = repair_text(block.text, cfg)
+        results.append(BlockResult(block=block, repair=rep))
+
+    # معجمٌ داخليّ عبر الكتل — نفس فكرة الصفحات
+    if cfg.harvest_document_lexicon and cfg.enable_lam_alef_repair:
+        _apply_harvested_lexicon_to_blocks(results, cfg)
+
+    return BlocksResult(blocks=results)
+
+
+def _coerce_block(raw: TextBlock | str | tuple | dict) -> TextBlock:
+    if isinstance(raw, TextBlock):
+        return raw
+    if isinstance(raw, str):
+        return TextBlock(text=raw)
+    if isinstance(raw, tuple) and len(raw) == 2:
+        a, b = raw
+        # ("id", "text") أو ("text",) — إن كان الثاني أطول فهو النص غالباً
+        if isinstance(a, str) and isinstance(b, str):
+            return TextBlock(text=b, id=a)
+    if isinstance(raw, dict):
+        return TextBlock(
+            text=str(raw.get("text", "")),
+            id=raw.get("id"),
+            role=raw.get("role"),
+            bbox=raw.get("bbox"),
+            meta=dict(raw.get("meta") or {}),
+        )
+    raise TypeError(
+        f"كتلة غير مفهومة: {type(raw)!r}. "
+        "مرِّر str أو TextBlock أو (id, text) أو dict."
+    )
+
+
+def _apply_harvested_lexicon_to_blocks(
+    results: list[BlockResult], cfg: PipelineConfig
+) -> None:
+    vocab = harvest_document_lexicon(b.repair.text for b in results)
+    if cfg.lexicon:
+        vocab |= set(cfg.lexicon)
+    if not vocab:
+        return
+    for br in results:
+        if not br.repair.diagnosis.has(Defect.LAM_ALEF_TRANSPOSED):
+            # قد يبقى مُبهَمٌ بعد إصلاحٍ بلا معجم — افحص النصّ دائماً إن رخيصاً
+            pass
+        rep = repair_lam_alef_transposition(br.repair.text, vocab)
+        if rep.fixed_by_lexicon:
+            br.repair.text = rep.text
+            br.repair.notes.append(
+                f"حُسم {rep.fixed_by_lexicon} موضعاً مُبهَماً بمعجم الوثيقة الداخليّ"
+            )
+            if Stage.REPAIR_LAM_ALEF not in br.repair.stages_applied:
+                br.repair.stages_applied.append(Stage.REPAIR_LAM_ALEF)
+
+
 def _final_confidence(dg: Diagnosis, order_conf: float, stages: list[Stage]) -> float:
     """
     ثقة الأنبوب = أضعف حلقةٍ فيه.
@@ -205,19 +371,161 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
     كل صفحة تُشخَّص وتُعالَج مستقلةً — عمداً. الملف الواحد قد يخلط
     صفحاتٍ سليمةً بأخرى معطوبة (فصلٌ لُصق من مصدر آخر، جدولٌ صُدِّر
     بمحرّك مختلف). التشخيص الجَمعيّ يخفي هذا.
+
+    إن كان ``harvest_document_lexicon`` مفعّلاً (الافتراضيّ)، تُجمع كلمات
+    الصفحات بعد الإصلاح وتُمرَّر معجماً لترقيع «المجالت» وأمثالها.
+
+    مع ``layout="auto"`` (افتراضيّ منذ 0.8.0): تُكتشف الأعمدة والترويسة
+    والجداول من هندسة الجليفات، ويُصلَح كل سطر/خلية على حدة.
     """
     cfg = config or PipelineConfig()
-    extractor = get_extractor(cfg.extractor)
+
+    # مرِّر وضع البنية للمستخرج إن دعمه
+    if cfg.extractor == "auto":
+        from .extractors import PyMuPDFExtractor
+
+        extractor = (
+            PyMuPDFExtractor(layout_mode=cfg.layout)
+            if PyMuPDFExtractor.available()
+            else get_extractor("auto")
+        )
+    else:
+        from .extractors import REGISTRY
+
+        cls = REGISTRY.get(cfg.extractor)
+        if cls is not None and cfg.extractor == "pymupdf":
+            extractor = cls(layout_mode=cfg.layout)  # type: ignore[call-arg]
+        else:
+            extractor = get_extractor(cfg.extractor)
+
+    page_cfg = replace(cfg, harvest_document_lexicon=False)
 
     doc = DocumentResult(path=path)
     doc.metadata["extractor"] = extractor.name
+    doc.metadata["layout"] = cfg.layout
 
     for raw in extractor.pages(path):
-        result = repair_text(raw.text, cfg)
-        if raw.is_empty and raw.has_images:
-            result.notes.append("صفحة بلا نصّ وفيها صور — ممسوحة ضوئياً على الأرجح")
-        doc.pages.append(
-            PageResult(page_number=raw.number, repair=result, fonts=raw.fonts)
+        page = _extract_one_page(raw, page_cfg)
+        doc.pages.append(page)
+
+    if cfg.harvest_document_lexicon and cfg.enable_lam_alef_repair and doc.pages:
+        vocab = harvest_document_lexicon(p.text for p in doc.pages)
+        if cfg.lexicon:
+            vocab |= set(cfg.lexicon)
+        fixed_pages = 0
+        for page in doc.pages:
+            rep = repair_lam_alef_transposition(page.repair.text, vocab)
+            if rep.text != page.repair.text:
+                page.repair.text = rep.text
+                fixed_pages += 1
+                page.repair.notes.append(
+                    f"معجم الوثيقة: حُسم {rep.fixed_by_lexicon} مُبهَم "
+                    f"+ {rep.fixed_decisive} قاطع عبر الصفحات"
+                )
+                if Stage.REPAIR_LAM_ALEF not in page.repair.stages_applied:
+                    page.repair.stages_applied.append(Stage.REPAIR_LAM_ALEF)
+        doc.metadata["document_lexicon_size"] = len(vocab)
+        doc.metadata["document_lexicon_pages_touched"] = fixed_pages
+
+    doc.metadata["max_columns"] = max((p.n_columns for p in doc.pages), default=1)
+    doc.metadata["table_count"] = sum(len(p.tables) for p in doc.pages)
+    return doc
+
+
+def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
+    """صفحة واحدة: بنيويّ إن لزم، وإلا خطّيّ كلاسيكي."""
+    from .layout import Glyph, analyze_layout
+
+    layout = raw.layout
+    if raw.glyphs:
+        gs = [Glyph(y=y, x=x, text=t, size=s) for y, x, t, s in raw.glyphs]
+        layout = analyze_layout(
+            gs,
+            page_width=raw.width or 595.0,
+            page_height=raw.height or 842.0,
+            config=cfg.layout_config,
+            mode=cfg.layout,
         )
 
-    return doc
+    structural = (
+        layout is not None
+        and cfg.repair_per_block
+        and cfg.layout != "linear"
+        and (
+            layout.n_columns > 1
+            or layout.tables
+            or layout.headers
+            or layout.footers
+        )
+    )
+
+    if structural:
+        blocks_in = layout.to_blocks(page_number=raw.number)
+        if blocks_in:
+            repaired = repair_blocks(blocks_in, cfg)
+            by_id = {b.id: b.text for b in repaired.blocks if b.id}
+            text = layout.reassemble_from_blocks(by_id, page_number=raw.number)
+            # تشخيص نهائي على المُجمَّع — السطور أُصلحت؛ لا عكس جماعيّ قسري
+            final = repair_text(text, cfg)
+            notes = list(dict.fromkeys([*final.notes, *layout.notes]))  # فريد مع حفظ الترتيب
+            notes.append(
+                f"بنيويّ: {layout.n_columns} عمود، "
+                f"{len(layout.tables)} جدول، "
+                f"{len(layout.headers)} ترويسة، {len(layout.footers)} تذييل"
+            )
+            result = RepairResult(
+                text=final.text,
+                original=raw.text,
+                diagnosis=final.diagnosis,
+                stages_applied=final.stages_applied,
+                confidence=min(repaired.confidence, final.confidence),
+                notes=notes,
+            )
+            if raw.is_empty and raw.has_images:
+                result.notes.append(
+                    "صفحة بلا نصّ وفيها صور — ممسوحة ضوئياً على الأرجح"
+                )
+            return PageResult(
+                page_number=raw.number,
+                repair=result,
+                fonts=raw.fonts,
+                layout=layout,
+                blocks=repaired,
+                n_columns=layout.n_columns,
+                tables=_repaired_tables(layout, by_id, raw.number),
+            )
+
+    # مسار خطّيّ — صفحة عمود واحد بلا ترويسة/جدول مميّزين
+    source = layout.plain_text if layout is not None else raw.text
+    result = repair_text(source, cfg)
+    if raw.is_empty and raw.has_images:
+        result.notes.append("صفحة بلا نصّ وفيها صور — ممسوحة ضوئياً على الأرجح")
+    if layout is not None and layout.notes:
+        result.notes.extend(layout.notes)
+    return PageResult(
+        page_number=raw.number,
+        repair=result,
+        fonts=raw.fonts,
+        layout=layout,
+        n_columns=layout.n_columns if layout else 1,
+        tables=_raw_tables(layout) if layout else [],
+    )
+
+
+def _repaired_tables(layout, by_id: dict[str, str], page_number: int) -> list[list[list[str]]]:
+    out: list[list[list[str]]] = []
+    for ti, table in enumerate(layout.tables):
+        grid = [
+            [
+                by_id.get(f"p{page_number}t{ti}r{i}c{j}", cell)
+                for j, cell in enumerate(row)
+            ]
+            for i, row in enumerate(table.rows)
+        ]
+        out.append(grid)
+    return out
+
+
+def _raw_tables(layout) -> list[list[list[str]]]:
+    return [t.rows for t in layout.tables]
+

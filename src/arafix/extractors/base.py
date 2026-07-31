@@ -14,6 +14,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass
@@ -24,6 +25,13 @@ class RawPage:
     text: str
     fonts: list[str] = field(default_factory=list)
     has_images: bool = False
+    #: عرض/ارتفاع الصفحة بنقاط PDF — للتحليل البنيويّ.
+    width: float = 0.0
+    height: float = 0.0
+    #: جليفات هندسية ``(y, x, text, size)`` إن وفّرها المحرّك.
+    glyphs: list[tuple[float, float, str, float]] = field(default_factory=list)
+    #: ``PageLayout`` جاهز إن حُسب أثناء الاستخراج.
+    layout: Any = None
 
     @property
     def is_empty(self) -> bool:

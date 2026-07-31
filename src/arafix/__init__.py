@@ -53,7 +53,11 @@ from .evaluate import (
     wer,
 )
 from .extractors import Extractor, RawPage, get_extractor, register
-from .hygiene import count_artifacts, sanitize_extraction
+from .hygiene import (
+    count_artifacts,
+    fold_arabic_punct_confusables,
+    sanitize_extraction,
+)
 from .lamalef import (
     LamAlefReport,
     detect_lam_alef_transposition,
@@ -130,6 +134,7 @@ __all__ = [
     # نظافة الاستخراج
     "sanitize_extraction",
     "count_artifacts",
+    "fold_arabic_punct_confusables",
     # البنية
     "Glyph",
     "LayoutLine",

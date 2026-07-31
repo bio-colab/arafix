@@ -60,6 +60,20 @@ class TestHygiene:
         r = repair_text(raw)
         assert r.text.strip() == "مرحبا"
 
+    def test_thousands_sep_becomes_arabic_comma_in_prose(self):
+        """macOS CI: Arial/cmap يُخرج U+066C بدل الفاصلة العربية U+060C."""
+        raw = "أولاً\u066c ثانياً\u066c ثالثاً؛ ثم توقف!"
+        assert sanitize_extraction(raw) == "أولاً، ثانياً، ثالثاً؛ ثم توقف!"
+        r = repair_text(raw)
+        assert "أولاً، ثانياً، ثالثاً؛ ثم توقف!" in r.text
+        assert Stage.HYGIENE in r.stages_applied
+
+    def test_thousands_sep_kept_between_digits(self):
+        """لا تُمسّ ١٬٠٠٠ — فاصل الآلاف الحقيقي."""
+        raw = "السعر ١\u066c٠٠٠ دينار"
+        assert sanitize_extraction(raw) == raw
+        assert "\u066c" in repair_text(raw).text
+
 
 class TestRepairBlocks:
     def test_independent_cells(self):

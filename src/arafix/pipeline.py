@@ -164,7 +164,11 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                 bits.append(f"{arts['nbsp_like']} مسافة يونيكود")
             if arts["soft_hyphen"]:
                 bits.append(f"{arts['soft_hyphen']} soft-hyphen→-")
-            notes.append("نُظِّفت آثار الاستخراج: " + "، ".join(bits))
+            if arts.get("thousands_as_comma"):
+                bits.append(f"{arts['thousands_as_comma']} ٬→،")
+            notes.append(
+                "نُظِّفت آثار الاستخراج: " + ("، ".join(bits) if bits else "ترقيم/مسافات")
+            )
 
     # --- الدرجة ٠ -------------------------------------------------------
     dg: Diagnosis = diagnose(current, th)

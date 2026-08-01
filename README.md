@@ -4,6 +4,7 @@
 ![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
 ![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
 ![Typing](https://img.shields.io/badge/typing-py.typed-blue)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21733978.svg)](https://doi.org/10.5281/zenodo.21733978)
 
 **Recover broken Arabic text from PDFs** — diagnose first, then apply a graded repair ladder. Not a single hammer, and not “just run OCR.”
 
@@ -601,15 +602,21 @@ MCS/DBR/BFE/SHDR في `test_scientific_floors`.
 
 If you use `arafix` in academic work, please cite it as:
 
+**APA:**
+
+Sharar, E. (2026). *arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs* (Version 0.9.0) [Computer software]. https://doi.org/10.5281/zenodo.21733978
+
+**BibTeX:**
+
 ```bibtex
 @software{sharar_arafix_2026,
   author  = {Sharar, Elias},
-  title   = {arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs},
+  title   = {{arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs}},
   year    = {2026},
   version = {0.9.0},
+  doi     = {10.5281/zenodo.21733978},
   url     = {https://github.com/bio-colab/arafix},
-  license = {MIT},
-  orcid   = {0009-0004-8402-4399}
+  license = {MIT}
 }
 ```
 
@@ -621,3 +628,4 @@ See [CITATION.cff](./CITATION.cff) for machine-readable citation metadata
 MIT — انظر [LICENSE](LICENSE).
 
 </div>
+

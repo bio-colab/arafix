@@ -86,10 +86,10 @@ def order_combining_marks(marks: str) -> str:
     (``ُّ`` vs ``ُّ``). Stacked Arabic is conventionally shadda then vowel
     (``حَقٌّ`` not ``حٌّق`` with shadda after tanwin on the wrong slot).
 
-    >>> order_combining_marks("\u064c\u0651")  # dammatan + shadda
-    'ٌّ'
+    >>> order_combining_marks("\u064c\u0651")  # dammatan then shadda in
+    '\u0651\u064c'
     >>> order_combining_marks("\u0651\u064e")  # already shadda + fatha
-    'َّ'
+    '\u0651\u064e'
     """
     if not marks or len(marks) == 1:
         return marks

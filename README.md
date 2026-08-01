@@ -12,7 +12,8 @@
 | **Core** | Zero dependencies (stdlib only) for text stages 0–2 |
 | **PDF** | `pip install "arafix[pdf]"` — geometric extract + Arabic repair |
 | **Layout** | Multi-column RTL, headers/footers, simple tables (`layout=auto`) |
-| **Status** | **Alpha 0.8** — production-curious, still evolving |
+| **Quality** | Cluster-aware diacritics, PDF homoglyph fold, LTR islands, scientific metrics (MCS/DBR/BFE/SHDR) |
+| **Status** | **Alpha 0.9** — real-PDF regression floors; still evolving |
 
 ### Install
 
@@ -40,6 +41,7 @@ print(doc.confidence, doc.pages[0].n_columns)
 arafix diagnose thesis.pdf -v
 arafix extract  thesis.pdf -o out.txt
 arafix extract  paper.pdf --layout full -v --tables
+arafix eval     thesis.pdf --truth thesis.txt --scientific
 ```
 
 ### What it fixes (and what it doesn’t)
@@ -51,6 +53,9 @@ arafix extract  paper.pdf --layout full -v --tables
 | `Ø§Ù„…` mojibake | UTF-8 read as Latin-1 | 0 |
 | `المجالت` / `االنترنيت` | Lam-alef ligature broken before reorder | 1a→2→1b |
 | `()مقدمة` | Engine bidi vs neutrals | geometric read |
+| Misplaced harakat / `َحرب` | Mn glued to space or wrong base | extract + cluster attach (0.9) |
+| `ی`/`ھ` vs `ي`/`ه` | PDF font ToUnicode lookalikes | `fold_pdf_homoglyphs` (0.9) |
+| `7-13` / broken `M/V Ever` | LTR islands after reverse | LTR protect + seq (0.9) |
 | Two columns mixed | Line-joined gutters | layout (0.8) |
 | Empty / PUA soup | Broken ToUnicode / scan | 3 / 4 (OCR not shipped) |
 
@@ -529,7 +534,9 @@ class PdfMinerExtractor(Extractor):
 - [x] معجم الوثيقة الداخليّ يحسم «المجالت» عبر الصفحات (0.7.0)
 - [x] جسر MarkItDown — plugin + `fix_markitdown` (0.7.0)
 - [x] أعمدة RTL + ترويسة/تذييل + جداول بنيوية (0.8.0)
-- [ ] حزمة ملفات مرجعية (corpus) عامّة لقياس الانحدار
+- [x] حماية التشكيل العنقودية + طيّ هجائن PDF + جزر LTR (0.9.0)
+- [x] طبقة علمية MCS/DBR/BFE/SHDR + corpus انحدار حقيقي (0.9.0)
+- [ ] حزمة ملفات مرجعية أوسع (أكثر من corpus واحد)
 - [ ] حسمُ «المجالت» بنموذج n-gram على مستوى المحرف (اقتباساً من CAMeL)
 - [ ] إخراج PDF قابل للبحث بالنصّ المصحَّح
 
@@ -544,7 +551,8 @@ class PdfMinerExtractor(Extractor):
 </div>
 
 ```bash
-pytest                      # ~١٨٠ اختباراً (+ hygiene/blocks/plugin)
+pytest                      # unit + integration + real-PDF floors
+pytest tests/test_scientific_floors.py -v
 pytest --doctest-modules src/arafix
 ruff check src tests
 ```
@@ -552,7 +560,8 @@ ruff check src tests
 <div dir="rtl">
 
 كل اختبارٍ يوثّق **قراراً** لا سطر كود. فإن كسرته يوماً، عرفت من اسمه
-أيّ قرارٍ كسرت ولماذا اتُّخذ أوّلاً.
+أيّ قرارٍ كسرت ولماذا اتُّخذ أوّلاً. ومن 0.9.0: corpus حقيقي + بوابات
+MCS/DBR/BFE/SHDR في `test_scientific_floors`.
 
 ---
 
@@ -566,7 +575,6 @@ ruff check src tests
 - **الدرجة ٣ تعجز عن الخطوط CID** ذات الأسماء العديمة الدلالة. تُصرّح
   بالعجز (تغطية منخفضة) ولا تخترع.
 - **كاشف الاتجاه احتماليّ** لا حتميّ — ولذلك يُرجع درجةً وشواهد لا حكماً.
-- **الجداول والأعمدة** خارج النطاق حالياً؛ الاستخراج خطّيّ.
 - **ترقيع لام-ألف الموروث ناقصٌ بطبعه.** يُصلح القاطع (ألفان متجاورتان:
   `االنترنيت`) يقيناً، ويُبلّغ عن المُبهَم (`المجالت`) ولا يخمّنه — إذ لا
   قاعدةَ إملائية تميّزه عن «أفعالهم». مرِّر `lexicon=` ليُحسم. **والوقاية
@@ -574,11 +582,13 @@ ruff check src tests
 - **الأعمدة والجداول** مدعومة منذ 0.8.0 عبر `layout="auto"|"columns"|"full"`
   (ميزاب أفقي + RTL). الكشف إحصائيّ: صفحات بثلاثة أعمدة متداخلة أو
   جداول بلا فجوات واضحة قد تحتاج ضبط `LayoutConfig`.
-- **لم تُختبر إلا على ملفاتٍ مولَّدة**، وكلُّ رقمٍ في هذا الملف مقيسٌ
-  عليها. وهو نصفُ حجّة. `arafix eval --compare` موجودٌ لتُتمّها أنت على
-  ملفاتك. وإن كسرَتها ملفاتُك، افتح issue بها — هذا أنفع إسهامٍ ممكن:
-  عطبُ الرباط الذي أصلحته 0.2.0، وأعطابُ الترقيم الثلاثة في 0.3.0،
-  كلُّها وصلت من مستعملٍ فعل ذلك بالضبط.
+- **طيّ الهجائن افتراضيّ** يستهدف العربية الفصحى؛ عطّله للفارسية/الأوردية
+  إن احتجتَ الإبقاء على `ی/ھ`.
+- **لا نخترع تشكيلاً غائباً من طبقة PDF.** إن رسم الملف شدّةً بلا تنوين،
+  لا تُضاف. القياس (`DBR`) يقارن الالتصاق لا اختراع العلامات.
+- **Corpus انحدار حقيقي** في `tests/fixtures/real_pdf_narrative/` منذ 0.9.0
+  — ما زال عيّنة واحدة؛ `arafix eval --compare --scientific` على ملفاتك
+  هو الحجّة الأقوى. إن كسرَتها ملفاتُك، افتح issue.
 
 ---
 

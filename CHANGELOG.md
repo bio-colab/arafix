@@ -1,5 +1,70 @@
 # سجلّ التغييرات
 
+## 0.9.0
+
+**جودة الاستخراج على PDF حقيقي** — حماية التشكيل، طيّ الهجائن، جزر LTR،
+وطبقة قياس علميّة مع بوابات انحدار.
+
+### إصلاحات جوهرية (استخراج + اتجاه)
+
+- **P0 — ارتباط التشكيل بالقاعدة:** ربط علامات Mn بأقرب حرف أساس هندسياً
+  (لا بآخر محرف في التيار)، فلا تخرج كلمات تبدأ بفتحة/ضمّة.
+- **P2a — أشكال التشكيل الرسومية:** رباطات الشدة+الحركة (`U+FC5E–FC63`)
+  وأشكال التشكيل الفاصلة (`U+FE70–FE7F`) تُعامل كعلامات لا كحروف أساس —
+  أصل أعطال مثل `رُوِّج` → `رُِّوج` و`حقٌّ` المبعثرة.
+- **ترتيب العلامات:** `order_combining_marks` — الشدة قبل الحركات على
+  الحرف الواحد.
+- **P1 — طيّ الهجائن:** `fold_pdf_homoglyphs` (افتراضيّ) يطوي `ی/ھ/ک` →
+  `ي/ه/ك` من خطوط PDF؛ يُطفأ بـ
+  `NormalizeConfig(fold_pdf_homoglyphs=False)`.
+- **P1 — جزر LTR:** توسيع حماية المقاطع (تواريخ `13-7`، `M/V Ever`،
+  `3.5%`، شرطات en-dash) + إعادة ترتيب جزر LTR بـ `seq` التيار بعد فرز
+  `x` في `layout.join_glyphs_preserving_ltr`.
+
+### طبقة علمية (`scientific.py`)
+
+مقاييس لا تخفي العطب خلف CER وحده:
+
+| الرمز | المعنى |
+|---|---|
+| **MCS** | استمرارية الهيكل الحرفي (مورفولوجيا) |
+| **DBR** | مخزون التشكيل + **دقة الالتصاق** بالقاعدة |
+| **BFE** | إنتروبيا تدفّق الاتجاه مقابل المرجع |
+| **SHDR** | معدّل انجراف الهجائن (ی/ھ…) |
+
+```bash
+arafix eval file.pdf --truth truth.txt --scientific
+```
+
+```python
+from arafix import scientific_audit, extract_pdf
+print(scientific_audit(open("t.txt", encoding="utf-8-sig").read(),
+                       extract_pdf("f.pdf").text))
+```
+
+### اختبارات وانحدار
+
+- corpus حقيقي: `tests/fixtures/real_pdf_narrative/` (نص + PDF متطابقان).
+- `tests/test_regression_real_pdf.py` — بوابات CER/محتوى/تشكيل/LTR.
+- **P2b — `tests/test_scientific_floors.py`:** MCS/DBR ≥ 0.99، attach ≥ 0.99،
+  SHDR = 0، BFE Δref ≤ 0.02 — لا تُخفَّض بلا قرار صريح.
+- على corpus السرد: DBR attach **1.0**، CER كامل ~**1.4٪** (بقايا زخرفة
+  `_` غير موجودة في طبقة PDF).
+
+### واجهة عامة جديدة
+
+- `fold_pdf_homoglyphs`, `order_combining_marks`
+- `scientific_audit`, `morphological_continuity`, `diacritic_base_matrix`,
+  `bidi_flow_entropy`, `homoglyph_drift`
+- `NormalizeConfig.fold_pdf_homoglyphs` (افتراضي `True`)
+- `Glyph.seq` + `join_glyphs_preserving_ltr`
+
+### توافق
+
+- النواة ما زالت بلا تبعيّات؛ PDF اختياريّ عبر `arafix[pdf]`.
+- السلوك الافتراضي يتغيّر بطيّ الهجائن (مقصود لاسترجاع عربي قياسي).
+  للنصّ الفارسي: `fold_pdf_homoglyphs=False`.
+
 ## 0.8.0
 
 **الدرجة البنيوية** — أعمدة RTL، ترويسة/تذييل، جداول من هندسة الجليفات.

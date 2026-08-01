@@ -489,6 +489,60 @@ class TestClusterAwareReversal:
         assert grapheme_clusters("اً") == ["اً"]
         assert len(grapheme_clusters("مُحَمَّد")) == 4
 
+    def test_visual_leading_mark_binds_to_following_base(self):
+        """
+        P0: visual PDF streams often emit Mn *before* the base.
+        Pending marks must glue forward, never sit as a free cluster that
+        becomes a leading haraka after reverse.
+        """
+        assert grapheme_clusters("\u064e\u0628") == ["بَ"]
+        assert reverse_visual_line("\u064e\u0628\u0631\u062d") == "حربَ"
+
+    def test_mark_after_space_binds_to_next_letter_not_space(self):
+        """Mn must not attach to whitespace (classic Word→PDF trap)."""
+        assert grapheme_clusters(" \u064e\u0628") == [" ", "بَ"]
+        assert grapheme_clusters("ب\u064e") == ["بَ"]
+        # reverse of visual ``برح`` with fatha pending onto beh: ``َبرح`` style
+        visual = "\u064e\u0628\u0631\u062d \u0646"
+        assert reverse_visual_line(visual) == "ن حربَ"
+
+    def test_shadda_precedes_vowel_on_same_base(self):
+        """P1: stacked marks canonicalize to shadda then vowel."""
+        from arafix.order import order_combining_marks
+
+        # dammatan then shadda in → shadda then dammatan out
+        assert order_combining_marks("\u064c\u0651") == "\u0651\u064c"
+        assert order_combining_marks("\u0651\u064e") == "\u0651\u064e"
+        assert grapheme_clusters("ح\u064c\u0651") == ["ح\u0651\u064c"]
+
+
+class TestPdfHomoglyphs:
+    def test_fold_farsi_yeh_and_heh_doachashmee(self):
+        from arafix import NormalizeConfig, fold_pdf_homoglyphs, normalize_text
+
+        assert fold_pdf_homoglyphs("ایران") == "ايران"
+        assert fold_pdf_homoglyphs("ھل") == "هل"
+        assert "ی" not in normalize_text("ایران", NormalizeConfig())
+        assert "ی" in normalize_text(
+            "ایران", NormalizeConfig(fold_pdf_homoglyphs=False)
+        )
+
+
+class TestLtrIslandProtection:
+    def test_hyphenated_date_survives_line_reverse(self):
+        """Visual LTR date + reversed Arabic → logical date preserved."""
+        assert reverse_visual_line("13-7 ماع") == "عام 13-7"
+
+    def test_multi_token_latin_island(self):
+        """``M/V Ever`` restores as one island after line reverse."""
+        assert reverse_visual_line("M/V Ever ماع") == "عام M/V Ever"
+
+    def test_percent_stays_after_number(self):
+        assert reverse_visual_line("3.5% ماع") == "عام 3.5%"
+
+    def test_year_still_protected(self):
+        assert reverse_visual_line("2024 ماع") == "عام 2024"
+
 
 class TestSpacingMarkForms:
     """

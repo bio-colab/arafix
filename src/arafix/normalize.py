@@ -37,6 +37,7 @@ __all__ = [
     "NormalizeConfig",
     "fold_presentation_forms",
     "fold_simple_forms",
+    "fold_pdf_homoglyphs",
     "expand_deferred_forms",
     "expand_ligatures",
     "normalize_text",
@@ -59,6 +60,10 @@ class NormalizeConfig:
     unify_taa_marbuta: bool = False
     unify_alef_maqsura: bool = False
 
+    #: طيّ محارف PDF الهجينة الشائعة في خطوط عربية (ی/ھ → ي/ه).
+    #: مفعّل افتراضاً: استرجاع عربي قياسي من ToUnicode رديء؛ أطفئه للنصّ الفارسي.
+    fold_pdf_homoglyphs: bool = True
+
     #: حذف التشكيل. لا تفعّله إلا إن كنت تعرف لماذا.
     strip_diacritics: bool = False
 
@@ -73,6 +78,35 @@ class NormalizeConfig:
 
 _ALEF_VARIANTS = "أإآٱ"
 _ZERO_WIDTH = (ZWJ, ZWNJ, "\u200b", "\u200e", "\u200f", "\ufeff")
+
+# PDF fonts often map Arabic yeh/heh to Farsi / Doachashmee codepoints.
+_PDF_HOMOGLYPH_TABLE = str.maketrans(
+    {
+        "\u06cc": "\u064a",  # ARABIC LETTER FARSI YEH → YEH
+        "\u06cd": "\u064a",  # YEH WITH TAIL → YEH
+        "\u06be": "\u0647",  # HEH DOACHASHMEE → HEH
+        "\u06c1": "\u0647",  # HEH GOAL → HEH
+        "\u06c2": "\u0647",  # HEH GOAL WITH HAMZA → HEH
+        "\u06a9": "\u0643",  # KEHEH → KAF
+        "\u06c3": "\u0629",  # TEH MARBUTA GOAL → TEH MARBUTA
+    }
+)
+
+
+def fold_pdf_homoglyphs(text: str) -> str:
+    """
+    Fold PDF/font lookalikes to standard Arabic letters.
+
+    Word and many CJK-oriented fonts encode Arabic yeh/heh as Farsi Yeh
+    (U+06CC) and Heh Doachashmee (U+06BE). Readers see the right shapes;
+    string equality, search, and CER do not.
+
+    >>> fold_pdf_homoglyphs("ایران")
+    'ايران'
+    >>> fold_pdf_homoglyphs("ھل")
+    'هل'
+    """
+    return text.translate(_PDF_HOMOGLYPH_TABLE) if text else text
 
 
 _SIMPLE_TABLE = {ord(k): v for k, v in SIMPLE_PF_TO_BASE.items()}
@@ -162,6 +196,9 @@ def normalize_text(text: str, config: NormalizeConfig | None = None) -> str:
         out = out.replace("ة", "ه")
     if cfg.unify_alef_maqsura:
         out = out.replace("ى", "ي")
+
+    if cfg.fold_pdf_homoglyphs:
+        out = fold_pdf_homoglyphs(out)
 
     if cfg.apply_nfc:
         out = unicodedata.normalize("NFC", out)

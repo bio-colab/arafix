@@ -23,7 +23,12 @@ from .extractors import get_extractor
 from .hygiene import count_artifacts, sanitize_extraction
 from .lamalef import repair_lam_alef_transposition
 from .layout import LayoutConfig, LayoutMode
-from .normalize import NormalizeConfig, expand_deferred_forms, normalize_text
+from .normalize import (
+    NormalizeConfig,
+    expand_deferred_forms,
+    fold_pdf_homoglyphs,
+    normalize_text,
+)
 from .order import ReorderConfig, fix_order
 from .types import (
     BlockResult,
@@ -259,6 +264,13 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     if dg.has(Defect.NO_TEXT_LAYER):
         notes.append("لا طبقة نصية — هذه حالة الدرجة ٤ (OCR) الوحيدة المشروعة.")
 
+    # --- P1: PDF homoglyph fold (always, even when PF normalize was skipped) -
+    if cfg.normalize.fold_pdf_homoglyphs:
+        folded = fold_pdf_homoglyphs(current)
+        if folded != current:
+            current = folded
+            notes.append("طُوِيَت محارف PDF الهجينة (ی/ھ → ي/ه)")
+
     confidence = min(_final_confidence(dg, order_conf, stages), lam_conf)
 
     return RepairResult(
@@ -444,7 +456,11 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
 
     layout = raw.layout
     if raw.glyphs:
-        gs = [Glyph(y=y, x=x, text=t, size=s) for y, x, t, s in raw.glyphs]
+        gs = []
+        for g in raw.glyphs:
+            y, x, t, s = g[0], g[1], g[2], g[3]
+            sq = int(g[4]) if len(g) > 4 else 0
+            gs.append(Glyph(y=y, x=x, text=t, size=s, seq=sq))
         layout = analyze_layout(
             gs,
             page_width=raw.width or 595.0,

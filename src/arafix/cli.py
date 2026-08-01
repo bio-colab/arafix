@@ -177,6 +177,17 @@ def _cmd_eval(args: argparse.Namespace) -> int:
             print(f"    المرجع : {ref[:70]!r}")
             print(f"    الناتج : {hyp[:70]!r}")
 
+    if getattr(args, "scientific", False):
+        from pathlib import Path
+
+        from .pipeline import extract_pdf
+        from .scientific import scientific_audit
+
+        truth = Path(args.truth).read_text(encoding="utf-8-sig")
+        hyp = extract_pdf(args.path).text
+        print("\n── scientific (MCS / DBR / BFE / SHDR) ──")
+        print(scientific_audit(truth, hyp, label=best.label))
+
     if len(reports) > 1:
         gap = reports[-1].cer.rate - best.cer.rate
         print(f"\nأفضل مسار: {best.label} — يسبق أسوأهم بـ {gap:.2%} في CER")
@@ -265,6 +276,11 @@ def build_parser() -> argparse.ArgumentParser:
     v.add_argument("--compare", action="store_true", help="قِس كل المسارات ورتّبها")
     v.add_argument("--ignore-diacritics", action="store_true")
     v.add_argument("--ignore-punctuation", action="store_true")
+    v.add_argument(
+        "--scientific",
+        action="store_true",
+        help="MCS / DBR / BFE / SHDR (scientific layer)",
+    )
     v.add_argument("-v", "--verbose", action="store_true", help="اسرد أسوأ السطور")
     v.set_defaults(func=_cmd_eval)
 

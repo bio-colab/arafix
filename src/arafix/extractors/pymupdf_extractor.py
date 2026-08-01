@@ -54,15 +54,70 @@ class PyMuPDFExtractor(Extractor):
 
     LINE_TOLERANCE = 0.5
 
-    def _extract_glyphs(self, page) -> list[tuple[float, float, str, float]]:
-        """
-        يقرأ تيار الرسم: ``(y, x, text, size)``.
+    @staticmethod
+    def _is_markable_base(text: str) -> bool:
+        """Letter base that may carry tashkeel — not space, punct, or digits."""
+        if not text:
+            return False
+        return unicodedata.category(text[0]).startswith("L")
 
-        الربط من التيار (التشكيل)، لا من أقرب x — انظر التعليق التاريخي
-        في النسخ السابقة.
+    @staticmethod
+    def _as_combining_marks(ch: str) -> str | None:
         """
-        clusters: list[tuple[float, float, str, float]] = []
+        Expand pure-diacritic presentation forms to Mn marks.
+
+        Word→PDF often emits shadda+vowel *ligatures* (U+FC5E–FC63, U+FCF2–FCF4)
+        and spacing harakat (U+FE70–FE7F) as category **Lo**. Treating them as
+        letter bases creates phantom letters and shifts real attachment
+        (``رُوِّج`` → ``رُِّوج``). Only expansions that are *entirely* Mn are
+        treated as marks; lam-alef and letter ligatures stay bases.
+        """
+        if unicodedata.category(ch) == "Mn":
+            return ch
+        from arafix.unicode_tables import DEFERRED_PF_TO_BASE, SPACING_MARK_PF_TO_BASE
+
+        if ch in SPACING_MARK_PF_TO_BASE:
+            return SPACING_MARK_PF_TO_BASE[ch]
+        exp = DEFERRED_PF_TO_BASE.get(ch)
+        if exp and all(unicodedata.category(c) == "Mn" for c in exp):
+            return exp
+        return None
+
+    @staticmethod
+    def _attach_mark(base_text: str, mark: str) -> str:
+        """Append *mark* to a base cluster with shadda-before-vowel order."""
+        from arafix.order import order_combining_marks
+
+        if not base_text:
+            return mark
+        base, existing = base_text[0], base_text[1:]
+        return base + order_combining_marks(existing + mark)
+
+    def _extract_glyphs(self, page) -> list[tuple[float, float, str, float, int]]:
+        """
+        Read the paint stream: ``(y, x, text, size, seq)``.
+
+        **P0 — nearest-base Mn attachment** (geometry, not stream-previous).
+
+        **P2a — cluster-aware mark attachment:**
+
+        1. Collect letter bases and diacritics separately. Diacritics include
+           true Mn **and** pure-mark presentation forms (shadda+vowel
+           ligatures, spacing harakat PF).
+        2. Bind each mark to the nearest letter base on the same line.
+        3. **Consecutive stack stickiness:** if a mark is within
+           ``Δx < 0.45·size`` of the previous mark's position, prefer the
+           same base (vertical / ligature stacks share one carrier).
+        4. Canonicalize mark order on the base (shadda before vowels).
+        5. Preserve stream ``seq`` for LTR island repair in layout.
+
+        Never glue marks onto whitespace or punctuation.
+        """
+        bases: list[list] = []  # mutable [y, x, text, size, seq]
+        # (y, x, ch, size) — size carried for stack thresholds
+        marks: list[tuple[float, float, str, float]] = []
         size_hint = 10.0
+        seq = 0
         for span in sorted(page.get_texttrace(), key=lambda s: s.get("seqno", 0)):
             if span.get("type", 0) != 0:
                 continue
@@ -71,30 +126,83 @@ class PyMuPDFExtractor(Extractor):
                 size_hint = size
             for uni, _gid, origin, _bbox in span["chars"]:
                 ch = chr(uni)
-                if clusters and unicodedata.category(ch) == "Mn":
-                    y, x, text, sz = clusters[-1]
-                    clusters[-1] = (y, x, text + ch, sz)
+                y, x = float(origin[1]), float(origin[0])
+                seq += 1
+                mark_exp = self._as_combining_marks(ch)
+                if mark_exp is not None:
+                    # Ligature PF may expand to several Mn at the same origin.
+                    for m in mark_exp:
+                        marks.append((y, x, m, size))
                 else:
-                    clusters.append((origin[1], origin[0], ch, size))
-        return clusters
+                    bases.append([y, x, ch, size, seq])
+
+        last_i: int | None = None
+        last_mx: float | None = None
+        last_my: float | None = None
+
+        for my, mx, mch, _msz in marks:
+            best_i: int | None = None
+            best_d = float("inf")
+            cands: list[tuple[float, int]] = []
+            for i, b in enumerate(bases):
+                if not self._is_markable_base(b[2]):
+                    continue
+                by, bx, _text, bsz = b[0], b[1], b[2], b[3]
+                dy = abs(by - my)
+                dx = abs(bx - mx)
+                line_tol = max(bsz * 0.65, 3.0)
+                dist = dx + (1000.0 * dy if dy > line_tol else 0.15 * dy)
+                cands.append((dist, i))
+                if dist < best_d:
+                    best_d = dist
+                    best_i = i
+
+            # Sticky only for co-located marks (same origin: expanded ligature PF
+            # or true vertical stack at identical paint position). Wider Δx
+            # wrongly merges neighbouring letters' harakat.
+            if (
+                last_i is not None
+                and last_mx is not None
+                and last_my is not None
+                and best_i is not None
+                and abs(mx - last_mx) <= 0.75
+                and abs(my - last_my) <= 0.75
+            ):
+                best_i = last_i
+
+            if best_i is not None:
+                bases[best_i][2] = self._attach_mark(bases[best_i][2], mch)
+                last_i, last_mx, last_my = best_i, mx, my
+
+        return [(y, x, text, sz, sq) for y, x, text, sz, sq in bases]
+
+    @staticmethod
+    def _glyphs_to_layout_glyphs(glyphs: list[tuple]) -> list:
+        from arafix.layout import Glyph
+
+        out = []
+        for g in glyphs:
+            y, x, t, s = g[0], g[1], g[2], g[3]
+            sq = int(g[4]) if len(g) > 4 else 0
+            out.append(Glyph(y=y, x=x, text=t, size=s, seq=sq))
+        return out
 
     def _geometric_text_from_glyphs(
-        self, glyphs: list[tuple[float, float, str, float]]
+        self, glyphs: list[tuple],
     ) -> str:
-        from arafix.layout import Glyph, analyze_layout_simple_linear
+        from arafix.layout import analyze_layout_simple_linear
 
-        gs = [Glyph(y=y, x=x, text=t, size=s) for y, x, t, s in glyphs]
-        return analyze_layout_simple_linear(gs)
+        return analyze_layout_simple_linear(self._glyphs_to_layout_glyphs(glyphs))
 
     def _build_layout(
         self,
-        glyphs: list[tuple[float, float, str, float]],
+        glyphs: list[tuple],
         width: float,
         height: float,
     ):
-        from arafix.layout import Glyph, LayoutConfig, analyze_layout
+        from arafix.layout import LayoutConfig, analyze_layout
 
-        gs = [Glyph(y=y, x=x, text=t, size=s) for y, x, t, s in glyphs]
+        gs = self._glyphs_to_layout_glyphs(glyphs)
         mode = self.layout_mode if self.layout_mode in (
             "auto", "linear", "columns", "full"
         ) else "auto"

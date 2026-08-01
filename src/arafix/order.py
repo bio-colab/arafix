@@ -34,6 +34,7 @@ __all__ = [
     "fix_order",
     "MIRROR_PAIRS",
     "grapheme_clusters",
+    "order_combining_marks",
 ]
 
 
@@ -48,37 +49,122 @@ MIRROR_PAIRS = {
     "\u201c": "\u201d", "\u201d": "\u201c",   # “ ”
 }
 
-#: مقاطع محايدة الاتجاه: تُقرأ يساراً فيميناً في الحالين، فلا تُعكس.
-#: تشمل الأرقام العربية-الهندية (٠-٩) لأنها LTR أيضاً في يونيكود.
-_LTR_RUN = re.compile(
-    r"[0-9\u0660-\u0669\u06F0-\u06F9A-Za-z\u00C0-\u024F]"
-    r"[0-9\u0660-\u0669\u06F0-\u06F9A-Za-z\u00C0-\u024F.,:/\\\-+%°'\u2019]*"
-    r"[0-9\u0660-\u0669\u06F0-\u06F9A-Za-z\u00C0-\u024F]"
+#: LTR atom + continuers (digits, Latin, hyphen/slash inside dates & codes).
+_LTR_ATOM = r"[0-9\u0660-\u0669\u06F0-\u06F9A-Za-z\u00C0-\u024F]"
+_LTR_CONT = (
+    r"[0-9\u0660-\u0669\u06F0-\u06F9A-Za-z\u00C0-\u024F"
+    r".,:/\\\-+%°'\u2019_\u2013\u2014]"
 )
+#: Currency/percent often sit on the edge of a number; after reverse they
+#: land on the wrong side unless the island includes them (``3.5%`` ↔ ``%5.3``).
+_LTR_EDGE = r"[%#$€£]"
+#: Island: optional edge marks + LTR tokens separated by spaces
+#: (``M/V Ever Lovely``, ``13-7``, ``GDP_2024``, ``3.5%``).
+_LTR_RUN = re.compile(
+    rf"{_LTR_EDGE}*{_LTR_ATOM}{_LTR_CONT}*"
+    rf"(?:[ \t]+{_LTR_EDGE}*{_LTR_ATOM}{_LTR_CONT}*)*"
+    rf"{_LTR_EDGE}*"
+)
+
+#: Arabic shadda — must precede vowel marks on the same base (UAX #9 / CLDR).
+_SHADDA = "\u0651"
+_ARABIC_VOWEL_MARKS = frozenset(
+    "\u064b\u064c\u064d\u064e\u064f\u0650\u0652\u0653\u0657\u0658\u0670"
+)
+
+
+def _is_markable_base(ch: str) -> bool:
+    """True if *ch* is a letter that may carry combining marks."""
+    return bool(ch) and unicodedata.category(ch).startswith("L")
+
+
+def order_combining_marks(marks: str) -> str:
+    """
+    Canonical mark order on one base: **shadda, then vowels/other Mn**.
+
+    PDF streams and nearest-base binding can append marks in any order
+    (``ُّ`` vs ``ُّ``). Stacked Arabic is conventionally shadda then vowel
+    (``حَقٌّ`` not ``حٌّق`` with shadda after tanwin on the wrong slot).
+
+    >>> order_combining_marks("\u064c\u0651")  # dammatan + shadda
+    'ٌّ'
+    >>> order_combining_marks("\u0651\u064e")  # already shadda + fatha
+    'َّ'
+    """
+    if not marks or len(marks) == 1:
+        return marks
+    shadda = [c for c in marks if c == _SHADDA]
+    rest = [c for c in marks if c != _SHADDA]
+    return "".join(shadda) + "".join(rest)
+
+
+def _with_ordered_marks(cluster: str) -> str:
+    """Reorder combining marks inside a base+marks cluster."""
+    if len(cluster) < 2:
+        return cluster
+    base, marks = cluster[0], cluster[1:]
+    if not marks:
+        return cluster
+    return base + order_combining_marks(marks)
 
 
 def grapheme_clusters(text: str) -> list[str]:
     """
-    يقسم النصّ عناقيدَ: كلُّ حرفٍ أساس ومعه ما يليه من علاماتٍ لاصقة.
+    Split *text* into grapheme clusters: base letter + its combining marks.
 
-    **وحدةُ العكس هي العنقود لا المحرف** — وهذا ليس تدقيقاً نظرياً.
-    علامات التشكيل (فئة Mn) عرضُها صفر وتشترك في موضع حرفها، فعكسُ
-    نقاط الكود يفصل العلامة عن حرفها ويُلصقها بجارها:
+    **The reverse unit is the cluster, not the code point.** Combining marks
+    (category Mn) have zero advance width and share their base's position;
+    reversing code points tears a mark off its letter:
 
-        أولاً  →  [عكسٌ على المحارف]  →  أوًلا
+        أولاً  →  [code-point reverse]  →  أوًلا
 
-    ونتّبع قاعدة يونيكود: العلامة تلي أساسها. فالعنقود = أساسٌ + ما بعده
-    من علامات، ويُعكس ترتيب العناقيد ويبقى داخلُ كلٍّ منها كما هو.
+    Unicode logical order puts marks *after* their base. Visual-order PDF
+    streams often emit the mark *before* the base (or after a space). Naïvely
+    gluing Mn onto whatever precedes it attaches harakat to spaces/punctuation;
+    after reverse they become leading marks (``َحرب`` instead of ``حربَ``).
+
+    **Grapheme Cluster Protection (P0):**
+
+    * Mn after a letter base → glue to that base (logical Unicode).
+    * Mn otherwise → hold as *pending* and glue onto the next letter base.
+    * Never glue Mn onto whitespace or punctuation.
+    * Orphan marks at end of line attach to the last letter base if any.
+    * Marks on a base are ordered: shadda before vowels (P1).
+
+    Within each cluster, marks stay in logical order (base then marks). Only
+    the sequence of clusters is reversed by :func:`reverse_visual_line`.
 
     >>> grapheme_clusters("\u062b\u0627\u0646\u064a\u0627\u064b.")
     ['ث', 'ا', 'ن', 'ي', 'اً', '.']
+    >>> grapheme_clusters("\u064e\u0628")  # visual: fatha before beh
+    ['بَ']
+    >>> grapheme_clusters(" \u064e\u0628")  # mark after space, before letter
+    [' ', 'بَ']
     """
     out: list[str] = []
+    pending: list[str] = []
+
     for ch in text:
-        if out and unicodedata.category(ch) == "Mn":
-            out[-1] += ch
+        if unicodedata.category(ch) == "Mn":
+            if out and _is_markable_base(out[-1][0]):
+                out[-1] = _with_ordered_marks(out[-1] + ch)
+            else:
+                pending.append(ch)
+            continue
+        if _is_markable_base(ch):
+            out.append(_with_ordered_marks(ch + "".join(pending)))
+            pending.clear()
         else:
             out.append(ch)
+
+    if pending:
+        marks = "".join(pending)
+        for i in range(len(out) - 1, -1, -1):
+            if out[i] and _is_markable_base(out[i][0]):
+                out[i] = _with_ordered_marks(out[i] + marks)
+                break
+        else:
+            out.append(marks)
     return out
 
 

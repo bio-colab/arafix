@@ -28,7 +28,7 @@ MIT license. Primary long-form docs are in Arabic (README).
 
 from __future__ import annotations
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 __license__ = "MIT"
 
 from .adapters import as_blocks, fix_any, fix_markitdown, fix_table
@@ -78,6 +78,7 @@ from .normalize import (
     NormalizeConfig,
     expand_deferred_forms,
     expand_ligatures,
+    fold_pdf_homoglyphs,
     fold_presentation_forms,
     fold_simple_forms,
     normalize_text,
@@ -87,6 +88,7 @@ from .order import (
     ReorderConfig,
     fix_order,
     grapheme_clusters,
+    order_combining_marks,
     reverse_visual_line,
 )
 from .pipeline import (
@@ -95,6 +97,18 @@ from .pipeline import (
     harvest_document_lexicon,
     repair_blocks,
     repair_text,
+)
+from .scientific import (
+    BFEReport,
+    DBRReport,
+    MCSReport,
+    ScientificReport,
+    SHDRReport,
+    bidi_flow_entropy,
+    diacritic_base_matrix,
+    homoglyph_drift,
+    morphological_continuity,
+    scientific_audit,
 )
 from .types import (
     BlockResult,
@@ -156,6 +170,7 @@ __all__ = [
     "normalize_text",
     "fold_presentation_forms",
     "fold_simple_forms",
+    "fold_pdf_homoglyphs",
     "expand_deferred_forms",
     "expand_ligatures",
     "NormalizeConfig",
@@ -167,6 +182,7 @@ __all__ = [
     "fix_order",
     "reverse_visual_line",
     "grapheme_clusters",
+    "order_combining_marks",
     "MIRROR_PAIRS",
     "ReorderConfig",
     # الدرجة ٣
@@ -194,6 +210,17 @@ __all__ = [
     "levenshtein_reference",
     "EvalConfig",
     "EvalReport",
+    # scientific metrics (MCS / DBR / BFE / SHDR)
+    "scientific_audit",
+    "morphological_continuity",
+    "diacritic_base_matrix",
+    "bidi_flow_entropy",
+    "homoglyph_drift",
+    "ScientificReport",
+    "MCSReport",
+    "DBRReport",
+    "BFEReport",
+    "SHDRReport",
     # المحرّكات
     "Extractor",
     "RawPage",

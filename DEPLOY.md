@@ -1,15 +1,14 @@
-# Deploy checklist — arafix 0.8.0 → PyPI
+# Deploy checklist — arafix 0.9.0 → PyPI
 
 You are shipping an **Alpha**. That is honest and correct. This file is the
 short path from “green on your machine” to “live on PyPI.”
 
-## Pre-flight (already done in-tree)
+## Pre-flight (in-tree for 0.9.0)
 
-- [x] Version `0.8.0` in `pyproject.toml` and `src/arafix/__init__.py`
-- [x] `CHANGELOG.md` has `## 0.8.0`
-- [x] Tests pass (`pytest`)
-- [x] `ruff check src tests examples`
-- [x] `python -m build` + `twine check --strict dist/*`
+- [x] Version `0.9.0` in `pyproject.toml` and `src/arafix/__init__.py`
+- [x] `CHANGELOG.md` has `## 0.9.0`
+- [x] Tests pass (`pytest`) including scientific floors + real-PDF regression
+- [x] Real corpus under `tests/fixtures/real_pdf_narrative/`
 - [x] English blurb on README + English `description`
 - [x] `src/arafix/py.typed` (PEP 561)
 - [x] MIT license, classifiers, CLI entry point, optional extras
@@ -29,99 +28,38 @@ Push this tree to `main`. Ensure workflows exist:
 
 ### 2) GitHub Environments
 
-*Settings → Environments → New environment*
+Configure the **pypi** environment for Trusted Publishing (OIDC) as documented
+in [RELEASING.md](RELEASING.md). A *pending* publisher does **not** reserve the
+PyPI name — publish promptly after the first green release workflow.
 
-| Name | Required reviewers |
-|---|---|
-| `testpypi` | optional |
-| `pypi` | **yes — you** |
-
-### 3) Pending publishers (PyPI + TestPyPI)
-
-[PyPI → Publishing → Add pending publisher](https://pypi.org/manage/account/publishing/)
-
-| Field | Value |
-|---|---|
-| Project name | `arafix` |
-| Owner | `bio-colab` |
-| Repository | `arafix` |
-| Workflow name | `publish.yml` |
-| Environment | `pypi` |
-
-Repeat on [test.pypi.org](https://test.pypi.org) with environment `testpypi`.
-
-> **Critical:** a pending publisher does **not** reserve the name. Configure
-> then publish the same day.
-
-### 4) Local smoke (optional but smart)
+### 3) Tag and release
 
 ```bash
-cd arafix   # package root (where pyproject.toml lives)
-python -m pip install -e ".[dev]"
-pytest
-ruff check src tests examples
-python -m build
-python -m twine check --strict dist/*
-```
-
-### 5) TestPyPI
-
-GitHub Actions → **publish** → Run workflow → target: **testpypi**
-
-Then:
-
-```bash
-pip install --index-url https://test.pypi.org/simple/ \
-            --extra-index-url https://pypi.org/simple/ \
-            arafix
-arafix --version
-python -c "from arafix import repair_text; print(repair_text('\ufee3\ufeae\ufea3\ufe92\ufe8e').text)"
-```
-
-### 6) Real PyPI
-
-```bash
-# versions already 0.8.0 — bump only if you change code after TestPyPI
-git tag v0.8.0
+# from a clean main with 0.9.0 already committed
+git tag v0.9.0
 git push origin main --tags
-gh release create v0.8.0 --title "0.8.0" --notes-file CHANGELOG.md
+gh release create v0.9.0 --title "0.9.0" --notes-file CHANGELOG.md
 ```
 
-Approve the `pypi` environment in Actions. Done.
+Or let `publish.yml` build from the tag if that is how the repo is wired.
 
-### 7) After live
+### 4) Verify install
 
 ```bash
-pip install -U "arafix[pdf]"
+pip install -U "arafix[pdf]==0.9.0"
 arafix --version
+python -c "from arafix import scientific_audit; print('ok')"
 ```
 
-Update the README badge if you add a PyPI version shield:
+### 5) Optional checks before tag
 
-```markdown
-[![PyPI](https://img.shields.io/pypi/v/arafix.svg)](https://pypi.org/project/arafix/)
+```bash
+pip install -e ".[dev,pdf]"
+pytest -q
+ruff check src tests
+python -m build
+twine check --strict dist/*
 ```
 
-## What not to claim on the PyPI page
-
-- “Full OCR for scanned PDFs” — stage 4 is not shipped
-- “Perfect every multi-column magazine” — layout is heuristic
-- “Production-stable 1.0” — classifier is Alpha
-
-Do claim: graded Arabic recovery, zero-dep core, evidence-based diagnosis,
-optional PDF + layout.
-
-## If something fails
-
-| Symptom | Fix |
-|---|---|
-| Twine rejects README | Ensure README renders; re-run `twine check --strict` |
-| OIDC / publisher error | Workflow name must be exactly `publish.yml` |
-| Version already exists | Bump to `0.8.1` in both files + CHANGELOG |
-| Name taken | See RELEASING.md rename options (`warraq`, …) |
-
-## One-liner philosophy for the release notes
-
-> arafix 0.8 recovers broken Arabic from native PDFs: diagnose with evidence,
-> repair presentation forms / visual order / lam-alef, clean PDF artifacts,
-> and read multi-column pages right-to-left — without a fake OCR dependency.
+Update the README badge if you add a PyPI version shield after the first
+successful upload.

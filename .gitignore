@@ -16,11 +16,16 @@ htmlcov/
 .tox/
 .nox/
 broken.pdf
+broken_sample.pdf
 out.txt
 multi_demo.pdf
 multi.pdf
 *.pdf
 !tests/**/*.pdf
 !examples/**/*.pdf
+# local eval / scratch (never commit)
+extracted_*.txt
+*_collapsed.txt
+compare_report.py
 .DS_Store
 Thumbs.db

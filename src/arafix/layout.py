@@ -35,6 +35,7 @@ __all__ = [
     "analyze_layout",
     "glyphs_from_triples",
     "analyze_layout_simple_linear",
+    "join_glyphs_preserving_ltr",
 ]
 
 
@@ -50,6 +51,66 @@ class Glyph:
     x: float
     text: str
     size: float = 10.0
+    #: ترتيب التيار (seqno) — يُستعمل لإعادة ترتيب جزر LTR بعد الفرز بـ x.
+    seq: int = 0
+
+
+def _glyph_is_ltr_unit(text: str) -> bool:
+    """LTR letter/digit or LTR-internal punctuation (hyphen, slash, …)."""
+    if not text:
+        return False
+    ch = text[0]
+    o = ord(ch)
+    if ch.isdigit() or ("A" <= ch <= "Z") or ("a" <= ch <= "z"):
+        return True
+    if 0x0660 <= o <= 0x0669 or 0x06F0 <= o <= 0x06F9:  # Arabic-Indic digits
+        return True
+    if 0x00C0 <= o <= 0x024F:  # Latin extended
+        return True
+    return ch in "/\\-.,:+%°'\u2019_\u2013\u2014"
+
+
+def _glyph_is_ltr_space(text: str) -> bool:
+    return bool(text) and text.isspace()
+
+
+def join_glyphs_preserving_ltr(glyphs: list[Glyph]) -> str:
+    """
+    Build line text: sort by x (visual), but re-order each LTR island by
+    stream ``seq`` so dates like ``13-7`` and ``M/V Ever`` keep logical order
+    that pure x-sort destroys.
+    """
+    if not glyphs:
+        return ""
+    ordered = sorted(glyphs, key=lambda g: g.x)
+    parts: list[str] = []
+    i = 0
+    n = len(ordered)
+    while i < n:
+        g = ordered[i]
+        if _glyph_is_ltr_unit(g.text):
+            j = i + 1
+            while j < n:
+                t = ordered[j].text
+                if _glyph_is_ltr_unit(t):
+                    j += 1
+                    continue
+                # spaces between LTR tokens belong to the island
+                if _glyph_is_ltr_space(t) and j + 1 < n and _glyph_is_ltr_unit(
+                    ordered[j + 1].text
+                ):
+                    j += 1
+                    continue
+                break
+            run = ordered[i:j]
+            if any(g.seq for g in run):
+                run = sorted(run, key=lambda g: g.seq)
+            parts.append("".join(g.text for g in run))
+            i = j
+        else:
+            parts.append(g.text)
+            i += 1
+    return "".join(parts)
 
 
 @dataclass
@@ -61,7 +122,7 @@ class LayoutLine:
 
     @property
     def text(self) -> str:
-        return "".join(g.text for g in sorted(self.glyphs, key=lambda g: g.x))
+        return join_glyphs_preserving_ltr(self.glyphs)
 
     @property
     def x0(self) -> float:

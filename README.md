@@ -64,7 +64,7 @@ arafix eval     thesis.pdf --truth thesis.txt --scientific
 
 Further reading: [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md)
 
-> **Name note:** other GitHub projects may also expose an `arafix` import. See the Arabic naming section and [RELEASING.md](RELEASING.md). Publish promptly after configuring the PyPI publisher — a pending publisher does **not** reserve the name.
+
 
 ---
 
@@ -74,14 +74,6 @@ Further reading: [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [
 
 **استرجاع النص العربي من ملفات PDF المعطوبة.**
 سلّمٌ من خمس درجات، لا مطرقةٌ واحدة.
-
-> ⚠️ **تنبيه تسمية — والقرار عاجل.** الاسم `arafix` **مأخوذ فعلياً** على GitHub بأربعة
-> مستودعات، وأحدها ([AraFix-V3.0](https://github.com/Basma2423/AraFix-V3.0))
-> يوفّر حزمة بايثون عليا اسمها `arafix` بالحرف. تثبيتهما معاً يكسر
-> أحدهما — ومن يستورد `arafix` لا يدري أيّهما جاءه. الاسم على PyPI شاغرٌ
-> بعدُ — لكنّ **الناشر المعلَّق على PyPI لا يحجز الاسم**، وإعادة التسمية
-> قبل النشر أسلم منها بعده بمراتب. انظر [التسمية والجيران](#التسمية-والجيران)
-> و[RELEASING.md](RELEASING.md).
 
 ---
 

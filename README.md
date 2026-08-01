@@ -597,6 +597,25 @@ MCS/DBR/BFE/SHDR في `test_scientific_floors`.
 الأنفع بالترتيب: (١) ملفات تكسرها، (٢) محرّكات جديدة، (٣) شواهد اتجاه
 أقوى، (٤) الدرجة ٣+.
 
+## Citation / الاستشهاد
+
+If you use `arafix` in academic work, please cite it as:
+
+```bibtex
+@software{sharar_arafix_2026,
+  author  = {Sharar, Elias},
+  title   = {arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs},
+  year    = {2026},
+  version = {0.9.0},
+  url     = {https://github.com/bio-colab/arafix},
+  license = {MIT},
+  orcid   = {0009-0004-8402-4399}
+}
+```
+
+See [CITATION.cff](./CITATION.cff) for machine-readable citation metadata
+(GitHub «Cite this repository», Zotero, EndNote, Zenodo).
+
 ## الترخيص
 
 MIT — انظر [LICENSE](LICENSE).

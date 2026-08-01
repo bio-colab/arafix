@@ -1,0 +1,48 @@
+# Citation File Format — https://citation-file-format.github.io/
+# GitHub shows a "Cite this repository" button when this file is present.
+# After linking the repo to Zenodo and publishing a release, add:
+#   doi: 10.5281/zenodo.XXXXXXXX
+cff-version: 1.2.0
+message: "If you use arafix in academic work, please cite it using the metadata below."
+type: software
+title: "arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs"
+abstract: >-
+  arafix recovers broken Arabic text from native (non-scanned) PDFs via a
+  graded repair ladder: diagnose first, then apply bidirectional reordering,
+  presentation-form normalization, layout-aware extraction, and optional
+  CMap repair. Core text stages are dependency-free (Python stdlib only).
+authors:
+  - family-names: Sharar
+    given-names: Elias
+    email: aliasbio95@gmail.com
+    orcid: "https://orcid.org/0009-0004-8402-4399"
+  - name: bio-colab
+    website: https://github.com/bio-colab
+repository-code: "https://github.com/bio-colab/arafix"
+url: "https://github.com/bio-colab/arafix"
+license: MIT
+version: 0.9.0
+date-released: "2026-08-01"
+keywords:
+  - arabic
+  - pdf
+  - text-extraction
+  - rtl
+  - unicode
+  - bidi
+  - nlp
+  - presentation-forms
+  - lam-alef
+  - markitdown
+preferred-citation:
+  type: software
+  authors:
+    - family-names: Sharar
+      given-names: Elias
+      email: aliasbio95@gmail.com
+      orcid: "https://orcid.org/0009-0004-8402-4399"
+  title: "arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs"
+  year: 2026
+  version: 0.9.0
+  url: "https://github.com/bio-colab/arafix"
+  license: MIT

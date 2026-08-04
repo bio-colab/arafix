@@ -38,8 +38,10 @@ multi.pdf
 !tests/**/*.pdf
 !examples/**/*.pdf
 
-# --- Eval / stress / local reports (never ship) ---
+# --- Eval / stress / local reports / CI log dumps (never ship) ---
 reports/
+_ci_logs/
+logs_*.zip
 *.log
 *.tmp
 *.temp

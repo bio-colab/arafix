@@ -9,8 +9,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from arafix import PipelineConfig, diagnose, repair_blocks, repair_text
 from arafix.diagnose import detect_mojibake
 from arafix.normalize import (

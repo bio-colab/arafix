@@ -74,6 +74,7 @@ from .layout import (
     cluster_to_lines,
     table_to_markdown,
 )
+from .lexicon import clear_core_lexicon_cache, core_lexicon_size, get_core_lexicon
 from .normalize import (
     NormalizeConfig,
     expand_deferred_forms,
@@ -125,7 +126,6 @@ from .types import (
     Stage,
     TextBlock,
 )
-from .lexicon import clear_core_lexicon_cache, core_lexicon_size, get_core_lexicon
 from .unicode_tables import (
     DEFERRED_PF_TO_BASE,
     LIGATURE_PF_TO_BASE,

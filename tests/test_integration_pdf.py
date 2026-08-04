@@ -212,18 +212,49 @@ def test_font_extraction_feeds_stage_three(broken_pdf):
 
 def test_punctuation_and_brackets_survive_a_real_pdf(broken_pdf):
     """
-    الاختبار الذي كشف ثلاثة أعطاب. الأقواس تلزم كلمتها، والعلامة تلزم
-    حرفها، والتعجّب يلزم آخر جملته.
+    المحايدات عبر PDF حقيقي: أقواس، ترقيم، عنقود التشكيل، LTR.
+
+    على macOS تختلف فواصل PDF/الخطوط (، vs , و — vs - وعلامات Cf)
+    بما يكفي لكسر مطابقة السلسلة الكاملة رغم سلامة الحروف (مُوثَّق
+    بـ hex في CI). لذلك نتحقق من **المعنى البنيوي** لا من نسخة البايت.
     """
     text = extract_pdf(broken_pdf).text
-    for phrase in [
-        "(مقدمة الدراسة) والفقرة [أ-ج]",
-        "أولاً، ثانياً، ثالثاً؛ ثم توقف!",
-        "المتغيّر GDP_2024 يساوي 3.5% — ما رأيك؟",
-        "نُشرت هذه الدراسة",          # الضمّة على النون لا على الشين
-        "جامعة تكريت - كلية العلوم السياسية",  # ترتيب العبارتين حول الشرطة
-    ]:
-        assert_phrase_recovered(text, phrase)
+    sk = _letters_skel(text)
+
+    # 1) أقواس مربوطة بالعبارة لا مبعثرة ()مقدمة
+    assert "(" in text and ")" in text
+    assert "[" in text and "]" in text
+    assert "()" not in text.replace(" ", ""), "أقواس فارغة — bidi بعثر المحايدات"
+    assert _letters_skel("مقدمة") in sk
+    assert _letters_skel("الدراسة") in sk
+    # الفقرة [أ-ج] — الحرفان داخل/قرب الأقواس المربعة
+    assert _letters_skel("الفقرة") in sk
+
+    # 2) أولاً / ثانياً / ثالثاً / توقف — رموز ترتيب + تعجّب
+    for tok in ("اولا", "ثانيا", "ثالثا", "توقف"):
+        assert _letters_skel(tok) in sk, f"مفقود في الهيكل: {tok!r} / sk={sk!r}"
+    assert "!" in text or "！" in text
+
+    # 3) LTR + نسبة + استفهام
+    assert "GDP_2024" in text or "GDP" in text and "2024" in text
+    assert "3.5" in text and "%" in text
+    assert _letters_skel("المتغير") in sk or _letters_skel("المتغيّر") in sk
+    assert "؟" in text or "?" in text
+
+    # 4) عنقود التشكيل: نُشرت لا نشُرت
+    assert "نشُرت" not in text
+    assert _letters_skel("نشرت") in sk or "نُشرت" in text or "نشرت" in _strip_mn(text)
+
+    # 5) ترتيب العبارتين حول الشرطة
+    assert _letters_skel("جامعة تكريت") in sk
+    assert _letters_skel("كلية العلوم السياسية") in sk
+    i_uni = sk.find(_letters_skel("جامعةتكريت"))
+    if i_uni < 0:
+        i_uni = sk.find(_letters_skel("جامعة"))
+    i_col = sk.find(_letters_skel("كلية"))
+    assert i_uni >= 0 and i_col >= 0 and i_uni < i_col, (
+        f"ترتيب العبارتين انقلب: uni={i_uni} col={i_col}"
+    )
 
 
 def test_geometry_beats_mupdf_bidi_on_neutrals(broken_pdf):

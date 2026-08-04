@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "arafix"
-version = "0.9.0"
-description = "Recover broken Arabic text from PDFs — diagnose first, then graded repair (bidi, presentation forms, layout)"
+version = "1.0.0"
+description = "Recover broken Arabic text from PDFs — diagnose first, then graded repair (bidi, presentation forms, layout, hybrid mojibake)"
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
@@ -26,9 +26,11 @@ keywords = [
     "markitdown",
     "presentation-forms",
     "lam-alef",
+    "mojibake",
+    "pdf-repair",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
@@ -81,17 +83,19 @@ Changelog = "https://github.com/bio-colab/arafix/blob/main/CHANGELOG.md"
 "Release notes" = "https://github.com/bio-colab/arafix/releases"
 
 [tool.hatch.build.targets.sdist]
-# Ship tests + examples so anyone can verify the sdist independently.
+# Ship tests + examples + eval scripts so anyone can verify the sdist independently.
 include = [
     "src/",
     "tests/",
     "examples/",
+    "scripts/",
     "README.md",
     "CHANGELOG.md",
     "RELEASING.md",
     "INTEGRATING.md",
     "DEPLOY.md",
     "CONTRIBUTING.md",
+    "CITATION.cff",
     "LICENSE",
 ]
 

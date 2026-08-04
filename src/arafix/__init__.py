@@ -28,7 +28,7 @@ MIT license. Primary long-form docs are in Arabic (README).
 
 from __future__ import annotations
 
-__version__ = "0.9.0"
+__version__ = "1.0.0"
 __license__ = "MIT"
 
 from .adapters import as_blocks, fix_any, fix_markitdown, fix_table
@@ -88,7 +88,10 @@ from .order import (
     ReorderConfig,
     fix_order,
     grapheme_clusters,
+    normalize_page_ranges,
     order_combining_marks,
+    relocate_sentence_punctuation,
+    repair_inverted_ltr_parens,
     reverse_visual_line,
 )
 from .pipeline import (
@@ -122,6 +125,7 @@ from .types import (
     Stage,
     TextBlock,
 )
+from .lexicon import clear_core_lexicon_cache, core_lexicon_size, get_core_lexicon
 from .unicode_tables import (
     DEFERRED_PF_TO_BASE,
     LIGATURE_PF_TO_BASE,
@@ -174,6 +178,10 @@ __all__ = [
     "expand_deferred_forms",
     "expand_ligatures",
     "NormalizeConfig",
+    # معجم النواة
+    "get_core_lexicon",
+    "core_lexicon_size",
+    "clear_core_lexicon_cache",
     # لام-ألف
     "detect_lam_alef_transposition",
     "repair_lam_alef_transposition",
@@ -183,6 +191,9 @@ __all__ = [
     "reverse_visual_line",
     "grapheme_clusters",
     "order_combining_marks",
+    "normalize_page_ranges",
+    "relocate_sentence_punctuation",
+    "repair_inverted_ltr_parens",
     "MIRROR_PAIRS",
     "ReorderConfig",
     # الدرجة ٣

@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "description": "Regression fixtures for known flaw cases (add/ reports + core review)",
+  "cases": [
+    {
+      "id": "FLAW_01",
+      "title": "Academic page range endpoints swapped under LTR island protect",
+      "phase": "C",
+      "kind": "reorder",
+      "input": "(140-125 .ص) ثحبلا عجرم",
+      "expected": "مرجع البحث (ص. 125-140)",
+      "notes": "After reorder, page ranges next to ص. are normalized ascending."
+    },
+    {
+      "id": "FLAW_02",
+      "title": "Ambiguous lam-alef transposition without user lexicon",
+      "phase": "B",
+      "kind": "repair_text",
+      "input": "صدرت المجالت العلمية",
+      "expected": "صدرت المجلات العلمية",
+      "notes": "Resolved by core micro-lexicon + unified repair_text gate."
+    },
+    {
+      "id": "FLAW_03",
+      "title": "Currency parentheses / minus layout after reverse",
+      "phase": "C",
+      "kind": "reorder",
+      "input": ")00.052,1 DSU-( يفاصلا",
+      "expected": "الصافي (-USD 1,250.00)",
+      "notes": "Visual RTL stream: LTR amount on the left (codepoint-reversed digits). Smart LTR restore + paren repair."
+    },
+    {
+      "id": "FLAW_04",
+      "title": "Hybrid mojibake false negative on broken signature fragment",
+      "phase": "D",
+      "kind": "diagnose_mojibake",
+      "input": "Ø§Ù„Ù…ÙCustomer Report",
+      "expected_defect": "mojibake",
+      "expected_repair": "المCustomer Report",
+      "notes": "Windowed UTF-8 recovery + orphan lead drop; latin mixed with mojibake."
+    },
+    {
+      "id": "FLAW_07",
+      "title": "Tatweel inside presentation-form run corrupts لله",
+      "phase": "B",
+      "kind": "repair_text",
+      "input": "ـﻪـﻠـﻟ ﺪﻤﺤﻟا",
+      "expected": "الحمد لله",
+      "notes": "Report string had trailing alef (الله); fixture isolates tatweel-in-PF bug."
+    },
+    {
+      "id": "FLAW_08",
+      "title": "Sentence-final period glued to leading year island",
+      "phase": "C",
+      "kind": "reorder",
+      "input": ".2024 ماع يف متي :ًلاوا",
+      "expected": "اوالً: يتم في عام 2024.",
+      "notes": "Period relocated after year. Grapheme order of اولاً/اوالً depends on visual mark placement."
+    }
+  ]
+}

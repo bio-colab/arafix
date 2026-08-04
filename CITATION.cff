@@ -1,16 +1,20 @@
 # Citation File Format — https://citation-file-format.github.io/
 # GitHub shows a "Cite this repository" button when this file is present.
-# After linking the repo to Zenodo and publishing a release, add:
-#   doi: 10.5281/zenodo.XXXXXXXX
 cff-version: 1.2.0
 message: "If you use arafix in academic work, please cite it using the metadata below."
 type: software
 title: "arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs"
+doi: 10.5281/zenodo.21733978
 abstract: >-
   arafix recovers broken Arabic text from native (non-scanned) PDFs via a
-  graded repair ladder: diagnose first, then apply bidirectional reordering,
-  presentation-form normalization, layout-aware extraction, and optional
-  CMap repair. Core text stages are dependency-free (Python stdlib only).
+  graded repair ladder: diagnose first, then apply bidirectional reordering
+  with smart LTR islands (page ranges, currencies, sentence punctuation),
+  presentation-form normalization (including tatweel-in-PF protection),
+  hybrid/windowed mojibake recovery (UTF-8 and legacy CP1256/ISO-8859-6),
+  embedded core lexicon for ambiguous lam-alef, layout-aware extraction, and
+  optional CMap repair. Core text stages are dependency-free (Python stdlib
+  only). Validated on FLAW regression fixtures and a 50-package ultra-complex
+  stress corpus (FPR=0, RAR=100%).
 authors:
   - family-names: Sharar
     given-names: Elias
@@ -21,8 +25,8 @@ authors:
 repository-code: "https://github.com/bio-colab/arafix"
 url: "https://github.com/bio-colab/arafix"
 license: MIT
-version: 0.9.0
-date-released: "2026-08-01"
+version: 1.0.0
+date-released: "2026-08-04"
 keywords:
   - arabic
   - pdf
@@ -33,6 +37,7 @@ keywords:
   - nlp
   - presentation-forms
   - lam-alef
+  - mojibake
   - markitdown
 preferred-citation:
   type: software
@@ -43,6 +48,8 @@ preferred-citation:
       orcid: "https://orcid.org/0009-0004-8402-4399"
   title: "arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs"
   year: 2026
-  version: 0.9.0
+  month: 8
+  doi: 10.5281/zenodo.21733978
+  version: 1.0.0
   url: "https://github.com/bio-colab/arafix"
   license: MIT

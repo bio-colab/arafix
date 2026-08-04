@@ -55,44 +55,259 @@ DEFAULT_THRESHOLDS: dict[str, float] = {
 
 _ARABIC_TOKEN = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]+")
 
-#: توقيع الموجيبيك: بايتات UTF-8 عربية (0xD8/0xD9) مقروءة كـ Latin-1.
+#: توقيع الموجيبيك: بايتات UTF-8 عربية (0xD8/0xD9) مقروءة كـ Latin-1/CP1252.
+#: النطاق \u2000–\u206F يلتقط «…» و«„» حين فُكّت بايتات الاستمرار عبر CP1252.
 _MOJIBAKE_SIGNATURE = re.compile(r"[ØÙÚÛ][\u0080-\u00BF\u2000-\u206F]")
 
+#: رؤوس UTF-8 العربية الشائعة كما تظهر بعد فكّ خاطئ.
+_MOJIBAKE_LEAD = frozenset("ØÙÚÛ")
+
+#: أقصى طول لنافذة الاسترجاع الجزئي (محارف، لا بايتات).
+_MOJIBAKE_WINDOW_MAX = 48
+
+#: ترميزات موروثة عربية — بايتات فُكّت كـ Latin-1/CP1252.
+_LEGACY_ARABIC_ENCODINGS = ("cp1256", "iso8859_6", "iso8859-6")
+
 
 # ---------------------------------------------------------------------------
-# ١) الموجيبيك — اختبار جبريّ لا إحصائي
+# ١) الموجيبيك — كامل أو هجين (نوافذ)
 # ---------------------------------------------------------------------------
+
+def _count_arabic(s: str) -> int:
+    return sum(1 for c in s if is_arabic(c))
+
+
+def _to_mojibake_bytes(span: str) -> bytes | None:
+    """
+    يحوّل مقطع الموجيبيك إلى بايتات كما خُزِّنت خطأً.
+
+    نفضّل CP1252 لأن بايتات الاستمرار (0x80–0x9F) تُفكّ غالباً إلى
+    علامات طباعية (… „) لا إلى محارف Latin-1 التحكمية.
+    """
+    for enc in ("cp1252", "latin-1"):
+        try:
+            return span.encode(enc)
+        except (UnicodeEncodeError, LookupError):
+            continue
+    return None
+
+
+def _try_utf8_from_misread(span: str) -> str | None:
+    """latin-1/cp1252 → UTF-8. يُرجع None إن فشل التسلسل."""
+    raw = _to_mojibake_bytes(span)
+    if raw is None:
+        return None
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _legacy_recovery_plausible(original: str, recovered: str) -> bool:
+    """
+    يحمي اللاتينية (café, résumé) من مسار ISO-8859-6 الزائف.
+
+    يشترط ربحاً عربياً واضحاً وأن تكون أغلب المحارف غير البيضاء عربية.
+    """
+    before = _count_arabic(original)
+    after = _count_arabic(recovered)
+    if after < before + 3:
+        return False
+    non_space = [c for c in recovered if not c.isspace()]
+    if len(non_space) < 3:
+        return False
+    ar_ns = sum(1 for c in non_space if is_arabic(c))
+    return (ar_ns / len(non_space)) >= 0.5
+
+
+def _try_legacy_arabic_from_misread(span: str) -> str | None:
+    """
+    بايتات CP1256 / ISO-8859-6 فُكّت كـ Latin-1/CP1252.
+
+    مسار إضافي للنصوص القديمة (مواقع، قواعد، بريد) بجانب موجيبيك UTF-8.
+    يُفضَّل CP1256؛ ISO-8859-6 أخطر على اللاتينية فيُقيَّد بعتبة صارمة.
+    """
+    raw = _to_mojibake_bytes(span)
+    if raw is None or not raw:
+        return None
+    before = _count_arabic(span)
+    best: str | None = None
+    best_gain = 0
+    for enc in _LEGACY_ARABIC_ENCODINGS:
+        try:
+            rec = raw.decode(enc)
+        except (UnicodeDecodeError, LookupError):
+            continue
+        if not _legacy_recovery_plausible(span, rec):
+            continue
+        gain = _count_arabic(rec) - before
+        if gain > best_gain:
+            best_gain = gain
+            best = rec
+    return best
+
+
+def _recover_span(span: str) -> str | None:
+    """
+    أفضل استرجاع لمقطع واحد.
+
+    - إن وُجدت رؤوس موجيبيك UTF-8 (ØÙÚÛ) نُصرّ على مسار UTF-8 فقط —
+      مسار CP1256 على نفس البايتات يُنتج عربية زائفة (``ط§ظ„…``).
+    - الترميز الموروث يُجرَّب فقط لمقاطع بلا هذا التوقيع.
+    """
+    utf = _try_utf8_from_misread(span)
+    if utf is not None and _count_arabic(utf) > _count_arabic(span):
+        return utf
+    if any(c in _MOJIBAKE_LEAD for c in span):
+        return None
+    return _try_legacy_arabic_from_misread(span)
+
+
+def _is_mojibake_start(text: str, i: int) -> bool:
+    if i >= len(text):
+        return False
+    ch = text[i]
+    if ch in _MOJIBAKE_LEAD:
+        return True
+    # بداية توقيع ثنائي عند i
+    return bool(_MOJIBAKE_SIGNATURE.match(text, i))
+
+
+def _windowed_mojibake_recover(text: str) -> str | None:
+    """
+    يسترجع موجيبيكاً **هجييناً**: مقاطع معطوبة وسط ASCII/عربي سليم.
+
+    من كل موضع مرشّح يأخذ أطول نافذة ناجحة ذات ربح عربي، ويتجاوز
+    رؤوس UTF-8 اليتيمة (``Ù`` قبل ``Customer`` في FLAW_04).
+    """
+    n = len(text)
+    out: list[str] = []
+    i = 0
+    changed = False
+
+    while i < n:
+        if not _is_mojibake_start(text, i):
+            out.append(text[i])
+            i += 1
+            continue
+
+        best_rec: str | None = None
+        best_end = i
+        best_gain = 0
+        max_end = min(n, i + _MOJIBAKE_WINDOW_MAX)
+        for end in range(i + 1, max_end + 1):
+            # لا تمدّ النافذة داخل لاتيني طويل بلا فائدة بعد فشل متتالٍ.
+            span = text[i:end]
+            rec = _recover_span(span)
+            if rec is None:
+                continue
+            gain = _count_arabic(rec) - _count_arabic(span)
+            if gain > best_gain or (gain == best_gain and end > best_end and gain > 0):
+                best_gain = gain
+                best_rec = rec
+                best_end = end
+
+        if best_rec is not None and best_gain > 0:
+            out.append(best_rec)
+            i = best_end
+            changed = True
+            continue
+
+        # رأس UTF-8 يتيم (لا استمرار صالح) — يُحذف لا يُترك يشوّه اللاتيني.
+        if text[i] in _MOJIBAKE_LEAD:
+            nxt = text[i + 1] if i + 1 < n else ""
+            if not nxt or ord(nxt) < 0x80 or ("A" <= nxt <= "Z") or ("a" <= nxt <= "z"):
+                i += 1
+                changed = True
+                continue
+
+        out.append(text[i])
+        i += 1
+
+    if not changed:
+        return None
+    return "".join(out)
+
 
 def detect_mojibake(text: str) -> tuple[bool, str | None, Evidence]:
     """
-    يكشف نصاً بايتاته UTF-8 لكنه فُكّ بـ Latin-1/CP1252 (Ø§Ù„Ù…...).
+    يكشف نصاً بايتاته UTF-8 (أو CP1256/ISO-8859-6) فُكّت بـ Latin-1/CP1252.
 
-    الاختبار قاطع لا تخميني: إن أمكن إعادة الترميز `latin-1` ثم فكّه
-    `utf-8` بنجاح، **وكان** الناتج عربياً أكثر من الأصل، فالنص موجيبيك.
-    شرط «أكثر عربية» ضروريّ وإلا لَعُدَّ كل نص لاتيني سليم مُعطَلاً.
+    المسارات بالترتيب:
 
-    يُرجع: (أموجيبيك؟، النص المُصحَّح أو None، الشاهد)
+    1. **كامل السطر** — encode→decode صارم (الحالة الكلاسيكية ``Ø§Ù„…``).
+    2. **نوافذ هجينة** — استرجاع جزئي حين يختلط الموجيبيك بـ ASCII أو
+       بعربي سليم، أو حين يقطع رأس UTF-8 يتيم التسلسل
+       (``Ø§Ù„Ù…ÙCustomer`` → ``المCustomer``).
+    3. **ترميز موروث** — CP1256 / ISO-8859-6 داخل النافذة نفسها.
 
-    ملاحظة تشخيصية مهمة: هذه العلّة **ليست** علّة PDF أصلاً، بل علّة
-    أنبوب المعالجة عندك. خلطُها بـ CMap التالف خطأ شائع.
+    شرط القبول: زيادة صافية في الحروف العربية. لا نلمّس لاتينياً سليماً.
+
+    >>> detect_mojibake("Ø§Ù„Ø³Ù„Ø§Ù…")[1]
+    'السلام'
+    >>> detect_mojibake("Ø§Ù„Ù…ÙCustomer Report")[1]
+    'المCustomer Report'
+
+    ملاحظة: هذه العلّة **ليست** علّة PDF، بل علّة أنبوب الترميز عندك.
     """
-    if not _MOJIBAKE_SIGNATURE.search(text):
+    if not text:
+        return False, None, Evidence("mojibake", 0.0, "نص فارغ")
+
+    has_sig = bool(_MOJIBAKE_SIGNATURE.search(text))
+    has_high_latin = any(0x80 <= ord(c) <= 0xFF for c in text)
+    # ØÙÚÛ قد تظهر في CP1256 المُساء فهمه أيضاً — لا نجعلها مانعاً للمسار الموروث.
+    has_utf8_mojibake_hint = has_sig or bool(
+        _MOJIBAKE_SIGNATURE.search(text)
+    ) or (
+        any(c in _MOJIBAKE_LEAD for c in text)
+        and any(0x80 <= ord(c) <= 0xFF or 0x2000 <= ord(c) <= 0x206F for c in text)
+    )
+    if not has_sig and not has_high_latin and not any(c in _MOJIBAKE_LEAD for c in text):
         return False, None, Evidence("mojibake", 0.0, "لا توقيع لبايتات UTF-8 مفكوكة خطأً")
 
-    try:
-        recovered = text.encode("latin-1", errors="strict").decode("utf-8", errors="strict")
-    except (UnicodeEncodeError, UnicodeDecodeError):
-        try:
-            recovered = text.encode("cp1252", errors="strict").decode("utf-8", errors="strict")
-        except (UnicodeEncodeError, UnicodeDecodeError, LookupError):
-            return False, None, Evidence("mojibake", 0.0, "التوقيع موجود لكن إعادة الترميز فشلت")
+    before = _count_arabic(text)
+    mode = ""
+    recovered: str | None = None
 
-    before = sum(1 for c in text if is_arabic(c))
-    after = sum(1 for c in recovered if is_arabic(c))
+    # --- 1) كامل: UTF-8 قُرئ Latin-1/CP1252 ---
+    utf = _try_utf8_from_misread(text)
+    if utf is not None and _count_arabic(utf) > before:
+        recovered = utf
+        mode = "full-utf8"
+
+    # --- 2) كامل: CP1256 / ISO-8859-6 قُرئ Latin-1 ---
+    if recovered is None:
+        leg = _try_legacy_arabic_from_misread(text)
+        if leg is not None:
+            recovered = leg
+            mode = "full-legacy"
+
+    # --- 3) نوافذ هجينة (موجيبيك UTF-8 وسط ASCII/عربي سليم) ---
+    if recovered is None and (has_sig or any(c in _MOJIBAKE_LEAD for c in text)):
+        hybrid = _windowed_mojibake_recover(text)
+        if hybrid is not None and hybrid != text and _count_arabic(hybrid) > before:
+            recovered = hybrid
+            mode = "hybrid-window"
+
+    if recovered is None or recovered == text:
+        if has_sig or has_utf8_mojibake_hint:
+            detail = "التوقيع موجود لكن الاسترجاع الكامل والجزئي فشلا"
+        elif has_high_latin:
+            detail = "بايتات عالية بلا استرجاع عربي موثوق (UTF-8/CP1256)"
+        else:
+            detail = "لا موجيبيك قابل للاسترجاع"
+        return False, None, Evidence("mojibake", 0.0, detail)
+
+    after = _count_arabic(recovered)
     if after <= before:
         return False, None, Evidence("mojibake", 0.0, "إعادة الترميز لم تزد النص عربية")
 
-    ev = Evidence("mojibake", 1.0, f"إعادة الترميز رفعت الحروف العربية من {before} إلى {after}")
+    conf = 1.0 if mode.startswith("full") else 0.92
+    ev = Evidence(
+        "mojibake",
+        conf,
+        f"استرجاع {mode}: الحروف العربية {before} → {after}",
+    )
     return True, recovered, ev
 
 

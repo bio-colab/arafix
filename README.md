@@ -1,9 +1,11 @@
 # arafix
 
+[![PyPI version](https://img.shields.io/pypi/v/arafix.svg)](https://pypi.org/project/arafix/)
+[![PyPI pyversions](https://img.shields.io/pypi/pyversions/arafix.svg)](https://pypi.org/project/arafix/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue)
-![Status: Alpha](https://img.shields.io/badge/status-alpha-orange)
+![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen)
 ![Typing](https://img.shields.io/badge/typing-py.typed-blue)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21733978.svg)](https://doi.org/10.5281/zenodo.21733978)
 
 **Recover broken Arabic text from PDFs** — diagnose first, then apply a graded repair ladder. Not a single hammer, and not “just run OCR.”
 
@@ -12,8 +14,9 @@
 | **Core** | Zero dependencies (stdlib only) for text stages 0–2 |
 | **PDF** | `pip install "arafix[pdf]"` — geometric extract + Arabic repair |
 | **Layout** | Multi-column RTL, headers/footers, simple tables (`layout=auto`) |
-| **Quality** | Cluster-aware diacritics, PDF homoglyph fold, LTR islands, scientific metrics (MCS/DBR/BFE/SHDR) |
-| **Status** | **Alpha 0.9** — real-PDF regression floors; still evolving |
+| **1.0** | Core lexicon, smart BiDi/LTR, hybrid mojibake, stress-gated (FPR=0, RAR=100%) |
+| **Quality** | Cluster-aware diacritics, PDF homoglyph fold, scientific metrics (MCS/DBR/BFE/SHDR) |
+| **Status** | **Stable 1.0.0** — production-ready for native Arabic PDF recovery |
 
 ### Install
 
@@ -21,15 +24,23 @@
 pip install arafix              # text repair only
 pip install "arafix[pdf]"       # recommended — PDF extract
 pip install "arafix[all]"       # + fonttools (CMap / stage 3)
+pip install "arafix[markitdown]"  # MarkItDown plugin
 ```
 
 ### 30-second start
 
 ```python
-from arafix import repair_text, extract_pdf
+from arafix import repair_text, extract_pdf, PipelineConfig
 
 # Presentation-form garbage → readable Arabic
 print(repair_text("\ufee3\ufeae\ufea3\ufe92\ufe8e").text)  # مرحبا
+
+# Ambiguous lam-alef via embedded core lexicon
+print(repair_text("صدرت المجالت العلمية").text)  # صدرت المجلات العلمية
+
+# Hybrid mojibake (windowed) — Latin/code left intact
+print(repair_text("Ø§Ù„Ù…ÙCustomer Report (Status: 200 OK)").text)
+# → المCustomer Report (Status: 200 OK)
 
 # Native (not scanned) Arabic PDF
 doc = extract_pdf("thesis.pdf")
@@ -37,33 +48,70 @@ print(doc.text)
 print(doc.confidence, doc.pages[0].n_columns)
 ```
 
+```python
+from arafix import reverse_visual_line, ReorderConfig
+
+# Smart LTR: page ranges, currency parens, sentence period
+print(reverse_visual_line("(140-125 .ص) ثحبلا عجرم"))
+# → مرجع البحث (ص. 125-140)
+
+print(reverse_visual_line(")00.052,1 DSU-( يفاصلا"))
+# → الصافي (-USD 1,250.00)
+```
+
 ```bash
 arafix diagnose thesis.pdf -v
 arafix extract  thesis.pdf -o out.txt
 arafix extract  paper.pdf --layout full -v --tables
 arafix eval     thesis.pdf --truth thesis.txt --scientific
+python scripts/eval_unified.py --pdf thesis.pdf --truth thesis.txt -v
+python scripts/stress_test_report.py --skip-ultra
 ```
 
 ### What it fixes (and what it doesn’t)
 
-| Symptom | Cause | Stage |
+| Symptom | Cause | Stage / tool |
 |---|---|---|
-| Reversed letter order | Visual storage order | 2 |
+| Reversed letter order | Visual storage order | 2 + smart LTR |
 | Isolated Arabic glyphs (`ﻣﺮﺣﺒﺎ`) | Presentation forms | 1 |
-| `Ø§Ù„…` mojibake | UTF-8 read as Latin-1 | 0 |
-| `المجالت` / `االنترنيت` | Lam-alef ligature broken before reorder | 1a→2→1b |
-| `()مقدمة` | Engine bidi vs neutrals | geometric read |
-| Misplaced harakat / `َحرب` | Mn glued to space or wrong base | extract + cluster attach (0.9) |
-| `ی`/`ھ` vs `ي`/`ه` | PDF font ToUnicode lookalikes | `fold_pdf_homoglyphs` (0.9) |
-| `7-13` / broken `M/V Ever` | LTR islands after reverse | LTR protect + seq (0.9) |
-| Two columns mixed | Line-joined gutters | layout (0.8) |
+| `Ø§Ù„…` / hybrid mojibake | UTF-8 (or CP1256) misread | 0 windowed |
+| `المجالت` / `االنترنيت` | Lam-alef broken before reorder | 1a→2→1b + core lexicon |
+| `(ص. 140-125)` page ranges | LTR island + academic order | `normalize_page_ranges` |
+| `(-USD 1,250.00)` / `3.5%` | Accounting / percent islands | smart LTR + paren repair |
+| `.2024` sentence glue | Period stuck to year island | `relocate_sentence_punctuation` |
+| `()مقدمة` | Engine bidi vs neutrals | geometric extract |
+| Misplaced harakat / `َحرب` | Mn glued to wrong base | extract + clusters |
+| `ی`/`ھ` vs `ي`/`ه` | PDF ToUnicode lookalikes | `fold_pdf_homoglyphs` |
+| Two columns mixed | Line-joined gutters | layout (0.8+) |
 | Empty / PUA soup | Broken ToUnicode / scan | 3 / 4 (OCR not shipped) |
 
-**Philosophy:** never invent characters; never “fix just in case”; every decision carries evidence and confidence.
+### Configuration highlights (1.0)
 
-Further reading: [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md)
+```python
+from arafix import PipelineConfig, NormalizeConfig, ReorderConfig, repair_text
 
-> **Name note:** other GitHub projects may also expose an `arafix` import. See the Arabic naming section and [RELEASING.md](RELEASING.md). Publish promptly after configuring the PyPI publisher — a pending publisher does **not** reserve the name.
+cfg = PipelineConfig(
+    use_core_lexicon=True,          # embedded micro-lexicon for ambiguous لا/ال
+    enable_lam_alef_repair=True,
+    normalize=NormalizeConfig(
+        strip_tatweel_in_pf_runs=True,
+        fold_pdf_homoglyphs=True,   # set False for intentional Farsi Yeh
+    ),
+    reorder=ReorderConfig(
+        smart_ltr_restore=True,
+        normalize_page_ranges=True,
+        repair_ltr_parens=True,
+        relocate_sentence_punct=True,
+    ),
+)
+repair_text(broken, cfg)
+```
+
+**Philosophy:** never invent characters; never “fix just in case”; every decision carries evidence and confidence. Release gated by **FPR = 0** and **RAR ≥ 98%** on the 50-pack stress corpus.
+
+Further reading: [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md) · [CITATION.cff](CITATION.cff)
+
+
 
 ---
 
@@ -73,14 +121,6 @@ Further reading: [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [
 
 **استرجاع النص العربي من ملفات PDF المعطوبة.**
 سلّمٌ من خمس درجات، لا مطرقةٌ واحدة.
-
-> ⚠️ **تنبيه تسمية — والقرار عاجل.** الاسم `arafix` **مأخوذ فعلياً** على GitHub بأربعة
-> مستودعات، وأحدها ([AraFix-V3.0](https://github.com/Basma2423/AraFix-V3.0))
-> يوفّر حزمة بايثون عليا اسمها `arafix` بالحرف. تثبيتهما معاً يكسر
-> أحدهما — ومن يستورد `arafix` لا يدري أيّهما جاءه. الاسم على PyPI شاغرٌ
-> بعدُ — لكنّ **الناشر المعلَّق على PyPI لا يحجز الاسم**، وإعادة التسمية
-> قبل النشر أسلم منها بعده بمراتب. انظر [التسمية والجيران](#التسمية-والجيران)
-> و[RELEASING.md](RELEASING.md).
 
 ---
 
@@ -523,10 +563,10 @@ class PdfMinerExtractor(Extractor):
 - [x] الدرجة ٣ — الخريطة من `cmap` وأسماء الجليفات
 - [x] الرباطات — تشطير التطبيع حول الاتجاه + ترقيع رجعيّ (0.2.0)
 - [x] المحايدات — قراءة هندسية، مرآة الأقواس، عكسٌ عنقوديّ (0.3.0)
-- [ ] معجم عربيّ مدمج يحسم مواضع «ال» الوسطية بلا تدخّل
+- [x] معجم عربيّ مدمج خفيف (`arafix.lexicon.core`) + `use_core_lexicon` (1.0.0)
 - [ ] الدرجة ٣+ — مطابقة الشكل (perceptual hash للجليف)
 - [ ] الدرجة ٤ — غلاف OCR
-- [ ] استخراج بنيويّ (جداول، حواشٍ، أعمدة)
+- [x] استخراج بنيويّ (جداول، حواشٍ، أعمدة) — layout 0.8.0
 - [ ] محرّكات: pdfminer، pypdf، pdftotext
 - [x] القياس — CER/WER ومقارنةُ المسارات على ملفك (0.4.0)
 - [x] نظافة الاستخراج — NBSP / soft-hyphen (0.7.0)
@@ -536,6 +576,8 @@ class PdfMinerExtractor(Extractor):
 - [x] أعمدة RTL + ترويسة/تذييل + جداول بنيوية (0.8.0)
 - [x] حماية التشكيل العنقودية + طيّ هجائن PDF + جزر LTR (0.9.0)
 - [x] طبقة علمية MCS/DBR/BFE/SHDR + corpus انحدار حقيقي (0.9.0)
+- [x] LTR ذكي: نطاقات صفحات، عملات، ترقيم جملة (0.9.2)
+- [x] موجيبيك هجين + CP1256 (0.9.3) + stress corpus 50 (1.0.0)
 - [ ] حزمة ملفات مرجعية أوسع (أكثر من corpus واحد)
 - [ ] حسمُ «المجالت» بنموذج n-gram على مستوى المحرف (اقتباساً من CAMeL)
 - [ ] إخراج PDF قابل للبحث بالنصّ المصحَّح
@@ -575,10 +617,10 @@ MCS/DBR/BFE/SHDR في `test_scientific_floors`.
 - **الدرجة ٣ تعجز عن الخطوط CID** ذات الأسماء العديمة الدلالة. تُصرّح
   بالعجز (تغطية منخفضة) ولا تخترع.
 - **كاشف الاتجاه احتماليّ** لا حتميّ — ولذلك يُرجع درجةً وشواهد لا حكماً.
-- **ترقيع لام-ألف الموروث ناقصٌ بطبعه.** يُصلح القاطع (ألفان متجاورتان:
-  `االنترنيت`) يقيناً، ويُبلّغ عن المُبهَم (`المجالت`) ولا يخمّنه — إذ لا
-  قاعدةَ إملائية تميّزه عن «أفعالهم». مرِّر `lexicon=` ليُحسم. **والوقاية
-  وحدها تامّة**: ما تعالجه المكتبة من أوّله يخرج سليماً بلا معجم.
+- **ترقيع لام-ألف الموروث:** يُصلح القاطع (ألفان متجاورتان) يقيناً. المُبهَم
+  (`المجالت`) يُحسَم بمعجم النواة المضمَّن (`use_core_lexicon=True`) أو
+  `lexicon=` من المستعمل أو حصاد الوثيقة — بلا تخمين إملائي أعمى. **والوقاية
+  من الاستخراج** ما زالت أتمّ: ما تعالجه المكتبة من أوّله يخرج سليماً.
 - **الأعمدة والجداول** مدعومة منذ 0.8.0 عبر `layout="auto"|"columns"|"full"`
   (ميزاب أفقي + RTL). الكشف إحصائيّ: صفحات بثلاثة أعمدة متداخلة أو
   جداول بلا فجوات واضحة قد تحتاج ضبط `LayoutConfig`.
@@ -586,9 +628,9 @@ MCS/DBR/BFE/SHDR في `test_scientific_floors`.
   إن احتجتَ الإبقاء على `ی/ھ`.
 - **لا نخترع تشكيلاً غائباً من طبقة PDF.** إن رسم الملف شدّةً بلا تنوين،
   لا تُضاف. القياس (`DBR`) يقارن الالتصاق لا اختراع العلامات.
-- **Corpus انحدار حقيقي** في `tests/fixtures/real_pdf_narrative/` منذ 0.9.0
-  — ما زال عيّنة واحدة؛ `arafix eval --compare --scientific` على ملفاتك
-  هو الحجّة الأقوى. إن كسرَتها ملفاتُك، افتح issue.
+- **Corpus انحدار حقيقي** في `tests/fixtures/real_pdf_narrative/` +
+  FLAW fixtures + stress 50-pack (`scripts/stress_test_report.py`).
+  `arafix eval --compare --scientific` على ملفاتك يبقى الحجّة الميدانية.
 
 ---
 
@@ -601,15 +643,21 @@ MCS/DBR/BFE/SHDR في `test_scientific_floors`.
 
 If you use `arafix` in academic work, please cite it as:
 
+**APA:**
+
+Sharar, E. (2026). *arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs* (Version 1.0.0) [Computer software]. https://doi.org/10.5281/zenodo.21733978
+
+**BibTeX:**
+
 ```bibtex
 @software{sharar_arafix_2026,
   author  = {Sharar, Elias},
-  title   = {arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs},
+  title   = {{arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs}},
   year    = {2026},
-  version = {0.9.0},
+  version = {1.0.0},
+  doi     = {10.5281/zenodo.21733978},
   url     = {https://github.com/bio-colab/arafix},
-  license = {MIT},
-  orcid   = {0009-0004-8402-4399}
+  license = {MIT}
 }
 ```
 
@@ -621,3 +669,4 @@ See [CITATION.cff](./CITATION.cff) for machine-readable citation metadata
 MIT — انظر [LICENSE](LICENSE).
 
 </div>
+

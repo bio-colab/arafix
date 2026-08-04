@@ -1,13 +1,16 @@
 name: publish
 
-# النشر الموثوق (OIDC) — لا توكن ولا كلمة سرّ في أيّ مكان.
+# Trusted Publisher (OIDC) — no long-lived PyPI API token in the repo.
 #
-# تُصدر GitHub رمزاً قصير العمر لهذا المستودع وهذا الملف بعينه، وتتحقق
-# منه PyPI مباشرةً. فليس ثمّ سرٌّ يُخزَّن، ولا سرٌّ يُسرَّب، ولا سرٌّ
-# يُنسى فينتهي.
+# Flow for v1.0.0 (and later):
+#   1. Commit version + CHANGELOG on main
+#   2. git tag v1.0.0 && git push origin v1.0.0
+#   3. gh release create v1.0.0  →  this workflow runs on release:published
+#   4. guard checks tag == __version__ and CHANGELOG has ## 1.0.0
+#   5. test → build → pypi (OIDC, environment "pypi")
 #
-# **اسم هذا الملف جزءٌ من العقد**: هو ما تكتبه في خانة "Workflow name"
-# على PyPI. تغييرُ اسمه يكسر النشر حتى تُحدَّث الإعدادات هناك.
+# **Workflow file name is part of the PyPI pending-publisher contract**
+# (must remain publish.yml unless you update PyPI settings).
 
 on:
   release:

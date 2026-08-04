@@ -31,6 +31,7 @@ from .unicode_tables import (
     ZWJ,
     ZWNJ,
     is_arabic_diacritic,
+    is_presentation_form,
 )
 
 __all__ = [
@@ -40,6 +41,7 @@ __all__ = [
     "fold_pdf_homoglyphs",
     "expand_deferred_forms",
     "expand_ligatures",
+    "strip_tatweel_among_presentation_forms",
     "normalize_text",
 ]
 
@@ -71,6 +73,11 @@ class NormalizeConfig:
     #: يطفئه الأنبوب **مؤقتاً** في تمريرته الأولى ليُبقي الرباط ذرّةً
     #: حتى تفرغ الدرجة ٢، ثم يشعله في تمريرةٍ ثانية. انظر pipeline.py.
     expand_ligatures: bool = True
+
+    #: قبل طيّ الأشكال الرسومية: احذف الكشيدة الملاصقة لمحارف PF.
+    #: يمنع تشويه سلاسل مثل ``ـﻪـﻠـﻟا`` → «الله» بدل «لله».
+    #: لا يمسّ كشيدةً وسط حروف اسمية عادية (تبقى لـ ``strip_tatweel``).
+    strip_tatweel_in_pf_runs: bool = True
 
     #: تطبيع NFC ختامي لضمّ المحارف المركّبة.
     apply_nfc: bool = True
@@ -114,7 +121,37 @@ _DEFERRED_TABLE = {ord(k): v for k, v in DEFERRED_PF_TO_BASE.items()}
 _ALL_TABLE = {**_SIMPLE_TABLE, **_DEFERRED_TABLE}
 
 
-def fold_simple_forms(text: str) -> str:
+def strip_tatweel_among_presentation_forms(text: str) -> str:
+    """
+    تحذف الكشيدة (U+0640) إن لاصقت شكلاً رسومياً (Presentation Form).
+
+    الكشيدة وسط سلسلة PF تكسر تجاور الجليفات قبل الطيّ، فتنتج أشكالاً
+    اسمية خاطئة بعد العكس (مثل «الحمد الله» بدل «الحمد لله»).
+
+    >>> strip_tatweel_among_presentation_forms("\u0640\ufeea\u0640\ufee0")
+    '\ufeea\ufee0'
+
+    كشيدة بين حروف اسمية عادية تُترك هنا (تُعالَج لاحقاً بـ strip_tatweel)::
+
+        "مـر" تبقى "مـر"
+    """
+    if not text or TATWEEL not in text:
+        return text
+    out: list[str] = []
+    n = len(text)
+    for i, ch in enumerate(text):
+        if ch == TATWEEL:
+            prev = text[i - 1] if i > 0 else ""
+            nxt = text[i + 1] if i + 1 < n else ""
+            if (prev and is_presentation_form(prev)) or (
+                nxt and is_presentation_form(nxt)
+            ):
+                continue
+        out.append(ch)
+    return "".join(out)
+
+
+def fold_simple_forms(text: str, *, strip_pf_tatweel: bool = True) -> str:
     """
     يطبّع الأشكال **المفردة** وحدها، ويترك الرباطات ذرّاتٍ لا تُشقّ.
 
@@ -129,7 +166,11 @@ def fold_simple_forms(text: str) -> str:
     >>> fold_simple_forms("\ufefb") == "\ufefb"
     True
     """
-    return text.translate(_SIMPLE_TABLE) if text else text
+    if not text:
+        return text
+    if strip_pf_tatweel:
+        text = strip_tatweel_among_presentation_forms(text)
+    return text.translate(_SIMPLE_TABLE)
 
 
 def expand_deferred_forms(text: str) -> str:
@@ -153,7 +194,7 @@ def expand_deferred_forms(text: str) -> str:
 expand_ligatures = expand_deferred_forms
 
 
-def fold_presentation_forms(text: str) -> str:
+def fold_presentation_forms(text: str, *, strip_pf_tatweel: bool = True) -> str:
     """
     يطبّع كل الأشكال — المفردة والرباطات معاً.
 
@@ -166,7 +207,11 @@ def fold_presentation_forms(text: str) -> str:
     >>> fold_presentation_forms("\ufefb")
     'لا'
     """
-    return text.translate(_ALL_TABLE) if text else text
+    if not text:
+        return text
+    if strip_pf_tatweel:
+        text = strip_tatweel_among_presentation_forms(text)
+    return text.translate(_ALL_TABLE)
 
 
 def normalize_text(text: str, config: NormalizeConfig | None = None) -> str:
@@ -175,7 +220,7 @@ def normalize_text(text: str, config: NormalizeConfig | None = None) -> str:
     out = text
 
     if cfg.fold_presentation_forms:
-        out = fold_simple_forms(out)
+        out = fold_simple_forms(out, strip_pf_tatweel=cfg.strip_tatweel_in_pf_runs)
         if cfg.expand_ligatures:
             out = expand_deferred_forms(out)
 

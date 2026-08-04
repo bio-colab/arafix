@@ -1,5 +1,94 @@
 # سجلّ التغييرات
 
+## 1.0.0
+
+**أول إصدار مستقر (Stable)** — بعد اجتياز فحص الإجهاد الشامل (50 حزمة،
+FPR = 0٪، RAR = 100٪) وحلّ جميع عيوب الانحدار FLAW_01…FLAW_08.
+
+### ملخّص المسار من 0.9.0 → 1.0.0
+
+| المحور | ما استُقرّ |
+|--------|------------|
+| **FLAW_01** | نطاقات الصفحات `(ص. 140-125)` → `(ص. 125-140)` |
+| **FLAW_02** | لام-ألف مُبهَم + **معجم نواة** مضمَّن (`use_core_lexicon`) |
+| **FLAW_03** | مبالغ/أقواس محاسبية `(-USD 1,250.00)` بعد العكس |
+| **FLAW_04** | موجيبيك هجين بنوافذ جزئية + CP1256/ISO-8859-6 |
+| **FLAW_07** | كشيدة داخل Presentation Forms قبل الطي |
+| **FLAW_08** | نقطة الجملة الملتصقة بالسنة (`.2024` → `2024.`) |
+
+### ميزات 1.0.0 (تجميع الإصدارات 0.9.x)
+
+- **معجم النواة** `arafix.lexicon.core` (~1.7k كلمة، zlib+base85، كسول).
+- **أنبوب موحّد** لـ `repair_text` / `repair_blocks` / حصاد الوثيقة مع المعجم.
+- **LTR ذكي** (`ReorderConfig`): عملات، نسب، تواريخ، نطاقات صفحات، ترقيم جملة.
+- **موجيبيك هجين** دون تخريب ASCII/عربي سليم/`café`.
+- **قياس**: `scripts/eval_unified.py`، `scripts/stress_test_report.py`،
+  fixtures في `tests/fixtures/flaws/` و `tests/fixtures/stress/`.
+- **جودة PDF 0.9**: تشكيل هندسي، طيّ هجائن PDF، layout أعمدة/جداول، MCS/DBR/BFE/SHDR.
+
+### توافق
+
+- النواة ما زالت **بلا تبعيّات** (stdlib) للدرجات 0–2.
+- Python ≥ 3.9؛ حالة التطوير: **Production/Stable**.
+- `PipelineConfig.use_core_lexicon=True` افتراضياً (يُطفأ بـ `False`).
+
+### نشر
+
+- PyPI عبر GitHub Actions + **Trusted Publisher (OIDC)** — انظر `RELEASING.md`.
+- الوسم المتوقع: `v1.0.0` (يجب أن يطابق `__version__`).
+
+---
+
+## 0.9.3
+
+**Stress corpus (50 packs) + release gate**
+
+- `tests/fixtures/stress/ultra_complex_corpus.json` — 50 حزمة / 6 محاور إجهاد.
+- `scripts/stress_test_report.py` — FPR / RAR / CER / throughput + قرار
+  ``APPROVED FOR V1.0.0`` عند FPR=0 و RAR≥98٪.
+- `tests/test_stress_corpus.py` — بوابة CI (مع تخطي حزمة 10k فقط).
+
+**P1/D — موجيبيك هجين + ترميزات موروثة (FLAW_04 أخضر)**
+
+- `detect_mojibake`: مسار كامل UTF-8 (CP1252/latin-1) ثم **نوافذ جزئية**
+  للمقاطع الهجينة (`Ø§Ù„Ù…ÙCustomer` → `المCustomer`).
+- حذف رؤوس UTF-8 اليتيمة قبل اللاتيني.
+- مسار **CP1256 / ISO-8859-6** عند إساءة القراءة كـ Latin-1، بعتبة تمنع
+  إيجابيات زائفة على `café` / `résumé`.
+- انحدار: **كل FLAW_01…08 خضراء** — لا xfail متبقٍ في suite العيوب.
+
+## 0.9.2
+
+**P1 — اتجاه LTR ذكي (نطاقات صفحات، عملات، ترقيم جملة)**
+
+- استعادة جزر LTR بالدرجة (لا عكس أعمى): يحفظ `USD 1,250.00` ويفك `4202`→`2024`.
+- `normalize_page_ranges` — `(ص. 140-125)` → `(ص. 125-140)` و`pp.`.
+- `repair_inverted_ltr_parens` — `)-USD …(` → `(-USD …)`.
+- `relocate_sentence_punctuation` — `.2024` → `2024.` بعد سياق عربي.
+- انحدار: FLAW_01 / 03 / 08 خضراء (كانت xfail).
+
+## 0.9.1
+
+**حوكمة قياس + P0: معجم نواة ولام-ألف وكشيدة PF**
+
+### القياس والاختبارات
+- `tests/fixtures/flaws/` — حالات FLAW_01…08 من تقارير `add/` مع `manifest.json`.
+- `tests/test_flaws_regression.py` — انحدار لـ B (تمرّ) وxfail لـ C/D.
+- `scripts/eval_unified.py` — تقييم موحّد (نص/PDF) بثقة **حقيقية** (min/mean
+  لكل صفحة، بلا ادعاء 1.00 لشهادات «سليم»).
+
+### معجم النواة
+- `arafix.lexicon.core` — قاموس مضمَّن مضغوط (~1.7k كلمة)، تحميل كسول، stdlib فقط.
+- `PipelineConfig.use_core_lexicon` (افتراضي `True`) + `lexicon=` للمستعمل.
+
+### أنبوب لام-ألف
+- توحيد `repair_text` / `repair_blocks` / حصاد الوثيقة: المُبهَم يُحسَم عند
+  توفّر معجم (نواة أو مستعمل) حتى بلا شاهد قاطع.
+
+### تطبيع
+- `strip_tatweel_among_presentation_forms` قبل طيّ PF
+  (`NormalizeConfig.strip_tatweel_in_pf_runs`).
+
 ## 0.9.0
 
 **جودة الاستخراج على PDF حقيقي** — حماية التشكيل، طيّ الهجائن، جزر LTR،

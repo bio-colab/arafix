@@ -54,6 +54,23 @@ __all__ = [
 _ARABIC_WORD = re.compile(r"[\u0621-\u064A\u0671-\u06D3]{3,}")
 
 
+def _effective_lexicon(cfg: PipelineConfig) -> set[str] | None:
+    """
+    يبني معجم الإصلاح الفعّال: نواة مضمَّنة ∪ lexicon المستعمل.
+
+    يُرجع ``None`` إن لم يتوفّر أي مصدر — عندها يُصلَح القاطع فقط
+    داخل ``repair_lam_alef_transposition``.
+    """
+    vocab: set[str] = set()
+    if cfg.use_core_lexicon:
+        from .lexicon.core import get_core_lexicon
+
+        vocab |= set(get_core_lexicon())
+    if cfg.lexicon is not None:
+        vocab |= set(cfg.lexicon)
+    return vocab or None
+
+
 def _is_lam_alef_suspect_word(word: str) -> bool:
     """
     أكلمةٌ مرشّحة لانقلاب لام-ألف مُبهَم؟ لا تُدخَل في معجم الوثيقة.
@@ -89,9 +106,13 @@ class PipelineConfig:
     #: لا يلزم لِما تعالجه هذه المكتبة من أوّله — إنما لِما وَرِثته معطوباً.
     enable_lam_alef_repair: bool = True
 
-    #: معجمُ كلماتٍ عربية صحيحة. بدونه يُصلَح القاطعُ وحده ويُبلَّغ عن
-    #: المُبهَم. ومعه تُحسَم المواضع الوسطية كـ«المجالت» أيضاً.
+    #: معجمُ كلماتٍ عربية صحيحة (من المستعمل). بدونه يُصلَح القاطعُ وحده
+    #: ما لم يُفعَّل ``use_core_lexicon``. ومع معجمٍ تُحسَم «المجالت» وأمثالها.
     lexicon: Iterable[str] | None = None
+
+    #: ادمج المعجم المضمَّن الخفيف (``arafix.lexicon.core``) لحسم المُبهَم
+    #: الشائع بلا ملف خارجي. يُحمَّل كسولاً عند أول حاجة.
+    use_core_lexicon: bool = True
 
     #: بعد إصلاح كل الصفحات: ابنِ معجماً من كلمات الملف نفسه وأعِد
     #: ترقيع لام-ألف المُبهَم. بلا نموذج خارجيّ — الوثيقة تشهد لنفسها.
@@ -232,27 +253,40 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
             notes.append("طُبِّع المؤجَّل (الرباطات والتشكيل الفاصل) بعد استقرار الترتيب")
 
     # --- ترقيع ما وَرِثناه معطوباً من أداةٍ أخرى ------------------------
+    # القاطع (ألفان متجاورتان) يُصلَح بلا معجم. المُبهَم يحتاج معجماً
+    # (مضمَّناً و/أو lexicon=). نوحّد البوابة مع repair_blocks: لا نشترط
+    # Defect.LAM_ALEF_TRANSPOSED وحده — فالمُبهَم لا يُسجَّل قاطعاً.
     lam_conf = 1.0
-    if cfg.enable_lam_alef_repair and dg.has(Defect.LAM_ALEF_TRANSPOSED):
-        rep = repair_lam_alef_transposition(current, cfg.lexicon)
-        current = rep.text
-        stages.append(Stage.REPAIR_LAM_ALEF)
-        lam_conf = rep.confidence
-        notes.append(
-            f"رُدَّ {rep.fixed_decisive} انقلابَ لام-ألف بشاهدٍ قاطع (ألفان متجاورتان)"
-        )
-        if rep.fixed_by_lexicon:
-            notes.append(f"وحُسم {rep.fixed_by_lexicon} موضعاً مُبهَماً بالمعجم")
-        if rep.suspects_left:
-            notes.append(
-                f"بقي {rep.suspects_left} موضعاً مُبهَماً لم يُمسّ: "
-                + "، ".join(rep.suspect_words[:5])
-                + " — مرِّر lexicon= لحسمها"
-            )
-        if rep.article_like:
-            notes.append(
-                f"و{rep.article_like} موضعاً في موقع «ال» التعريف — غالباً سليمة، لم تُسرَد"
-            )
+    if cfg.enable_lam_alef_repair:
+        vocab = _effective_lexicon(cfg)
+        has_decisive = dg.has(Defect.LAM_ALEF_TRANSPOSED)
+        has_ambiguous = int(dg.metrics.get("lam_alef_ambiguous", 0) or 0) > 0
+        if has_decisive or has_ambiguous or vocab is not None:
+            rep = repair_lam_alef_transposition(current, vocab)
+            if rep.fixed_decisive or rep.fixed_by_lexicon:
+                current = rep.text
+                stages.append(Stage.REPAIR_LAM_ALEF)
+                lam_conf = rep.confidence
+                if rep.fixed_decisive:
+                    notes.append(
+                        f"رُدَّ {rep.fixed_decisive} انقلابَ لام-ألف بشاهدٍ قاطع "
+                        "(ألفان متجاورتان)"
+                    )
+                if rep.fixed_by_lexicon:
+                    notes.append(
+                        f"وحُسم {rep.fixed_by_lexicon} موضعاً مُبهَماً بالمعجم"
+                    )
+            elif rep.suspects_left:
+                notes.append(
+                    f"بقي {rep.suspects_left} موضعاً مُبهَماً لم يُمسّ: "
+                    + "، ".join(rep.suspect_words[:5])
+                    + " — مرِّر lexicon= أو فعِّل use_core_lexicon"
+                )
+            if rep.article_like and (rep.fixed_decisive or rep.fixed_by_lexicon):
+                notes.append(
+                    f"و{rep.article_like} موضعاً في موقع «ال» التعريف — "
+                    "غالباً سليمة، لم تُسرَد"
+                )
 
     # --- الدرجة ٣: نُصرّح بالحاجة ولا ندّعي القدرة في هذا المسار -------
     if dg.has(Defect.BROKEN_CMAP):
@@ -347,20 +381,19 @@ def _apply_harvested_lexicon_to_blocks(
     results: list[BlockResult], cfg: PipelineConfig
 ) -> None:
     vocab = harvest_document_lexicon(b.repair.text for b in results)
-    if cfg.lexicon:
-        vocab |= set(cfg.lexicon)
+    extra = _effective_lexicon(cfg)
+    if extra:
+        vocab |= extra
     if not vocab:
         return
     for br in results:
-        if not br.repair.diagnosis.has(Defect.LAM_ALEF_TRANSPOSED):
-            # قد يبقى مُبهَمٌ بعد إصلاحٍ بلا معجم — افحص النصّ دائماً إن رخيصاً
-            pass
         rep = repair_lam_alef_transposition(br.repair.text, vocab)
-        if rep.fixed_by_lexicon:
+        if rep.fixed_by_lexicon or rep.fixed_decisive:
             br.repair.text = rep.text
-            br.repair.notes.append(
-                f"حُسم {rep.fixed_by_lexicon} موضعاً مُبهَماً بمعجم الوثيقة الداخليّ"
-            )
+            if rep.fixed_by_lexicon:
+                br.repair.notes.append(
+                    f"حُسم {rep.fixed_by_lexicon} موضعاً مُبهَماً بمعجم الوثيقة/النواة"
+                )
             if Stage.REPAIR_LAM_ALEF not in br.repair.stages_applied:
                 br.repair.stages_applied.append(Stage.REPAIR_LAM_ALEF)
 
@@ -428,8 +461,9 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
 
     if cfg.harvest_document_lexicon and cfg.enable_lam_alef_repair and doc.pages:
         vocab = harvest_document_lexicon(p.text for p in doc.pages)
-        if cfg.lexicon:
-            vocab |= set(cfg.lexicon)
+        extra = _effective_lexicon(cfg)
+        if extra:
+            vocab |= extra
         fixed_pages = 0
         for page in doc.pages:
             rep = repair_lam_alef_transposition(page.repair.text, vocab)
@@ -437,7 +471,7 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
                 page.repair.text = rep.text
                 fixed_pages += 1
                 page.repair.notes.append(
-                    f"معجم الوثيقة: حُسم {rep.fixed_by_lexicon} مُبهَم "
+                    f"معجم الوثيقة/النواة: حُسم {rep.fixed_by_lexicon} مُبهَم "
                     f"+ {rep.fixed_decisive} قاطع عبر الصفحات"
                 )
                 if Stage.REPAIR_LAM_ALEF not in page.repair.stages_applied:

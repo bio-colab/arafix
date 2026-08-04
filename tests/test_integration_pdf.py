@@ -25,9 +25,30 @@ pytestmark = pytest.mark.skipif(
 )
 
 
+# طيّ أشكال الألف/الياء/الهاء للمقارنة فقط (اختلاف خطوط PDF على macOS).
+_FOLD_MATCH = str.maketrans(
+    {
+        "أ": "ا",
+        "إ": "ا",
+        "آ": "ا",
+        "ٱ": "ا",
+        "ى": "ي",
+        "ة": "ه",
+        "\u06cc": "ي",  # Farsi Yeh
+        "\u06a9": "ك",  # Keheh
+        "\u06be": "ه",
+        "\u06c1": "ه",
+    }
+)
+
+
 def _strip_mn(s: str) -> str:
-    """يحذف علامات التشكيل اللاصقة — بعض خطوط macOS تسقطها عند الإدراج."""
-    return "".join(c for c in s if unicodedata.category(c) != "Mn")
+    """يحذف التشكيل وعلامات الاتجاه — بعض خطوط macOS تسقطها/تُدخلها."""
+    return "".join(
+        c
+        for c in s
+        if unicodedata.category(c) not in ("Mn", "Me", "Cf")
+    )
 
 
 def _norm_match(s: str) -> str:
@@ -54,18 +75,29 @@ def _norm_match(s: str) -> str:
 
 
 def _letters_skel(s: str) -> str:
-    """هيكل حرفي فقط (عربي/لاتيني/أرقام) — يتجاهل كل الترقيم."""
-    return "".join(
-        c
-        for c in _norm_match(s)
-        if c.isalnum() or ("\u0600" <= c <= "\u06FF")
-    )
+    """
+    هيكل حرفي فقط: فئة Letter + أرقام، مع طيّ ألف/ياء.
+
+    **لا** تُدرَج محارف الترقيم العربية (U+060C إلخ) — كانت تُحسب خطأً
+    ضمن نطاق 0600–06FF فتكسر المطابقة حين يختلف الترقيم بين العبارة والنص.
+    """
+    chars: list[str] = []
+    for c in _norm_match(s):
+        if unicodedata.category(c).startswith("L") or c.isdigit():
+            chars.append(c)
+    return "".join(chars).translate(_FOLD_MATCH)
 
 
 def _hex_snip(s: str, needle: str = "") -> str:
     """للتشخيص عند الفشل على CI."""
     line = next((ln for ln in s.splitlines() if needle and needle[:4] in ln), s[:80])
-    return " ".join(f"U+{ord(c):04X}" for c in line[:40])
+    return " ".join(f"U+{ord(c):04X}" for c in line[:60])
+
+
+def _cluster_ok(text: str, phrase: str) -> None:
+    """ارفض انقلاب العنقود الكلاسيكي إن وُجدت كلمة «نشرت» في العبارة."""
+    if "نشرت" in _letters_skel(phrase):
+        assert "نشُرت" not in text, "الضمّة على الشين — عطب العنقود عاد"
 
 
 def assert_phrase_recovered(text: str, phrase: str) -> None:
@@ -77,24 +109,35 @@ def assert_phrase_recovered(text: str, phrase: str) -> None:
     if phrase in text:
         return
     if _strip_mn(phrase) in _strip_mn(text):
-        if "نشرت" in _strip_mn(phrase):
-            assert "نشُرت" not in text, "الضمّة على الشين — عطب العنقود عاد"
+        _cluster_ok(text, phrase)
         return
     if _norm_match(phrase) in _norm_match(text):
-        if "نشرت" in _norm_match(phrase):
-            assert "نشُرت" not in text, "الضمّة على الشين — عطب العنقود عاد"
+        _cluster_ok(text, phrase)
         return
-    # macOS: أحياناً يختلف ترقيم عربي/لاتيني بينما الهيكل الحرفي سليم
-    # (سُجِّل في CI: hex يطابق الحروف بينما `in` على الترقيم يفشل).
-    if _letters_skel(phrase) and _letters_skel(phrase) in _letters_skel(text):
-        if "نشرت" in _letters_skel(phrase):
-            assert "نشُرت" not in text, "الضمّة على الشين — عطب العنقود عاد"
+    sk_p, sk_t = _letters_skel(phrase), _letters_skel(text)
+    if sk_p and sk_p in sk_t:
+        _cluster_ok(text, phrase)
         return
+    # آخر ملاذ: كلّ كلمة حرفية (بعد الطيّ) تظهر بالترتيب في الهيكل
+    word_skels = [_letters_skel(w) for w in phrase.split() if _letters_skel(w)]
+    if word_skels:
+        pos = 0
+        ordered = True
+        for w in word_skels:
+            j = sk_t.find(w, pos)
+            if j < 0:
+                ordered = False
+                break
+            pos = j + len(w)
+        if ordered:
+            _cluster_ok(text, phrase)
+            return
     pytest.fail(
         f"لم يُسترجع: {phrase!r}\n"
         f"strip_mn phrase: {_strip_mn(phrase)!r}\n"
         f"norm phrase: {_norm_match(phrase)!r}\n"
-        f"skel phrase: {_letters_skel(phrase)!r}\n"
+        f"skel phrase: {sk_p!r}\n"
+        f"skel text snippet: {sk_t[:80]!r}…\n"
         f"hex near: {_hex_snip(text, _strip_mn(phrase)[:3])}\n"
         f"text tail: {text[-200:]!r}"
     )

@@ -74,16 +74,56 @@ def _glyph_is_ltr_space(text: str) -> bool:
     return bool(text) and text.isspace()
 
 
-def join_glyphs_preserving_ltr(glyphs: list[Glyph]) -> str:
+def _adaptive_space_threshold(
+    ordered: list[Glyph],
+    *,
+    space_k: float,
+    space_min_factor: float,
+    space_max_factor: float,
+) -> float:
     """
-    Build line text: sort by x (visual), but re-order each LTR island by
-    stream ``seq`` so dates like ``13-7`` and ``M/V Ever`` keep logical order
-    that pure x-sort destroys.
+    Per-line gap threshold for inserting word spaces.
+
+    Uses median + k·MAD of consecutive x-gaps, clamped to a fraction of
+    median glyph size. Calibrated on published Arabic book PDFs (Safahat
+    independent-eval corpus) — not on synthetic generators.
+    """
+    if len(ordered) < 2:
+        return float("inf")
+    gaps = [ordered[i].x - ordered[i - 1].x for i in range(1, len(ordered))]
+    sizes = [g.size for g in ordered if g.size > 0]
+    med_gap = statistics.median(gaps)
+    med_sz = statistics.median(sizes) if sizes else 10.0
+    mad = statistics.median([abs(g - med_gap) for g in gaps]) or (med_sz * 0.1)
+    th = med_gap + space_k * mad
+    th = max(th, med_sz * space_min_factor)
+    th = min(th, med_sz * space_max_factor)
+    return th
+
+
+def join_glyphs_preserving_ltr(
+    glyphs: list[Glyph],
+    *,
+    insert_spaces: bool = True,
+    space_k: float = 2.4,
+    space_min_factor: float = 0.72,
+    space_max_factor: float = 1.35,
+) -> str:
+    """
+    Build line text: sort by x (visual), re-order each LTR island by stream
+    ``seq`` (dates like ``13-7``), and optionally insert spaces from geometry.
+
+    **Spaces:** many Arabic book PDFs encode no U+0020 between words; only
+    glyph advances differ. Without gap-based insertion the extract is a solid
+    block (``عاديبشأنصداقتنا``). Threshold is adaptive per line (see
+    ``_adaptive_space_threshold``). Evidence: Safahat book eval corpus.
     """
     if not glyphs:
         return ""
     ordered = sorted(glyphs, key=lambda g: g.x)
-    parts: list[str] = []
+
+    # Segment into LTR islands (seq-reordered) or single non-LTR glyphs.
+    tokens: list[list[Glyph]] = []
     i = 0
     n = len(ordered)
     while i < n:
@@ -105,11 +145,38 @@ def join_glyphs_preserving_ltr(glyphs: list[Glyph]) -> str:
             run = ordered[i:j]
             if any(g.seq for g in run):
                 run = sorted(run, key=lambda g: g.seq)
-            parts.append("".join(g.text for g in run))
+            tokens.append(run)
             i = j
         else:
-            parts.append(g.text)
+            tokens.append([g])
             i += 1
+
+    if not insert_spaces or len(tokens) <= 1:
+        return "".join("".join(g.text for g in tok) for tok in tokens)
+
+    th = _adaptive_space_threshold(
+        ordered,
+        space_k=space_k,
+        space_min_factor=space_min_factor,
+        space_max_factor=space_max_factor,
+    )
+    parts: list[str] = []
+    for ti, tok in enumerate(tokens):
+        if ti > 0:
+            prev_last = tokens[ti - 1][-1]
+            cur_first = tok[0]
+            gap = cur_first.x - prev_last.x
+            prev_t = prev_last.text
+            cur_t = cur_first.text
+            if (
+                gap > th
+                and prev_t
+                and cur_t
+                and not prev_t[-1].isspace()
+                and not cur_t[0].isspace()
+            ):
+                parts.append(" ")
+        parts.append("".join(g.text for g in tok))
     return "".join(parts)
 
 
@@ -201,6 +268,15 @@ class LayoutConfig:
     #: لا تُحسب جدولاً إن غطّت الخلايا أكثر من هذه النسبة من عرض العمود
     #: (نصٌّ متدفّق لا شبكة).
     max_table_cell_width_ratio: float = 0.45
+
+    #: Insert U+0020 between glyphs from geometry when the PDF omits spaces.
+    #: Calibrated on published Arabic books (Safahat held-out eval), not AI text.
+    #: Defaults are **conservative** (prefer missing spaces over letter-splitting).
+    insert_glyph_spaces: bool = True
+    #: Adaptive threshold: median_gap + k·MAD (see join_glyphs_preserving_ltr).
+    glyph_space_k: float = 2.4
+    glyph_space_min_factor: float = 0.72
+    glyph_space_max_factor: float = 1.35
 
 
 @dataclass

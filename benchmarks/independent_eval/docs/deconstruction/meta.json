@@ -1,0 +1,35 @@
+{
+  "doc_id": "deconstruction",
+  "title_ar": "مداخل إلى التفكيك",
+  "source_site": "https://www.safahat.org/",
+  "path": "benchmarks/independent_eval/docs/deconstruction/source.pdf",
+  "n_pages": 440,
+  "arafix_chars": 778459,
+  "raw_chars": 779675,
+  "confidence_min": 0.302,
+  "arafix_version": "1.0.1",
+  "evidence_note": "Published Arabic books from safahat.org; independent held-out eval — not AI-generated fixtures.",
+  "sample_pages": [
+    45,
+    152,
+    199,
+    298,
+    380
+  ],
+  "gold_status": "sample_fully_reviewed",
+  "gold_reviewed_pages": [
+    45,
+    152,
+    199,
+    298,
+    380
+  ],
+  "gold_scope": "sample_pages_only",
+  "outputs": {
+    "raw_mupdf": "raw_mupdf.txt",
+    "arafix_out": "arafix_out.txt",
+    "diagnose": "diagnose.json",
+    "sample_dir": "sample/"
+  },
+  "gold_draft_pages": []
+}

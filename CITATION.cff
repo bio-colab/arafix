@@ -25,8 +25,8 @@ authors:
 repository-code: "https://github.com/bio-colab/arafix"
 url: "https://github.com/bio-colab/arafix"
 license: MIT
-version: 1.0.0
-date-released: "2026-08-04"
+version: 1.0.1
+date-released: "2026-08-09"
 keywords:
   - arabic
   - pdf
@@ -50,6 +50,6 @@ preferred-citation:
   year: 2026
   month: 8
   doi: 10.5281/zenodo.21733978
-  version: 1.0.0
+  version: 1.0.1
   url: "https://github.com/bio-colab/arafix"
   license: MIT

@@ -1,0 +1,152 @@
+[
+  {
+    "page": 4,
+    "chars": 539,
+    "arabic_ratio": 0.809,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.921
+  },
+  {
+    "page": 5,
+    "chars": 476,
+    "arabic_ratio": 0.548,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.929
+  },
+  {
+    "page": 6,
+    "chars": 328,
+    "arabic_ratio": 0.695,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.926
+  },
+  {
+    "page": 7,
+    "chars": 441,
+    "arabic_ratio": 0.921,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.921
+  },
+  {
+    "page": 9,
+    "chars": 986,
+    "arabic_ratio": 0.902,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.909
+  },
+  {
+    "page": 10,
+    "chars": 1680,
+    "arabic_ratio": 0.738,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.727
+  },
+  {
+    "page": 11,
+    "chars": 1888,
+    "arabic_ratio": 0.716,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.921
+  },
+  {
+    "page": 12,
+    "chars": 1324,
+    "arabic_ratio": 0.914,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.925
+  },
+  {
+    "page": 13,
+    "chars": 1088,
+    "arabic_ratio": 0.905,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.923
+  },
+  {
+    "page": 14,
+    "chars": 1758,
+    "arabic_ratio": 0.91,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.923
+  },
+  {
+    "page": 15,
+    "chars": 1606,
+    "arabic_ratio": 0.928,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.925
+  },
+  {
+    "page": 16,
+    "chars": 1757,
+    "arabic_ratio": 0.908,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.921
+  },
+  {
+    "page": 17,
+    "chars": 1011,
+    "arabic_ratio": 0.915,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.904
+  },
+  {
+    "page": 19,
+    "chars": 1064,
+    "arabic_ratio": 0.883,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.918
+  },
+  {
+    "page": 20,
+    "chars": 1812,
+    "arabic_ratio": 0.931,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.918
+  }
+]

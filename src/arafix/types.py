@@ -48,6 +48,7 @@ class Stage(str, Enum):
     REORDER = "reorder"            # ٢ — إصلاح الاتجاه
     EXPAND_LIGATURES = "expand_ligatures"  # ١ب — فكّ الرباطات، بعد استقرار الترتيب
     REPAIR_LAM_ALEF = "repair_lam_alef"    # ترقيع عطبٍ أوقعته أداةٌ أخرى
+    REPAIR_PDF_CONFUSIONS = "repair_pdf_confusions"  # امل/ري من كتب PDF منشورة
     REBUILD_CMAP = "rebuild_cmap"  # ٣ — إعادة بناء الخريطة من الخط
     OCR = "ocr"                    # ٤ — آخر الدواء
 
@@ -166,7 +167,19 @@ class DocumentResult:
 
     @property
     def confidence(self) -> float:
-        """أدنى ثقة في الصفحات — أضعف حلقةٍ تحكم على السلسلة."""
+        """
+        أدنى ثقة في الصفحات **ذات النص** — أضعف حلقة في السلسلة.
+
+        الصفحات شبه الفارغة (غلاف، بياض) كانت تسحب الثقة إلى ٠٫٠ رغم
+        أن متن الكتاب سليم. تُستثنى الصفحات بأقل من ٤٠ محرفاً غير فراغ.
+        """
+        substantive = [
+            p.repair.confidence
+            for p in self.pages
+            if len((p.text or "").strip()) >= 40
+        ]
+        if substantive:
+            return min(substantive)
         return min((p.repair.confidence for p in self.pages), default=0.0)
 
     @property

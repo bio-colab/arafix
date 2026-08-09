@@ -14,9 +14,11 @@
 | **Core** | Zero dependencies (stdlib only) for text stages 0–2 |
 | **PDF** | `pip install "arafix[pdf]"` — geometric extract + Arabic repair |
 | **Layout** | Multi-column RTL, headers/footers, simple tables (`layout=auto`) |
+| **1.0.1** | Glyph word-spacing + closed PDF confusions from **published Arabic books** (not AI fixtures) |
 | **1.0** | Core lexicon, smart BiDi/LTR, hybrid mojibake, stress-gated (FPR=0, RAR=100%) |
 | **Quality** | Cluster-aware diacritics, PDF homoglyph fold, scientific metrics (MCS/DBR/BFE/SHDR) |
-| **Status** | **Stable 1.0.0** — production-ready for native Arabic PDF recovery |
+| **Eval** | Independent Safahat book samples + manual gold (`benchmarks/independent_eval/`) |
+| **Status** | **Stable 1.0.1** — production-ready for native Arabic PDF recovery |
 
 ### Install
 
@@ -645,7 +647,7 @@ If you use `arafix` in academic work, please cite it as:
 
 **APA:**
 
-Sharar, E. (2026). *arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs* (Version 1.0.0) [Computer software]. https://doi.org/10.5281/zenodo.21733978
+Sharar, E. (2026). *arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs* (Version 1.0.1) [Computer software]. https://doi.org/10.5281/zenodo.21733978
 
 **BibTeX:**
 
@@ -654,7 +656,7 @@ Sharar, E. (2026). *arafix: Evidence-Based Repair of Broken Arabic Text in Nativ
   author  = {Sharar, Elias},
   title   = {{arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs}},
   year    = {2026},
-  version = {1.0.0},
+  version = {1.0.1},
   doi     = {10.5281/zenodo.21733978},
   url     = {https://github.com/bio-colab/arafix},
   license = {MIT}

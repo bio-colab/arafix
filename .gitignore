@@ -38,6 +38,14 @@ multi.pdf
 !tests/**/*.pdf
 !examples/**/*.pdf
 
+# --- Independent eval: keep gold/metrics; do not ship full books/extracts ---
+# PDFs: covered by *.pdf above (user re-downloads from safahat.org)
+benchmarks/independent_eval/docs/**/raw_mupdf.txt
+benchmarks/independent_eval/docs/**/arafix_out.txt
+benchmarks/independent_eval/docs/**/arafix_out_*.txt
+benchmarks/independent_eval/docs/**/sample/*_arafix_v*.txt
+benchmarks/independent_eval/pilot_eval_v*.json
+
 # --- Eval / stress / local reports / CI log dumps (never ship) ---
 reports/
 _ci_logs/

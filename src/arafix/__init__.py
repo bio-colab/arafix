@@ -28,7 +28,7 @@ MIT license. Primary long-form docs are in Arabic (README).
 
 from __future__ import annotations
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __license__ = "MIT"
 
 from .adapters import as_blocks, fix_any, fix_markitdown, fix_table
@@ -94,6 +94,10 @@ from .order import (
     relocate_sentence_punctuation,
     repair_inverted_ltr_parens,
     reverse_visual_line,
+)
+from .pdf_confusions import (
+    PdfConfusionReport,
+    repair_pdf_confusions,
 )
 from .pipeline import (
     PipelineConfig,
@@ -186,6 +190,9 @@ __all__ = [
     "detect_lam_alef_transposition",
     "repair_lam_alef_transposition",
     "LamAlefReport",
+    # التباسات كتب PDF منشورة (Safahat — ليست مولّدة بالذكاء الاصطناعي)
+    "repair_pdf_confusions",
+    "PdfConfusionReport",
     # الدرجة ٢
     "fix_order",
     "reverse_visual_line",

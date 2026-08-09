@@ -1,0 +1,152 @@
+[
+  {
+    "page": 3,
+    "chars": 68,
+    "arabic_ratio": 0.897,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.92
+  },
+  {
+    "page": 4,
+    "chars": 597,
+    "arabic_ratio": 0.817,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.92
+  },
+  {
+    "page": 5,
+    "chars": 549,
+    "arabic_ratio": 0.592,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.921
+  },
+  {
+    "page": 7,
+    "chars": 1057,
+    "arabic_ratio": 0.92,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.921
+  },
+  {
+    "page": 9,
+    "chars": 108,
+    "arabic_ratio": 0.917,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.793
+  },
+  {
+    "page": 11,
+    "chars": 1202,
+    "arabic_ratio": 0.92,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.879
+  },
+  {
+    "page": 12,
+    "chars": 1188,
+    "arabic_ratio": 0.915,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.919
+  },
+  {
+    "page": 13,
+    "chars": 1327,
+    "arabic_ratio": 0.917,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.921
+  },
+  {
+    "page": 14,
+    "chars": 1968,
+    "arabic_ratio": 0.896,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.922
+  },
+  {
+    "page": 15,
+    "chars": 1933,
+    "arabic_ratio": 0.897,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.922
+  },
+  {
+    "page": 16,
+    "chars": 1752,
+    "arabic_ratio": 0.921,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.924
+  },
+  {
+    "page": 17,
+    "chars": 1228,
+    "arabic_ratio": 0.891,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.919
+  },
+  {
+    "page": 18,
+    "chars": 1914,
+    "arabic_ratio": 0.914,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.924
+  },
+  {
+    "page": 19,
+    "chars": 1522,
+    "arabic_ratio": 0.927,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.919
+  },
+  {
+    "page": 20,
+    "chars": 1933,
+    "arabic_ratio": 0.915,
+    "defects": [
+      "presentation_forms",
+      "visual_order"
+    ],
+    "confidence": 0.922
+  }
+]

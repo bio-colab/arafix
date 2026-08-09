@@ -1,0 +1,22 @@
+{
+  "doc_id": "thumb_red",
+  "sample_pages": [
+    47,
+    87,
+    149,
+    176,
+    188
+  ],
+  "gold_reviewed": [
+    47,
+    87,
+    149,
+    176,
+    188
+  ],
+  "gold_draft": [],
+  "note": "Pages selected for gold annotation (held-out sample).",
+  "arafix_extract_version": "1.0.1",
+  "gold_status": "all_sample_pages_reviewed",
+  "gold_note": "Manual gold from published Safahat book pages; not AI-generated source text. Spacing and orthography corrected against arafix 1.0.1 extract."
+}

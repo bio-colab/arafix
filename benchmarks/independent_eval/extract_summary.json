@@ -1,0 +1,108 @@
+{
+  "arafix_version": "1.0.1",
+  "evidence_source": "safahat.org published books (not AI-generated)",
+  "books": [
+    {
+      "doc_id": "thumb_red",
+      "title_ar": "بصمة الإبهام الحمراء",
+      "source_site": "https://www.safahat.org/",
+      "path": "benchmarks/independent_eval/docs/thumb_red/source.pdf",
+      "n_pages": 204,
+      "arafix_chars": 297092,
+      "raw_chars": 296592,
+      "confidence_min": 0.33,
+      "arafix_version": "1.0.1",
+      "evidence_note": "Published Arabic books from safahat.org; independent held-out eval — not AI-generated fixtures.",
+      "sample_pages": [
+        47,
+        87,
+        149,
+        176,
+        188
+      ],
+      "gold_status": "sample_fully_reviewed",
+      "gold_reviewed_pages": [
+        47,
+        87,
+        149,
+        176,
+        188
+      ],
+      "gold_scope": "sample_pages_only",
+      "outputs": {
+        "raw_mupdf": "raw_mupdf.txt",
+        "arafix_out": "arafix_out.txt",
+        "diagnose": "diagnose.json",
+        "sample_dir": "sample/"
+      }
+    },
+    {
+      "doc_id": "deconstruction",
+      "title_ar": "مداخل إلى التفكيك",
+      "source_site": "https://www.safahat.org/",
+      "path": "benchmarks/independent_eval/docs/deconstruction/source.pdf",
+      "n_pages": 440,
+      "arafix_chars": 778459,
+      "raw_chars": 779675,
+      "confidence_min": 0.302,
+      "arafix_version": "1.0.1",
+      "evidence_note": "Published Arabic books from safahat.org; independent held-out eval — not AI-generated fixtures.",
+      "sample_pages": [
+        45,
+        152,
+        199,
+        298,
+        380
+      ],
+      "gold_status": "sample_fully_reviewed",
+      "gold_reviewed_pages": [
+        45,
+        152,
+        199,
+        298,
+        380
+      ],
+      "gold_scope": "sample_pages_only",
+      "outputs": {
+        "raw_mupdf": "raw_mupdf.txt",
+        "arafix_out": "arafix_out.txt",
+        "diagnose": "diagnose.json",
+        "sample_dir": "sample/"
+      }
+    },
+    {
+      "doc_id": "bilhaqq",
+      "title_ar": "وبالحق نزل",
+      "source_site": "https://www.safahat.org/",
+      "path": "benchmarks/independent_eval/docs/bilhaqq/source.pdf",
+      "n_pages": 182,
+      "arafix_chars": 222197,
+      "raw_chars": 224295,
+      "confidence_min": 0.3,
+      "arafix_version": "1.0.1",
+      "evidence_note": "Published Arabic books from safahat.org; independent held-out eval — not AI-generated fixtures.",
+      "sample_pages": [
+        28,
+        63,
+        110,
+        133,
+        162
+      ],
+      "gold_status": "sample_fully_reviewed",
+      "gold_reviewed_pages": [
+        28,
+        63,
+        110,
+        133,
+        162
+      ],
+      "gold_scope": "sample_pages_only",
+      "outputs": {
+        "raw_mupdf": "raw_mupdf.txt",
+        "arafix_out": "arafix_out.txt",
+        "diagnose": "diagnose.json",
+        "sample_dir": "sample/"
+      }
+    }
+  ]
+}

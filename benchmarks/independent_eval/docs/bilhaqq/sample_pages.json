@@ -1,0 +1,22 @@
+{
+  "doc_id": "bilhaqq",
+  "sample_pages": [
+    28,
+    63,
+    110,
+    133,
+    162
+  ],
+  "gold_reviewed": [
+    28,
+    63,
+    110,
+    133,
+    162
+  ],
+  "gold_draft": [],
+  "note": "Pages selected for gold annotation (held-out sample).",
+  "arafix_extract_version": "1.0.1",
+  "gold_status": "all_sample_pages_reviewed",
+  "gold_note": "Manual gold from published Safahat book pages; not AI-generated source text. Spacing and orthography corrected against arafix 1.0.1 extract."
+}

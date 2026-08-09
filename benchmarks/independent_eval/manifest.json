@@ -1,0 +1,130 @@
+{
+  "name": "arafix independent evaluation sample (Safahat books)",
+  "version": "0.4.0",
+  "arafix_extract_version": "1.0.1",
+  "source": {
+    "site": "https://www.safahat.org/",
+    "name": "صفحات (Safahat)",
+    "note": "Published Arabic books; not AI-generated; not developer-authored unit tests. PDFs are gitignored — place source.pdf under each docs/<doc_id>/ locally or re-run run_extract.py after download."
+  },
+  "license_note": "Books remain under safahat.org / publisher rights. Repo ships gold samples + metrics only; do not redistribut books without permission.",
+  "purpose": "Held-out preexisting Arabic PDFs + manual gold on 15 sample pages.",
+  "n_documents": 3,
+  "n_gold_pages": 15,
+  "aggregate_metrics": {
+    "mean_cer_raw": 0.7836,
+    "mean_cer_arafix": 0.1754,
+    "mean_cer_letters_only_arafix": 0.0349,
+    "mean_wer_arafix": 2.5575
+  },
+  "documents": [
+    {
+      "doc_id": "thumb_red",
+      "title_ar": "بصمة الإبهام الحمراء",
+      "source_site": "https://www.safahat.org/",
+      "path": "benchmarks/independent_eval/docs/thumb_red/source.pdf",
+      "n_pages": 204,
+      "arafix_chars": 297092,
+      "raw_chars": 296592,
+      "confidence_min": 0.33,
+      "arafix_version": "1.0.1",
+      "evidence_note": "Published Arabic books from safahat.org; independent held-out eval — not AI-generated fixtures.",
+      "sample_pages": [
+        47,
+        87,
+        149,
+        176,
+        188
+      ],
+      "gold_status": "sample_fully_reviewed",
+      "gold_reviewed_pages": [
+        47,
+        87,
+        149,
+        176,
+        188
+      ],
+      "gold_scope": "sample_pages_only",
+      "outputs": {
+        "raw_mupdf": "raw_mupdf.txt",
+        "arafix_out": "arafix_out.txt",
+        "diagnose": "diagnose.json",
+        "sample_dir": "sample/"
+      }
+    },
+    {
+      "doc_id": "deconstruction",
+      "title_ar": "مداخل إلى التفكيك",
+      "source_site": "https://www.safahat.org/",
+      "path": "benchmarks/independent_eval/docs/deconstruction/source.pdf",
+      "n_pages": 440,
+      "arafix_chars": 778459,
+      "raw_chars": 779675,
+      "confidence_min": 0.302,
+      "arafix_version": "1.0.1",
+      "evidence_note": "Published Arabic books from safahat.org; independent held-out eval — not AI-generated fixtures.",
+      "sample_pages": [
+        45,
+        152,
+        199,
+        298,
+        380
+      ],
+      "gold_status": "sample_fully_reviewed",
+      "gold_reviewed_pages": [
+        45,
+        152,
+        199,
+        298,
+        380
+      ],
+      "gold_scope": "sample_pages_only",
+      "outputs": {
+        "raw_mupdf": "raw_mupdf.txt",
+        "arafix_out": "arafix_out.txt",
+        "diagnose": "diagnose.json",
+        "sample_dir": "sample/"
+      }
+    },
+    {
+      "doc_id": "bilhaqq",
+      "title_ar": "وبالحق نزل",
+      "source_site": "https://www.safahat.org/",
+      "path": "benchmarks/independent_eval/docs/bilhaqq/source.pdf",
+      "n_pages": 182,
+      "arafix_chars": 222197,
+      "raw_chars": 224295,
+      "confidence_min": 0.3,
+      "arafix_version": "1.0.1",
+      "evidence_note": "Published Arabic books from safahat.org; independent held-out eval — not AI-generated fixtures.",
+      "sample_pages": [
+        28,
+        63,
+        110,
+        133,
+        162
+      ],
+      "gold_status": "sample_fully_reviewed",
+      "gold_reviewed_pages": [
+        28,
+        63,
+        110,
+        133,
+        162
+      ],
+      "gold_scope": "sample_pages_only",
+      "outputs": {
+        "raw_mupdf": "raw_mupdf.txt",
+        "arafix_out": "arafix_out.txt",
+        "diagnose": "diagnose.json",
+        "sample_dir": "sample/"
+      }
+    }
+  ],
+  "how_to_reproduce": [
+    "Download the three books from https://www.safahat.org/ (same titles as README)",
+    "Place PDFs as docs/<doc_id>/source.pdf or flat names under docs/",
+    "python benchmarks/independent_eval/run_extract.py",
+    "Compare sample/page_*_arafix.txt against sample/page_*_gold.txt"
+  ]
+}

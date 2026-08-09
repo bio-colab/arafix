@@ -1,0 +1,35 @@
+{
+  "doc_id": "thumb_red",
+  "title_ar": "بصمة الإبهام الحمراء",
+  "source_site": "https://www.safahat.org/",
+  "path": "benchmarks/independent_eval/docs/thumb_red/source.pdf",
+  "n_pages": 204,
+  "arafix_chars": 297092,
+  "raw_chars": 296592,
+  "confidence_min": 0.33,
+  "arafix_version": "1.0.1",
+  "evidence_note": "Published Arabic books from safahat.org; independent held-out eval — not AI-generated fixtures.",
+  "sample_pages": [
+    47,
+    87,
+    149,
+    176,
+    188
+  ],
+  "gold_status": "sample_fully_reviewed",
+  "gold_reviewed_pages": [
+    47,
+    87,
+    149,
+    176,
+    188
+  ],
+  "gold_scope": "sample_pages_only",
+  "outputs": {
+    "raw_mupdf": "raw_mupdf.txt",
+    "arafix_out": "arafix_out.txt",
+    "diagnose": "diagnose.json",
+    "sample_dir": "sample/"
+  },
+  "gold_draft_pages": []
+}

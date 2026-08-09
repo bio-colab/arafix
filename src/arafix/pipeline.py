@@ -30,6 +30,7 @@ from .normalize import (
     normalize_text,
 )
 from .order import ReorderConfig, fix_order
+from .pdf_confusions import repair_pdf_confusions
 from .types import (
     BlockResult,
     BlocksResult,
@@ -136,6 +137,11 @@ class PipelineConfig:
 
     #: أصلح كل سطر/خلية كتلةً مستقلة ثم أعد التجميع (أقوى للجداول).
     repair_per_block: bool = True
+
+    #: Closed-list confusions from **published Arabic book PDFs** (Safahat
+    #: independent-eval books: امل→الم، كثري→كثير، …). Not AI-generated.
+    #: See ``arafix.pdf_confusions``. Off = leave raw after PF/order only.
+    enable_pdf_confusion_repair: bool = True
 
 
 def harvest_document_lexicon(texts: Iterable[str]) -> set[str]:
@@ -304,6 +310,22 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
         if folded != current:
             current = folded
             notes.append("طُوِيَت محارف PDF الهجينة (ی/ھ → ي/ه)")
+
+    # --- Published-book confusions (Safahat held-out; closed list) -----------
+    if cfg.enable_pdf_confusion_repair:
+        conf = repair_pdf_confusions(current)
+        if conf.total:
+            current = conf.text
+            stages.append(Stage.REPAIR_PDF_CONFUSIONS)
+            bits = []
+            if conf.al_meem_fixes:
+                bits.append(f"امل→الم ×{conf.al_meem_fixes}")
+            if conf.ye_reh_fixes:
+                bits.append(f"ري/ير وأشباهها ×{conf.ye_reh_fixes}")
+            notes.append(
+                "ترقيع التباسات كتب PDF منشورة (Safahat/عيّنة مستقلة): "
+                + "، ".join(bits)
+            )
 
     confidence = min(_final_confidence(dg, order_conf, stages), lam_conf)
 

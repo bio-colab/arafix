@@ -1,0 +1,22 @@
+{
+  "doc_id": "deconstruction",
+  "sample_pages": [
+    45,
+    152,
+    199,
+    298,
+    380
+  ],
+  "gold_reviewed": [
+    45,
+    152,
+    199,
+    298,
+    380
+  ],
+  "gold_draft": [],
+  "note": "Pages selected for gold annotation (held-out sample).",
+  "arafix_extract_version": "1.0.1",
+  "gold_status": "all_sample_pages_reviewed",
+  "gold_note": "Manual gold from published Safahat book pages; not AI-generated source text. Spacing and orthography corrected against arafix 1.0.1 extract."
+}

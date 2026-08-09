@@ -1,0 +1,158 @@
+{
+  "arafix_version": "1.0.1",
+  "n_pages": 15,
+  "gold_status": "all_15_sample_pages_manually_reviewed",
+  "evidence_source": {
+    "type": "published_arabic_books",
+    "site": "https://www.safahat.org/",
+    "note": "Not AI-generated. Gold = manual correction of system output on preexisting PDFs.",
+    "books": [
+      "بصمة الإبهام الحمراء",
+      "مداخل إلى التفكيك",
+      "وبالحق نزل"
+    ]
+  },
+  "aggregate": {
+    "mean_cer_raw": 0.7836,
+    "mean_cer_arafix": 0.1754,
+    "mean_cer_letters_only_arafix": 0.0349,
+    "mean_wer_arafix": 2.5575
+  },
+  "pages": [
+    {
+      "doc_id": "thumb_red",
+      "page": 47,
+      "cer_raw": 0.783635,
+      "cer_arafix": 0.177049,
+      "cer_letters_only_arafix": 0.026411,
+      "wer_arafix": 2.664062,
+      "n_gold_chars": 2067
+    },
+    {
+      "doc_id": "thumb_red",
+      "page": 87,
+      "cer_raw": 0.809549,
+      "cer_arafix": 0.158113,
+      "cer_letters_only_arafix": 0.025892,
+      "wer_arafix": 2.0,
+      "n_gold_chars": 2123
+    },
+    {
+      "doc_id": "thumb_red",
+      "page": 149,
+      "cer_raw": 0.776451,
+      "cer_arafix": 0.173607,
+      "cer_letters_only_arafix": 0.038303,
+      "wer_arafix": 2.457364,
+      "n_gold_chars": 2058
+    },
+    {
+      "doc_id": "thumb_red",
+      "page": 176,
+      "cer_raw": 0.817946,
+      "cer_arafix": 0.179747,
+      "cer_letters_only_arafix": 0.045005,
+      "wer_arafix": 2.459854,
+      "n_gold_chars": 2207
+    },
+    {
+      "doc_id": "thumb_red",
+      "page": 188,
+      "cer_raw": 0.797607,
+      "cer_arafix": 0.176049,
+      "cer_letters_only_arafix": 0.043017,
+      "wer_arafix": 2.321678,
+      "n_gold_chars": 2176
+    },
+    {
+      "doc_id": "deconstruction",
+      "page": 45,
+      "cer_raw": 0.811073,
+      "cer_arafix": 0.162281,
+      "cer_letters_only_arafix": 0.040297,
+      "wer_arafix": 2.480315,
+      "n_gold_chars": 2269
+    },
+    {
+      "doc_id": "deconstruction",
+      "page": 152,
+      "cer_raw": 0.787162,
+      "cer_arafix": 0.168919,
+      "cer_letters_only_arafix": 0.028691,
+      "wer_arafix": 2.755906,
+      "n_gold_chars": 2330
+    },
+    {
+      "doc_id": "deconstruction",
+      "page": 199,
+      "cer_raw": 0.805118,
+      "cer_arafix": 0.154089,
+      "cer_letters_only_arafix": 0.023892,
+      "wer_arafix": 2.39521,
+      "n_gold_chars": 2801
+    },
+    {
+      "doc_id": "deconstruction",
+      "page": 298,
+      "cer_raw": 0.76426,
+      "cer_arafix": 0.183241,
+      "cer_letters_only_arafix": 0.031077,
+      "wer_arafix": 2.755906,
+      "n_gold_chars": 2220
+    },
+    {
+      "doc_id": "deconstruction",
+      "page": 380,
+      "cer_raw": 0.794923,
+      "cer_arafix": 0.168395,
+      "cer_letters_only_arafix": 0.02439,
+      "wer_arafix": 2.765625,
+      "n_gold_chars": 2276
+    },
+    {
+      "doc_id": "bilhaqq",
+      "page": 28,
+      "cer_raw": 0.743152,
+      "cer_arafix": 0.179671,
+      "cer_letters_only_arafix": 0.035575,
+      "wer_arafix": 2.756303,
+      "n_gold_chars": 2185
+    },
+    {
+      "doc_id": "bilhaqq",
+      "page": 63,
+      "cer_raw": 0.787713,
+      "cer_arafix": 0.18716,
+      "cer_letters_only_arafix": 0.031746,
+      "wer_arafix": 2.658915,
+      "n_gold_chars": 2079
+    },
+    {
+      "doc_id": "bilhaqq",
+      "page": 110,
+      "cer_raw": 0.778976,
+      "cer_arafix": 0.18982,
+      "cer_letters_only_arafix": 0.03942,
+      "wer_arafix": 2.707692,
+      "n_gold_chars": 2140
+    },
+    {
+      "doc_id": "bilhaqq",
+      "page": 133,
+      "cer_raw": 0.729689,
+      "cer_arafix": 0.178448,
+      "cer_letters_only_arafix": 0.049356,
+      "wer_arafix": 2.46875,
+      "n_gold_chars": 2244
+    },
+    {
+      "doc_id": "bilhaqq",
+      "page": 162,
+      "cer_raw": 0.767289,
+      "cer_arafix": 0.194185,
+      "cer_letters_only_arafix": 0.040719,
+      "wer_arafix": 2.714286,
+      "n_gold_chars": 2064
+    }
+  ]
+}

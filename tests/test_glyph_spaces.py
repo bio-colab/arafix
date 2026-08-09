@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from arafix.hygiene import collapse_midword_spaces
 from arafix.layout import Glyph, join_glyphs_preserving_ltr
 
 
@@ -16,11 +17,13 @@ class TestGlyphSpaces:
         gs = _line([(i * 5.0, ch) for i, ch in enumerate("مرحبا")])
         assert join_glyphs_preserving_ltr(gs) == "مرحبا"
 
-    def test_large_gap_inserts_space(self):
+    def test_large_gap_inserts_space_percentile(self):
         # Two clusters separated by a clear gap (>> letter pitch).
         left = [(i * 5.0, ch) for i, ch in enumerate("مرحبا")]
         right = [(80.0 + i * 5.0, ch) for i, ch in enumerate("بكم")]
-        text = join_glyphs_preserving_ltr(_line(left + right))
+        text = join_glyphs_preserving_ltr(
+            _line(left + right), space_mode="percentile", space_percentile=0.78
+        )
         assert " " in text
         assert text.replace(" ", "") == "مرحبابكم"
 
@@ -29,3 +32,24 @@ class TestGlyphSpaces:
         right = [(40.0 + i * 5.0, ch) for i, ch in enumerate("جد")]
         text = join_glyphs_preserving_ltr(_line(left + right), insert_spaces=False)
         assert " " not in text
+
+
+class TestCollapseMidword:
+    def test_collapses_false_split(self):
+        assert collapse_midword_spaces("مو ضع") == "موضع"
+        assert collapse_midword_spaces("أي ضًا") == "أيضًا"
+        assert collapse_midword_spaces("عاد ي") == "عادي"
+        assert collapse_midword_spaces("الع صور") == "العصور"
+
+    def test_keeps_function_word_space(self):
+        assert collapse_midword_spaces("في السجن") == "في السجن"
+        assert collapse_midword_spaces("من الناس") == "من الناس"
+
+
+class TestParticleSpaces:
+    def test_inserts_after_particles(self):
+        from arafix.hygiene import insert_particle_spaces
+
+        assert "كما أن" in insert_particle_spaces("كماأن")
+        assert "لذا اعتدنا" in insert_particle_spaces("لذااعتدنا")
+        assert "من العصور" in insert_particle_spaces("منالعصور")

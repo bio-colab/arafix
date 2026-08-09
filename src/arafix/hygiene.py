@@ -24,6 +24,8 @@ import unicodedata
 
 __all__ = [
     "sanitize_extraction",
+    "collapse_midword_spaces",
+    "insert_particle_spaces",
     "count_artifacts",
     "UNICODE_SPACES",
     "SOFT_HYPHEN",
@@ -121,6 +123,218 @@ def count_artifacts(text: str) -> dict[str, int]:
         "replacement": text.count(REPLACEMENT),
         "spacing_diacritic_pf": sum(1 for c in text if 0xFE70 <= ord(c) <= 0xFE7F),
     }
+
+
+#: Short Arabic function words that must keep a following space when
+#: geometry inserts one (do not glue ``في السجن`` → ``فيالسجن``).
+_KEEP_SPACE_AFTER = frozenset(
+    {
+        "في",
+        "من",
+        "عن",
+        "على",
+        "إلى",
+        "الى",
+        "أو",
+        "او",
+        "لا",
+        "ما",
+        "أن",
+        "إن",
+        "لم",
+        "لن",
+        "قد",
+        "بل",
+        "كي",
+        "مع",
+        "هو",
+        "هي",
+        "ثم",
+        "كل",
+        "حتى",
+        "هذا",
+        "هذه",
+        "ذلك",
+        "تلك",
+        "بين",
+        "عند",
+        "قبل",
+        "بعد",
+        "غير",
+        "سوى",
+        "منذ",
+        "نحو",
+        "كان",
+        "قال",
+        "وقد",
+        "فقد",
+        "كما",
+        "لذا",
+        "لكن",
+        "ولو",
+        "ولا",
+        "وما",
+        "وهو",
+        "وهي",
+        "أنا",
+        "أنت",
+        "نحن",
+        "هم",
+        "هن",
+    }
+)
+
+#: Particles that often glue to the next word in book PDFs; insert a space
+#: after them when missing. Longest first. Avoid short stems that begin
+#: ordinary words (لا/ما/قد/أن…). Evidence: thumb_red gold loop 3.
+_PARTICLE_SPACE_AFTER: tuple[str, ...] = (
+    "كذلك",
+    "لذلك",
+    "عندما",
+    "بينما",
+    "حيثما",
+    "بعدما",
+    "قبلما",
+    "وكذلك",
+    "كما",
+    "لذا",
+    "فقد",
+    "وقد",
+    "ولكن",
+    "لكن",
+    "ولو",
+    "حتى",
+    "على",
+    "إلى",
+    "الى",
+    "عند",
+    "بين",
+    "قبل",
+    "بعد",
+    "نحو",
+    "منذ",
+    "غير",
+    "سوى",
+    "هذا",
+    "هذه",
+    "ذلك",
+    "تلك",
+    "كان",
+    "قال",
+    "ثم",
+    "أو",
+    "او",
+    "في",
+    "من",
+    "عن",
+    "مع",
+)
+
+
+#: Single letters that often end a real word before a space (do not glue
+#: ``صلَّى الله`` → ``صلَّىالله``).
+_NO_COLLAPSE_SINGLE = frozenset("اأإآةىوويف")
+
+
+def collapse_midword_spaces(text: str) -> str:
+    """
+    Remove geometry-inserted spaces that sit *inside* Arabic words.
+
+    Book PDFs often yield false splits like ``مو ضع`` / ``أي ضًا`` / ``عاد ي``
+    when glyph advances vary. Keep spaces after/before function words and
+    before the article ``ال``.
+
+    Evidence: thumb_red (بصمة الإبهام الحمراء) spacing loops vs manual gold.
+    """
+    if not text or " " not in text:
+        return text
+
+    # Space immediately before a combining mark → always glue
+    out = re.sub(r"\s+(?=[\u064B-\u0652\u0670])", "", text)
+
+    def _repl(m: re.Match[str]) -> str:
+        left = m.group(1)
+        rest = m.string[m.end() :]
+        mright = re.match(r"[\u0621-\u064A]{1,6}", rest)
+        right = mright.group(0) if mright else ""
+        if left in _KEEP_SPACE_AFTER or right in _KEEP_SPACE_AFTER:
+            return m.group(0)
+        if len(left) == 1 and left in _NO_COLLAPSE_SINGLE:
+            return m.group(0)
+        # Keep space before definite article ال…
+        if re.match(r"[\u064B-\u0652\u0670]*ال", rest):
+            return m.group(0)
+        # Article-like prefixes always glue (الع صور → العصور)
+        if left in ("الع", "الم", "وال", "بال", "كال", "فال", "لل"):
+            return left
+        # 3-letter left: only collapse when right is short (1–2) mid-word junk
+        # (``عاد ي``) — not ``بكم في`` (right is a function word, already kept)
+        if len(left) == 3 and len(right) > 2:
+            return m.group(0)
+        return left
+
+    # 1–3 letter left fragment + space + Arabic letter
+    out = re.sub(
+        r"(?<![\u0621-\u064A])([\u0621-\u064A]{1,3})\s+(?=[\u0621-\u064A])",
+        _repl,
+        out,
+    )
+    return out
+
+
+#: Glued particles safe to split only when followed by ال… or a long stem
+#: (avoids منثورة → من ثورة, أولاً → أو لاً).
+_GLUE_SPLIT_SAFE: tuple[str, ...] = (
+    "وكذلك",
+    "كذلك",
+    "لذلك",
+    "عندما",
+    "بينما",
+    "حيثما",
+    "بعدما",
+    "قبلما",
+    "كما",
+    "لذا",
+    "فقد",
+    "وقد",
+    "ولكن",
+    "لكن",
+    "ولو",
+)
+
+
+def insert_particle_spaces(text: str) -> str:
+    """
+    Insert a space after common Arabic particles glued to the next word.
+
+    Conservative: punctuation spaces always; particle split only for a small
+    safe list when followed by ``ال…`` or a stem of length ≥ 3
+    (``كماأن``، ``لذااعتدنا``، ``منالعصور``).
+
+    Evidence: thumb_red gold loop 3 — not applied blindly to healthy text.
+    """
+    if not text:
+        return text
+    out = text
+    # punctuation often lacks following space in book extracts
+    out = re.sub(r"([.،؛:!?؟»])(?=[\u0621-\u064A])", r"\1 ", out)
+    _B = r"\u0621-\u064A"
+    # من/في/على… + ال
+    for p in ("من", "في", "عن", "على", "إلى", "الى", "مع", "بين", "عند", "بعد", "قبل"):
+        out = re.sub(
+            rf"(?<![{_B}]){re.escape(p)}(?=ال[{_B}])",
+            p + " ",
+            out,
+        )
+    # safe multi-char particles + any Arabic stem ≥ 2 letters
+    for p in _GLUE_SPLIT_SAFE:
+        out = re.sub(
+            rf"(?<![{_B}]){re.escape(p)}(?=[{_B}]{{2,}})",
+            p + " ",
+            out,
+        )
+    out = re.sub(r"[^\S\n\r]{2,}", " ", out)
+    return out
 
 
 def sanitize_extraction(

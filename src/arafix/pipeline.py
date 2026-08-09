@@ -20,7 +20,12 @@ from dataclasses import dataclass, field, replace
 
 from .diagnose import DEFAULT_THRESHOLDS, detect_mojibake, detect_visual_order, diagnose
 from .extractors import get_extractor
-from .hygiene import count_artifacts, sanitize_extraction
+from .hygiene import (
+    collapse_midword_spaces,
+    count_artifacts,
+    insert_particle_spaces,
+    sanitize_extraction,
+)
 from .lamalef import repair_lam_alef_transposition
 from .layout import LayoutConfig, LayoutMode
 from .normalize import (
@@ -311,7 +316,15 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
             current = folded
             notes.append("طُوِيَت محارف PDF الهجينة (ی/ھ → ي/ه)")
 
-    # --- Published-book confusions (Safahat held-out; closed list) -----------
+    # --- Space hygiene then confusions (thumb_red loops 2–3) ----------------
+    # 1) collapse false mid-word splits so امل/هذالا see contiguous text
+    # 2) confusions (closed list)
+    # 3) particle / punct spaces for under-segmentation (كماأن → كما أن)
+    collapsed = collapse_midword_spaces(current)
+    if collapsed != current:
+        current = collapsed
+        notes.append("طُويت مسافات هندسية داخل الكلمات (مو ضع → موضع، …)")
+
     if cfg.enable_pdf_confusion_repair:
         conf = repair_pdf_confusions(current)
         if conf.total:
@@ -326,6 +339,11 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                 "ترقيع التباسات كتب PDF منشورة (Safahat/عيّنة مستقلة): "
                 + "، ".join(bits)
             )
+
+    spaced = insert_particle_spaces(current)
+    if spaced != current:
+        current = spaced
+        notes.append("أُدرجت مسافات بعد أدوات/ترقيم ملصوق (كماأن → كما أن، …)")
 
     confidence = min(_final_confidence(dg, order_conf, stages), lam_conf)
 

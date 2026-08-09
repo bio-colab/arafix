@@ -20,6 +20,15 @@ class TestAlMeemArticle:
     def test_maseeh(self):
         assert repair_pdf_confusions("أنصاراملسيح").text == "أنصارالمسيح"
 
+    def test_with_damma_on_meem(self):
+        # thumb_red: املُحلَّفني / املُعتادة — haraka after امل blocked old regex
+        r = repair_pdf_confusions("هيئةاملُحلَّفني والامتيازاتاملُعتادة")
+        assert "المُحلَّفين" in r.text or "المُحلَّف" in r.text
+        assert "المُعتادة" in r.text
+
+    def test_hatha_al(self):
+        assert "هذاالسؤال" in repair_pdf_confusions("من هذالاسؤال").text
+
     def test_does_not_break_kamilah(self):
         # كاملة contains امل but must not become كالمة
         assert repair_pdf_confusions("بالكاملة").text == "بالكاملة"
@@ -35,6 +44,10 @@ class TestYeReh:
         assert "كثيرًا" in r.text
         assert "غير" in r.text
         assert r.ye_reh_fixes >= 3
+
+    def test_ruben_name_thumb_red(self):
+        assert "روبن" in repair_pdf_confusions("روبنيمجردصديقَني").text
+        assert "روبني" not in repair_pdf_confusions("روبني").text
 
     def test_no_false_positive_inside_stem(self):
         # مغري must not become مغير via bare غري replace

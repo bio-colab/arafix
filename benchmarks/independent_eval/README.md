@@ -3,13 +3,25 @@
 كتب عربية **موجودة مسبقاً** من [صفحات — safahat.org](https://www.safahat.org/)  
 (لم يُنشئها مطوّرو arafix، وليست مولَّدة بالذكاء الاصطناعي).
 
+## الكتاب الذهبي (canonical) — للاختبارات القادمة
+
+**`docs/thumb_red/` — بصمة الإبهام الحمراء**
+
+بوابة القياس التكرارية:
+
+```bash
+python benchmarks/independent_eval/eval_thumb_red.py --refresh
+```
+
+التفاصيل والمنهج: [`docs/thumb_red/README.md`](docs/thumb_red/README.md) · التقرير: `thumb_red_eval.json`
+
 ## الكتب الثلاثة
 
-| المعرّف | العنوان | صفحات | مجلد العمل |
-|---------|---------|------:|------------|
-| `thumb_red` | بصمة الإبهام الحمراء | 204 | `docs/thumb_red/` |
-| `deconstruction` | مداخل إلى التفكيك | 440 | `docs/deconstruction/` |
-| `bilhaqq` | وبالحق نزل | 182 | `docs/bilhaqq/` |
+| المعرّف | العنوان | صفحات | مجلد العمل | الدور |
+|---------|---------|------:|------------|--------|
+| **`thumb_red`** | بصمة الإبهام الحمراء | 204 | `docs/thumb_red/` | **canonical / regression** |
+| `deconstruction` | مداخل إلى التفكيك | 440 | `docs/deconstruction/` | تنوع (فكر/هوامش) |
+| `bilhaqq` | وبالحق نزل | 182 | `docs/bilhaqq/` | تنوع (آيات/نقاش) |
 
 نسخ PDF الأصلية أيضاً في `docs/*.pdf` (مسطّحة).
 

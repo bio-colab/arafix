@@ -74,30 +74,45 @@ def _glyph_is_ltr_space(text: str) -> bool:
     return bool(text) and text.isspace()
 
 
-def _adaptive_space_threshold(
+def _space_threshold(
     ordered: list[Glyph],
     *,
+    space_mode: str,
     space_k: float,
+    space_percentile: float,
     space_min_factor: float,
     space_max_factor: float,
 ) -> float:
     """
     Per-line gap threshold for inserting word spaces.
 
-    Uses median + k·MAD of consecutive x-gaps, clamped to a fraction of
-    median glyph size. Calibrated on published Arabic book PDFs (Safahat
-    independent-eval corpus) — not on synthetic generators.
+    Modes (calibrated on *بصمة الإبهام الحمراء* gold pages, Safahat):
+
+    * ``percentile`` (default): threshold = q-th gap of the line, clamped
+      to [min_factor, max_factor] × median glyph size. Best CER/WER tradeoff
+      on the book (q≈0.78 ≈ gold space count).
+    * ``mad``: median + k·MAD (older, more conservative).
     """
     if len(ordered) < 2:
         return float("inf")
     gaps = [ordered[i].x - ordered[i - 1].x for i in range(1, len(ordered))]
     sizes = [g.size for g in ordered if g.size > 0]
-    med_gap = statistics.median(gaps)
     med_sz = statistics.median(sizes) if sizes else 10.0
-    mad = statistics.median([abs(g - med_gap) for g in gaps]) or (med_sz * 0.1)
-    th = med_gap + space_k * mad
-    th = max(th, med_sz * space_min_factor)
-    th = min(th, med_sz * space_max_factor)
+    if space_mode == "mad":
+        med_gap = statistics.median(gaps)
+        mad = statistics.median([abs(g - med_gap) for g in gaps]) or (med_sz * 0.1)
+        th = med_gap + space_k * mad
+        th = max(th, med_sz * space_min_factor)
+        th = min(th, med_sz * space_max_factor)
+    else:
+        # percentile of this line's gaps — do not cap with max_factor, or
+        # synthetic lines with letter pitch ≈ size insert spaces mid-word
+        # (``ذيل`` → ``ذ ي ل``). Floor only.
+        sg = sorted(gaps)
+        q = min(1.0, max(0.0, space_percentile))
+        idx = min(len(sg) - 1, max(0, int(round(q * (len(sg) - 1)))))
+        th = sg[idx]
+        th = max(th, med_sz * space_min_factor)
     return th
 
 
@@ -105,18 +120,19 @@ def join_glyphs_preserving_ltr(
     glyphs: list[Glyph],
     *,
     insert_spaces: bool = True,
-    space_k: float = 2.4,
-    space_min_factor: float = 0.72,
-    space_max_factor: float = 1.35,
+    space_mode: str = "percentile",
+    space_percentile: float = 0.72,
+    space_k: float = 1.5,
+    space_min_factor: float = 0.42,
+    space_max_factor: float = 1.05,
 ) -> str:
     """
     Build line text: sort by x (visual), re-order each LTR island by stream
     ``seq`` (dates like ``13-7``), and optionally insert spaces from geometry.
 
     **Spaces:** many Arabic book PDFs encode no U+0020 between words; only
-    glyph advances differ. Without gap-based insertion the extract is a solid
-    block (``عاديبشأنصداقتنا``). Threshold is adaptive per line (see
-    ``_adaptive_space_threshold``). Evidence: Safahat book eval corpus.
+    glyph advances differ. Threshold is adaptive per line (see
+    ``_space_threshold``). Evidence: Safahat *thumb_red* gold loop.
     """
     if not glyphs:
         return ""
@@ -154,9 +170,11 @@ def join_glyphs_preserving_ltr(
     if not insert_spaces or len(tokens) <= 1:
         return "".join("".join(g.text for g in tok) for tok in tokens)
 
-    th = _adaptive_space_threshold(
+    th = _space_threshold(
         ordered,
+        space_mode=space_mode,
         space_k=space_k,
+        space_percentile=space_percentile,
         space_min_factor=space_min_factor,
         space_max_factor=space_max_factor,
     )
@@ -186,10 +204,25 @@ class LayoutLine:
     glyphs: list[Glyph]
     role: str = "body"  # body | header | footer
     column_index: int | None = None
+    #: Copied from LayoutConfig when clustering (word-space geometry).
+    insert_spaces: bool = True
+    space_mode: str = "percentile"
+    space_percentile: float = 0.72
+    space_k: float = 1.5
+    space_min_factor: float = 0.42
+    space_max_factor: float = 1.05
 
     @property
     def text(self) -> str:
-        return join_glyphs_preserving_ltr(self.glyphs)
+        return join_glyphs_preserving_ltr(
+            self.glyphs,
+            insert_spaces=self.insert_spaces,
+            space_mode=self.space_mode,
+            space_percentile=self.space_percentile,
+            space_k=self.space_k,
+            space_min_factor=self.space_min_factor,
+            space_max_factor=self.space_max_factor,
+        )
 
     @property
     def x0(self) -> float:
@@ -270,13 +303,16 @@ class LayoutConfig:
     max_table_cell_width_ratio: float = 0.45
 
     #: Insert U+0020 between glyphs from geometry when the PDF omits spaces.
-    #: Calibrated on published Arabic books (Safahat held-out eval), not AI text.
-    #: Defaults are **conservative** (prefer missing spaces over letter-splitting).
+    #: Calibrated on *بصمة الإبهام الحمراء* (Safahat) gold loop — not AI text.
     insert_glyph_spaces: bool = True
-    #: Adaptive threshold: median_gap + k·MAD (see join_glyphs_preserving_ltr).
-    glyph_space_k: float = 2.4
-    glyph_space_min_factor: float = 0.72
-    glyph_space_max_factor: float = 1.35
+    #: ``percentile`` (default, best on thumb_red) or ``mad`` (conservative).
+    glyph_space_mode: str = "percentile"
+    #: Line-gap quantile when mode=percentile (0.72 ≈ gold WER/CER tradeoff).
+    glyph_space_percentile: float = 0.72
+    #: Used when mode=mad: median + k·MAD.
+    glyph_space_k: float = 1.5
+    glyph_space_min_factor: float = 0.42
+    glyph_space_max_factor: float = 1.05
 
 
 @dataclass
@@ -414,10 +450,12 @@ def cluster_to_lines(
     glyphs: list[Glyph],
     *,
     tolerance: float | None = None,
+    config: LayoutConfig | None = None,
 ) -> list[LayoutLine]:
     if not glyphs:
         return []
 
+    cfg = config or LayoutConfig()
     size_hint = statistics.median([g.size for g in glyphs]) if glyphs else 10.0
     tol = tolerance if tolerance is not None else max(size_hint * 0.5, 1.0)
 
@@ -433,7 +471,18 @@ def cluster_to_lines(
     for row in rows:
         row_sorted = sorted(row, key=lambda g: g.x)
         y = statistics.median([g.y for g in row_sorted])
-        lines.append(LayoutLine(y=y, glyphs=row_sorted))
+        lines.append(
+            LayoutLine(
+                y=y,
+                glyphs=row_sorted,
+                insert_spaces=cfg.insert_glyph_spaces,
+                space_mode=cfg.glyph_space_mode,
+                space_percentile=cfg.glyph_space_percentile,
+                space_k=cfg.glyph_space_k,
+                space_min_factor=cfg.glyph_space_min_factor,
+                space_max_factor=cfg.glyph_space_max_factor,
+            )
+        )
     return lines
 
 
@@ -608,7 +657,7 @@ def analyze_layout(
         return layout
 
     if mode == "linear":
-        lines = cluster_to_lines(glyphs)
+        lines = cluster_to_lines(glyphs, config=cfg)
         layout.lines = lines
         layout.mode_used = "linear"
         layout.n_columns = 1
@@ -625,10 +674,10 @@ def analyze_layout(
 
     # 1) عزل الترويسة/التذييل على مستوى الجليف
     h_glyphs, body_glyphs, f_glyphs = _band_filter_glyphs(glyphs, page_height, cfg)
-    layout.headers = cluster_to_lines(h_glyphs)
+    layout.headers = cluster_to_lines(h_glyphs, config=cfg)
     for ln in layout.headers:
         ln.role = "header"
-    layout.footers = cluster_to_lines(f_glyphs)
+    layout.footers = cluster_to_lines(f_glyphs, config=cfg)
     for ln in layout.footers:
         ln.role = "footer"
 
@@ -645,7 +694,7 @@ def analyze_layout(
     if len(glyph_groups) <= 1:
         layout.mode_used = "linear" if mode == "auto" else mode
         layout.n_columns = 1
-        lines = cluster_to_lines(body_glyphs)
+        lines = cluster_to_lines(body_glyphs, config=cfg)
         layout.lines = layout.headers + lines + layout.footers
 
         # جداول داخل العمود الواحد
@@ -682,7 +731,7 @@ def analyze_layout(
     cols: list[LayoutColumn] = []
     all_body_lines: list[LayoutLine] = []
     for idx, group in enumerate(read_groups):
-        lines = cluster_to_lines(group)
+        lines = cluster_to_lines(group, config=cfg)
         # جداول داخل العمود
         if cfg.detect_tables and mode in ("auto", "full"):
             col_w = (max(g.x for g in group) - min(g.x for g in group)) or page_width

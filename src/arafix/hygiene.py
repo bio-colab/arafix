@@ -406,7 +406,15 @@ def insert_particle_spaces(text: str) -> str:
             p + " ",
             out,
         )
-    out = re.sub(r"[^\S\n\r]{2,}", " ", out)
+    # Do not normalize arbitrary ASCII spacing: code, regexes, tables, and
+    # aligned Latin text are valid inputs. Collapse only a run whose two
+    # immediate non-space neighbours are Arabic letters, where it is a PDF
+    # word-boundary artifact rather than user formatting.
+    out = re.sub(
+        rf"(?<=[{_B}])[^\S\n\r]{{2,}}(?=[{_B}])",
+        " ",
+        out,
+    )
     return out
 
 

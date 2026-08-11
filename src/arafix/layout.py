@@ -529,9 +529,11 @@ def _find_gutters(
     if not candidates:
         return []
 
-    # أكبر فجوة أولاً — ميزاب رئيس
-    candidates.sort(reverse=True)
-    return [candidates[0][1]]
+    # كل ميزاب مؤهَّل يحدّ عموداً حقيقياً. اختيار أكبر فجوة واحدة فقط
+    # يدمج العمودين الباقيين في صفحة ثلاثية الأعمدة، رغم أن لكل فجوة
+    # الشواهد العمودية ونِسَب المحتوى نفسها. نعيدها مرتبة مكانياً، وهو
+    # الترتيب الذي تتوقعه _split_glyphs_by_gutters.
+    return sorted(mid for _, mid in candidates)
 
 
 def _split_glyphs_by_gutters(
@@ -685,6 +687,32 @@ def analyze_layout(
         body_glyphs = list(glyphs)
         layout.headers = []
         layout.footers = []
+
+    # الوضع full يطلب الجداول صراحةً. افحص الشبكة قبل الميازيب، إذ إن
+    # أعمدة الجدول المنتظمة تبدو هندسياً كفواصل أعمدة الصفحة. أمّا وضع
+    # columns فيبقى صريحاً: يستعمله المستدعي حين يعرف أن الصفحة أعمدة.
+    if cfg.detect_tables and mode == "full":
+        table_lines = cluster_to_lines(body_glyphs, config=cfg)
+        remaining, tables = _detect_tables_in_lines(table_lines, page_width, cfg)
+        if tables:
+            layout.tables = tables
+            layout.lines = layout.headers + remaining + layout.footers
+            for ln in remaining:
+                ln.role = "body"
+                ln.column_index = 0
+            if remaining:
+                layout.columns = [
+                    LayoutColumn(
+                        index=0,
+                        x0=min(ln.x0 for ln in remaining),
+                        x1=max(ln.x1 for ln in remaining),
+                        lines=remaining,
+                    )
+                ]
+            layout.n_columns = 1
+            layout.mode_used = "full"
+            layout.notes.append(f"{len(tables)} جدول(اً) قبل فصل الأعمدة")
+            return layout
 
     # 2) ميازب الأعمدة
     want_cols = mode in ("auto", "columns", "full")

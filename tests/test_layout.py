@@ -67,6 +67,20 @@ class TestColumnsRTL:
         plain = lay.plain_text
         assert plain.index("يمينواحد") < plain.index("يسارواحد")
 
+    def test_three_columns_rtl_reading_order(self):
+        glyphs = []
+        glyphs += _col_glyphs(["يمينأ", "يمينب", "يمينج", "يمينه"], x0=440, y0=120)
+        glyphs += _col_glyphs(["وسطأ", "وسطب", "وسطج", "وسطه"], x0=250, y0=122)
+        glyphs += _col_glyphs(["يسارأ", "يسارب", "يسارج", "يساره"], x0=50, y0=124)
+
+        lay = analyze_layout(glyphs, page_width=600, page_height=842, mode="columns")
+
+        assert lay.n_columns == 3
+        assert "يمين" in lay.columns[0].text
+        assert "وسط" in lay.columns[1].text
+        assert "يسار" in lay.columns[2].text
+        assert lay.plain_text.index("يمينأ") < lay.plain_text.index("وسطأ") < lay.plain_text.index("يسارأ")
+
     def test_single_column_stays_linear(self):
         glyphs = _col_glyphs(
             ["سطرأولتماماً", "سطرثانكامل", "سطرثالثهنا", "سطررابعكذا"],

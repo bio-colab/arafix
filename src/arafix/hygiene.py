@@ -284,6 +284,28 @@ def collapse_midword_spaces(text: str) -> str:
 
 #: Glued particles safe to split only when followed by ال… or a long stem
 #: (avoids منثورة → من ثورة, أولاً → أو لاً).
+# Boundaries repeatedly lost by glyph geometry in the independent book
+# benchmark. Each pair is explicit rather than a generic prefix rule: Arabic
+# function words are productive stems too, so broad splitting would corrupt
+# ordinary words. The tuple is deliberately small and easy to audit.
+_SAFE_GLUED_FUNCTION_BOUNDARIES: tuple[tuple[str, str], ...] = (
+    ("في", "هذا"),
+    ("في", "هذه"),
+    ("هو", "الذي"),
+    ("هو", "التي"),
+    ("أن", "هذا"),
+    ("أن", "هذه"),
+    ("أن", "يكون"),
+    ("لا", "يمكن"),
+    ("من", "دون"),
+    ("لم", "يكن"),
+    ("إلى", "أن"),
+    ("الى", "أن"),
+    ("إن", "كان"),
+    ("غير", "أن"),
+)
+
+
 _GLUE_SPLIT_SAFE: tuple[str, ...] = (
     "وكذلك",
     "كذلك",
@@ -326,6 +348,15 @@ def insert_particle_spaces(text: str) -> str:
             p + " ",
             out,
         )
+    # High-confidence glued pairs observed in real PDF output. Require a
+    # non-Arabic left boundary so a pair is never cut out of a larger word.
+    for left, right in _SAFE_GLUED_FUNCTION_BOUNDARIES:
+        out = re.sub(
+            rf"(?<![{_B}]){re.escape(left)}(?={re.escape(right)})",
+            left + " ",
+            out,
+        )
+
     # safe multi-char particles + any Arabic stem ≥ 2 letters
     for p in _GLUE_SPLIT_SAFE:
         out = re.sub(

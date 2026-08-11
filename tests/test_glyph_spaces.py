@@ -53,3 +53,17 @@ class TestParticleSpaces:
         assert "كما أن" in insert_particle_spaces("كماأن")
         assert "لذا اعتدنا" in insert_particle_spaces("لذااعتدنا")
         assert "من العصور" in insert_particle_spaces("منالعصور")
+
+    def test_inserts_between_safe_function_word_boundaries(self):
+        from arafix.hygiene import insert_particle_spaces
+
+        assert insert_particle_spaces("فيهذهالحال") == "في هذهالحال"
+        assert insert_particle_spaces("هوالذييهب") == "هو الذييهب"
+        assert insert_particle_spaces("أنهذاالقول") == "أن هذاالقول"
+        assert insert_particle_spaces("لايمكنتمييز") == "لا يمكنتمييز"
+        assert insert_particle_spaces("مندونإعادة") == "من دونإعادة"
+
+    def test_does_not_split_ordinary_words_on_particle_prefixes(self):
+        from arafix.hygiene import insert_particle_spaces
+
+        assert insert_particle_spaces("لاعبكرة") == "لاعبكرة"

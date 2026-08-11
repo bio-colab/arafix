@@ -67,3 +67,9 @@ class TestParticleSpaces:
         from arafix.hygiene import insert_particle_spaces
 
         assert insert_particle_spaces("لاعبكرة") == "لاعبكرة"
+
+    def test_inserts_between_safe_name_and_honorific_boundaries(self):
+        from arafix.hygiene import insert_particle_spaces
+
+        text = "سليمانبنعبدالملكرضيالله"
+        assert insert_particle_spaces(text) == "سليمان بن عبد الملك رضي الله"

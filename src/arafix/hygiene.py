@@ -306,6 +306,25 @@ _SAFE_GLUED_FUNCTION_BOUNDARIES: tuple[tuple[str, str], ...] = (
 )
 
 
+# Name-link and honorific pairs occur in a restricted written form, so they
+# are safe to restore as explicit pairs without attempting general NER.
+_SAFE_GLUED_NAME_BOUNDARIES: tuple[tuple[str, str], ...] = (
+    ("بن", "عبد"),
+    ("عبد", "الملك"),
+    ("عبد", "العزيز"),
+    ("رضي", "الله"),
+)
+
+# These prefixes and suffixes seed an otherwise unbounded name chain, then
+# the pairs above complete it after a real space has been restored.
+_SAFE_GLUED_NAME_ANCHORS: tuple[tuple[str, str], ...] = (
+    ("سليمانبن", "سليمان بن"),
+    ("عمربن", "عمر بن"),
+    ("الملكرضي", "الملك رضي"),
+    ("العزيزرضي", "العزيز رضي"),
+)
+
+
 _GLUE_SPLIT_SAFE: tuple[str, ...] = (
     "وكذلك",
     "كذلك",
@@ -356,6 +375,23 @@ def insert_particle_spaces(text: str) -> str:
             left + " ",
             out,
         )
+
+    # A first restored boundary exposes the next one in long name chains
+    # (e.g. سليمانبنعبدالملكرضيالله). Two passes are sufficient for the
+    # fixed, audited patterns below and avoid an unbounded rewrite loop.
+    for _ in range(2):
+        for glued, restored in _SAFE_GLUED_NAME_ANCHORS:
+            out = re.sub(
+                rf"(?<![{_B}]){re.escape(glued)}",
+                restored,
+                out,
+            )
+        for left, right in _SAFE_GLUED_NAME_BOUNDARIES:
+            out = re.sub(
+                rf"(?<![{_B}]){re.escape(left)}(?={re.escape(right)})",
+                left + " ",
+                out,
+            )
 
     # safe multi-char particles + any Arabic stem ≥ 2 letters
     for p in _GLUE_SPLIT_SAFE:

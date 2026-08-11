@@ -63,16 +63,21 @@ def decode_glyph_name(name: str) -> str | None:
     if not name:
         return None
 
-    m = _UNI_NAME.match(name)
+    # OpenType stores positional variants as ``uni0645.init`` / ``u0631.fina``.
+    # The suffix describes shaping, not Unicode identity; stripping only the
+    # dotted suffix preserves the explicit codepoint evidence in the stem.
+    stem = name.split(".", 1)[0]
+
+    m = _UNI_NAME.match(stem)
     if m:
         hexes = [m.group(1)] + re.findall(r"[0-9A-Fa-f]{4}", m.group(2) or "")
         return "".join(chr(int(h, 16)) for h in hexes)
 
-    m = _U_NAME.match(name)
+    m = _U_NAME.match(stem)
     if m:
         return chr(int(m.group(1), 16))
 
-    if _CID_NAME.match(name):
+    if _CID_NAME.match(stem):
         return None  # لا معنى فيه — لا تخترع
 
     # الاسم رمزيّ (`alef`, `lam-ar`, `afii57415`): نسأل قوائم AGL القياسية.
@@ -81,7 +86,7 @@ def decode_glyph_name(name: str) -> str | None:
     except ImportError:
         return None
     try:
-        value = toUnicode(name)
+        value = toUnicode(stem)
     except Exception:  # pragma: no cover - دفاعيّ
         return None
     return value or None

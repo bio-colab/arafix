@@ -165,7 +165,13 @@ class TestOrderDetection:
 class TestGlyphNames:
     @pytest.mark.parametrize(
         "name,expected",
-        [("uni0645", "م"), ("u0631", "ر"), ("uni06450631", "مر")],
+        [
+            ("uni0645", "م"),
+            ("u0631", "ر"),
+            ("uni06450631", "مر"),
+            ("uni0645.init", "م"),
+            ("u0631.fina", "ر"),
+        ],
     )
     def test_decodes_standard_names(self, name, expected):
         assert decode_glyph_name(name) == expected

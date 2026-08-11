@@ -143,6 +143,10 @@ class PipelineConfig:
     #: أصلح كل سطر/خلية كتلةً مستقلة ثم أعد التجميع (أقوى للجداول).
     repair_per_block: bool = True
 
+    #: إصلاح حدود كلمات مستخرج PDF (فراغات هندسية داخل الكلمة أو أدوات
+    #: ملتصقة). مرحلة مستقلة محافظة؛ أطفئها لقياس نص المستخرج كما هو.
+    enable_spacing_repair: bool = True
+
     #: Closed-list confusions from **published Arabic book PDFs** (Safahat
     #: independent-eval books: امل→الم، كثري→كثير، …). Not AI-generated.
     #: See ``arafix.pdf_confusions``. Off = leave raw after PF/order only.
@@ -321,14 +325,18 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
             current = folded
             notes.append("طُوِيَت محارف PDF الهجينة (ی/ھ → ي/ه)")
 
-    # --- Space hygiene then confusions (thumb_red loops 2–3) ----------------
-    # 1) collapse false mid-word splits so امل/هذالا see contiguous text
-    # 2) confusions (closed list)
-    # 3) particle / punct spaces for under-segmentation (كماأن → كما أن)
-    collapsed = collapse_midword_spaces(current)
-    if collapsed != current:
-        current = collapsed
-        notes.append("طُويت مسافات هندسية داخل الكلمات (مو ضع → موضع، …)")
+    # --- مرحلة الفراغات ثم التباسات PDF (حلقات Safahat 2–3) -------------
+    # 1) طيّ انقسامات داخل الكلمة كي ترى قائمة الالتباسات token متصلاً.
+    # 2) التباسات PDF المغلقة.
+    # 3) إدراج حدود أدوات/ترقيم ملتصقة بعد انتهاء تصحيح الحروف.
+    # المرحلة قابلة للإيقاف كوحدة واحدة، مثل بقية درجات الأنبوب.
+    spacing_changed = False
+    if cfg.enable_spacing_repair:
+        collapsed = collapse_midword_spaces(current)
+        if collapsed != current:
+            current = collapsed
+            spacing_changed = True
+            notes.append("طُويت مسافات هندسية داخل الكلمات (مو ضع → موضع، …)")
 
     if cfg.enable_pdf_confusion_repair:
         conf = repair_pdf_confusions(current)
@@ -345,10 +353,14 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                 + "، ".join(bits)
             )
 
-    spaced = insert_particle_spaces(current)
-    if spaced != current:
-        current = spaced
-        notes.append("أُدرجت مسافات بعد أدوات/ترقيم ملصوق (كماأن → كما أن، …)")
+    if cfg.enable_spacing_repair:
+        spaced = insert_particle_spaces(current)
+        if spaced != current:
+            current = spaced
+            spacing_changed = True
+            notes.append("أُدرجت مسافات بعد أدوات/ترقيم ملصوق (كماأن → كما أن، …)")
+        if spacing_changed:
+            stages.append(Stage.REPAIR_SPACING)
 
     confidence = min(_final_confidence(dg, order_conf, stages), lam_conf)
 

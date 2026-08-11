@@ -48,6 +48,7 @@ class Stage(str, Enum):
     REORDER = "reorder"            # ٢ — إصلاح الاتجاه
     EXPAND_LIGATURES = "expand_ligatures"  # ١ب — فكّ الرباطات، بعد استقرار الترتيب
     REPAIR_LAM_ALEF = "repair_lam_alef"    # ترقيع عطبٍ أوقعته أداةٌ أخرى
+    REPAIR_SPACING = "repair_spacing"      # طيّ/إدراج حدود كلمات ذات شاهد
     REPAIR_PDF_CONFUSIONS = "repair_pdf_confusions"  # امل/ري من كتب PDF منشورة
     REBUILD_CMAP = "rebuild_cmap"  # ٣ — إعادة بناء الخريطة من الخط
     OCR = "ocr"                    # ٤ — آخر الدواء

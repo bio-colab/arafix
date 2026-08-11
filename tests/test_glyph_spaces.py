@@ -50,6 +50,24 @@ class TestCollapseMidword:
         assert collapse_midword_spaces("أي إصلاح") == "أي إصلاح"
 
 
+class TestSpacingPipelineStage:
+    def test_spacing_stage_fires_when_a_midword_gap_is_repaired(self):
+        from arafix import Stage, repair_text
+
+        result = repair_text("مو ضع")
+
+        assert result.text == "موضع"
+        assert Stage.REPAIR_SPACING in result.stages_applied
+
+    def test_spacing_stage_can_be_disabled(self):
+        from arafix import PipelineConfig, Stage, repair_text
+
+        result = repair_text("مو ضع", PipelineConfig(enable_spacing_repair=False))
+
+        assert result.text == "مو ضع"
+        assert Stage.REPAIR_SPACING not in result.stages_applied
+
+
 class TestParticleSpaces:
     def test_inserts_after_particles(self):
         from arafix.hygiene import insert_particle_spaces

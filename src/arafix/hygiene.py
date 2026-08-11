@@ -32,6 +32,7 @@ __all__ = [
     "NBSP",
     "ARABIC_COMMA",
     "ARABIC_THOUSANDS_SEP",
+    "ZERO_WIDTH_ARTIFACTS",
     "fold_arabic_punct_confusables",
 ]
 
@@ -41,6 +42,11 @@ SOFT_HYPHEN = "\u00ad"
 ARABIC_COMMA = "\u060c"
 ARABIC_THOUSANDS_SEP = "\u066c"
 REPLACEMENT = "\ufffd"
+
+# استخراج PDF قد يمرّر محارف تحكم واتجاه صفرية العرض إلى النص. لا تحمل
+# هذه المحارف محتوى قابلاً للرؤية هنا؛ وتُطوى افتراضياً بنفس سياسة
+# NormalizeConfig.strip_zero_width، مع إبقاء مفتاح صريح لمن يحتاجها.
+ZERO_WIDTH_ARTIFACTS = ("\u200b", "\u200e", "\u200f", "\ufeff", "\u200c", "\u200d")
 
 UNICODE_SPACES = frozenset(
     {
@@ -105,6 +111,7 @@ def count_artifacts(text: str) -> dict[str, int]:
             "thousands_as_comma": 0,
             "replacement": 0,
             "spacing_diacritic_pf": 0,
+            "zero_width": 0,
         }
     nbsp_like = sum(1 for ch in text if ch in UNICODE_SPACES)
     thousands_as_comma = 0
@@ -122,6 +129,7 @@ def count_artifacts(text: str) -> dict[str, int]:
         "thousands_as_comma": thousands_as_comma,
         "replacement": text.count(REPLACEMENT),
         "spacing_diacritic_pf": sum(1 for c in text if 0xFE70 <= ord(c) <= 0xFE7F),
+        "zero_width": sum(text.count(ch) for ch in ZERO_WIDTH_ARTIFACTS),
     }
 
 
@@ -427,6 +435,7 @@ def sanitize_extraction(
     strip_replacement: bool = True,
     apply_nfc: bool = True,
     collapse_spaces: bool = False,
+    strip_zero_width: bool = True,
 ) -> str:
     """
     ينظّف نصّاً خرج من محرّك استخراج قبل أيّ تشخيص عربيّ.
@@ -452,6 +461,9 @@ def sanitize_extraction(
         out = fold_arabic_punct_confusables(out)
     if strip_replacement:
         out = out.replace(REPLACEMENT, "")
+    if strip_zero_width:
+        for ch in ZERO_WIDTH_ARTIFACTS:
+            out = out.replace(ch, "")
     if apply_nfc:
         out = unicodedata.normalize("NFC", out)
     if collapse_spaces:

@@ -192,7 +192,10 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     # --- بوابة النظافة: قبل التشخيص، كي لا تشوّش الشواهد ---------------
     if cfg.enable_hygiene:
         arts = count_artifacts(current)
-        cleaned = sanitize_extraction(current)
+        cleaned = sanitize_extraction(
+            current,
+            strip_zero_width=cfg.normalize.strip_zero_width,
+        )
         if cleaned != current:
             current = cleaned
             stages.append(Stage.HYGIENE)
@@ -205,6 +208,8 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                 bits.append(f"{arts['thousands_as_comma']} ٬→،")
             if arts.get("replacement"):
                 bits.append(f"{arts['replacement']} U+FFFD")
+            if arts.get("zero_width"):
+                bits.append(f"{arts['zero_width']} محرف صفريّ العرض")
             notes.append(
                 "نُظِّفت آثار الاستخراج: " + ("، ".join(bits) if bits else "ترقيم/مسافات")
             )

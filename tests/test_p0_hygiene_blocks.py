@@ -35,6 +35,20 @@ class TestHygiene:
     def test_healthy_untouched(self):
         assert sanitize_extraction("نص سليم 2024") == "نص سليم 2024"
 
+    def test_zero_width_artifacts_are_removed(self):
+        raw = "كتاب\u200bجديد\u200f\ufeff"
+        assert sanitize_extraction(raw) == "كتابجديد"
+        result = repair_text(raw)
+        assert result.text == "كتابجديد"
+        assert Stage.HYGIENE in result.stages_applied
+
+    def test_zero_width_hygiene_honors_normalize_config(self):
+        from arafix import NormalizeConfig
+
+        raw = "كتاب\u200bجديد"
+        result = repair_text(raw, PipelineConfig(normalize=NormalizeConfig(strip_zero_width=False)))
+        assert result.text == raw
+
     def test_count_artifacts(self):
         c = count_artifacts("a\u00a0b\u00adc")
         assert c["nbsp_like"] == 1

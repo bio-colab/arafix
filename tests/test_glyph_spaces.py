@@ -45,6 +45,10 @@ class TestCollapseMidword:
         assert collapse_midword_spaces("في السجن") == "في السجن"
         assert collapse_midword_spaces("من الناس") == "من الناس"
 
+    def test_keeps_short_real_words_before_normal_words(self):
+        assert collapse_midword_spaces("نص سليم") == "نص سليم"
+        assert collapse_midword_spaces("أي إصلاح") == "أي إصلاح"
+
 
 class TestParticleSpaces:
     def test_inserts_after_particles(self):

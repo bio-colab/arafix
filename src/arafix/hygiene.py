@@ -261,6 +261,12 @@ def collapse_midword_spaces(text: str) -> str:
             return m.group(0)
         if len(left) == 1 and left in _NO_COLLAPSE_SINGLE:
             return m.group(0)
+        # A two-letter standalone word followed by a normal-length word is
+        # overwhelmingly a real word boundary (نص سليم, أي إصلاح), not a
+        # geometry fragment. Keep it unless an explicit function-word rule
+        # above or an article-prefix rule below provides stronger evidence.
+        if len(left) <= 2 and len(right) > 2:
+            return m.group(0)
         # Keep space before definite article ال…
         if re.match(r"[\u064B-\u0652\u0670]*ال", rest):
             return m.group(0)

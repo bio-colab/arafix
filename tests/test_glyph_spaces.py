@@ -45,6 +45,28 @@ class TestCollapseMidword:
         assert collapse_midword_spaces("في السجن") == "في السجن"
         assert collapse_midword_spaces("من الناس") == "من الناس"
 
+    def test_keeps_short_real_words_before_normal_words(self):
+        assert collapse_midword_spaces("نص سليم") == "نص سليم"
+        assert collapse_midword_spaces("أي إصلاح") == "أي إصلاح"
+
+
+class TestSpacingPipelineStage:
+    def test_spacing_stage_fires_when_a_midword_gap_is_repaired(self):
+        from arafix import Stage, repair_text
+
+        result = repair_text("مو ضع")
+
+        assert result.text == "موضع"
+        assert Stage.REPAIR_SPACING in result.stages_applied
+
+    def test_spacing_stage_can_be_disabled(self):
+        from arafix import PipelineConfig, Stage, repair_text
+
+        result = repair_text("مو ضع", PipelineConfig(enable_spacing_repair=False))
+
+        assert result.text == "مو ضع"
+        assert Stage.REPAIR_SPACING not in result.stages_applied
+
 
 class TestParticleSpaces:
     def test_inserts_after_particles(self):
@@ -53,3 +75,23 @@ class TestParticleSpaces:
         assert "كما أن" in insert_particle_spaces("كماأن")
         assert "لذا اعتدنا" in insert_particle_spaces("لذااعتدنا")
         assert "من العصور" in insert_particle_spaces("منالعصور")
+
+    def test_inserts_between_safe_function_word_boundaries(self):
+        from arafix.hygiene import insert_particle_spaces
+
+        assert insert_particle_spaces("فيهذهالحال") == "في هذهالحال"
+        assert insert_particle_spaces("هوالذييهب") == "هو الذييهب"
+        assert insert_particle_spaces("أنهذاالقول") == "أن هذاالقول"
+        assert insert_particle_spaces("لايمكنتمييز") == "لا يمكنتمييز"
+        assert insert_particle_spaces("مندونإعادة") == "من دونإعادة"
+
+    def test_does_not_split_ordinary_words_on_particle_prefixes(self):
+        from arafix.hygiene import insert_particle_spaces
+
+        assert insert_particle_spaces("لاعبكرة") == "لاعبكرة"
+
+    def test_inserts_between_safe_name_and_honorific_boundaries(self):
+        from arafix.hygiene import insert_particle_spaces
+
+        text = "سليمانبنعبدالملكرضيالله"
+        assert insert_particle_spaces(text) == "سليمان بن عبد الملك رضي الله"

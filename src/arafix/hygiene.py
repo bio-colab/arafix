@@ -32,6 +32,7 @@ __all__ = [
     "NBSP",
     "ARABIC_COMMA",
     "ARABIC_THOUSANDS_SEP",
+    "ZERO_WIDTH_ARTIFACTS",
     "fold_arabic_punct_confusables",
 ]
 
@@ -41,6 +42,11 @@ SOFT_HYPHEN = "\u00ad"
 ARABIC_COMMA = "\u060c"
 ARABIC_THOUSANDS_SEP = "\u066c"
 REPLACEMENT = "\ufffd"
+
+# استخراج PDF قد يمرّر محارف تحكم واتجاه صفرية العرض إلى النص. لا تحمل
+# هذه المحارف محتوى قابلاً للرؤية هنا؛ وتُطوى افتراضياً بنفس سياسة
+# NormalizeConfig.strip_zero_width، مع إبقاء مفتاح صريح لمن يحتاجها.
+ZERO_WIDTH_ARTIFACTS = ("\u200b", "\u200e", "\u200f", "\ufeff", "\u200c", "\u200d")
 
 UNICODE_SPACES = frozenset(
     {
@@ -105,6 +111,7 @@ def count_artifacts(text: str) -> dict[str, int]:
             "thousands_as_comma": 0,
             "replacement": 0,
             "spacing_diacritic_pf": 0,
+            "zero_width": 0,
         }
     nbsp_like = sum(1 for ch in text if ch in UNICODE_SPACES)
     thousands_as_comma = 0
@@ -122,6 +129,7 @@ def count_artifacts(text: str) -> dict[str, int]:
         "thousands_as_comma": thousands_as_comma,
         "replacement": text.count(REPLACEMENT),
         "spacing_diacritic_pf": sum(1 for c in text if 0xFE70 <= ord(c) <= 0xFE7F),
+        "zero_width": sum(text.count(ch) for ch in ZERO_WIDTH_ARTIFACTS),
     }
 
 
@@ -261,6 +269,12 @@ def collapse_midword_spaces(text: str) -> str:
             return m.group(0)
         if len(left) == 1 and left in _NO_COLLAPSE_SINGLE:
             return m.group(0)
+        # A two-letter standalone word followed by a normal-length word is
+        # overwhelmingly a real word boundary (نص سليم, أي إصلاح), not a
+        # geometry fragment. Keep it unless an explicit function-word rule
+        # above or an article-prefix rule below provides stronger evidence.
+        if len(left) <= 2 and len(right) > 2:
+            return m.group(0)
         # Keep space before definite article ال…
         if re.match(r"[\u064B-\u0652\u0670]*ال", rest):
             return m.group(0)
@@ -284,6 +298,47 @@ def collapse_midword_spaces(text: str) -> str:
 
 #: Glued particles safe to split only when followed by ال… or a long stem
 #: (avoids منثورة → من ثورة, أولاً → أو لاً).
+# Boundaries repeatedly lost by glyph geometry in the independent book
+# benchmark. Each pair is explicit rather than a generic prefix rule: Arabic
+# function words are productive stems too, so broad splitting would corrupt
+# ordinary words. The tuple is deliberately small and easy to audit.
+_SAFE_GLUED_FUNCTION_BOUNDARIES: tuple[tuple[str, str], ...] = (
+    ("في", "هذا"),
+    ("في", "هذه"),
+    ("هو", "الذي"),
+    ("هو", "التي"),
+    ("أن", "هذا"),
+    ("أن", "هذه"),
+    ("أن", "يكون"),
+    ("لا", "يمكن"),
+    ("من", "دون"),
+    ("لم", "يكن"),
+    ("إلى", "أن"),
+    ("الى", "أن"),
+    ("إن", "كان"),
+    ("غير", "أن"),
+)
+
+
+# Name-link and honorific pairs occur in a restricted written form, so they
+# are safe to restore as explicit pairs without attempting general NER.
+_SAFE_GLUED_NAME_BOUNDARIES: tuple[tuple[str, str], ...] = (
+    ("بن", "عبد"),
+    ("عبد", "الملك"),
+    ("عبد", "العزيز"),
+    ("رضي", "الله"),
+)
+
+# These prefixes and suffixes seed an otherwise unbounded name chain, then
+# the pairs above complete it after a real space has been restored.
+_SAFE_GLUED_NAME_ANCHORS: tuple[tuple[str, str], ...] = (
+    ("سليمانبن", "سليمان بن"),
+    ("عمربن", "عمر بن"),
+    ("الملكرضي", "الملك رضي"),
+    ("العزيزرضي", "العزيز رضي"),
+)
+
+
 _GLUE_SPLIT_SAFE: tuple[str, ...] = (
     "وكذلك",
     "كذلك",
@@ -326,6 +381,32 @@ def insert_particle_spaces(text: str) -> str:
             p + " ",
             out,
         )
+    # High-confidence glued pairs observed in real PDF output. Require a
+    # non-Arabic left boundary so a pair is never cut out of a larger word.
+    for left, right in _SAFE_GLUED_FUNCTION_BOUNDARIES:
+        out = re.sub(
+            rf"(?<![{_B}]){re.escape(left)}(?={re.escape(right)})",
+            left + " ",
+            out,
+        )
+
+    # A first restored boundary exposes the next one in long name chains
+    # (e.g. سليمانبنعبدالملكرضيالله). Two passes are sufficient for the
+    # fixed, audited patterns below and avoid an unbounded rewrite loop.
+    for _ in range(2):
+        for glued, restored in _SAFE_GLUED_NAME_ANCHORS:
+            out = re.sub(
+                rf"(?<![{_B}]){re.escape(glued)}",
+                restored,
+                out,
+            )
+        for left, right in _SAFE_GLUED_NAME_BOUNDARIES:
+            out = re.sub(
+                rf"(?<![{_B}]){re.escape(left)}(?={re.escape(right)})",
+                left + " ",
+                out,
+            )
+
     # safe multi-char particles + any Arabic stem ≥ 2 letters
     for p in _GLUE_SPLIT_SAFE:
         out = re.sub(
@@ -333,7 +414,15 @@ def insert_particle_spaces(text: str) -> str:
             p + " ",
             out,
         )
-    out = re.sub(r"[^\S\n\r]{2,}", " ", out)
+    # Do not normalize arbitrary ASCII spacing: code, regexes, tables, and
+    # aligned Latin text are valid inputs. Collapse only a run whose two
+    # immediate non-space neighbours are Arabic letters, where it is a PDF
+    # word-boundary artifact rather than user formatting.
+    out = re.sub(
+        rf"(?<=[{_B}])[^\S\n\r]{{2,}}(?=[{_B}])",
+        " ",
+        out,
+    )
     return out
 
 
@@ -346,6 +435,7 @@ def sanitize_extraction(
     strip_replacement: bool = True,
     apply_nfc: bool = True,
     collapse_spaces: bool = False,
+    strip_zero_width: bool = True,
 ) -> str:
     """
     ينظّف نصّاً خرج من محرّك استخراج قبل أيّ تشخيص عربيّ.
@@ -371,6 +461,9 @@ def sanitize_extraction(
         out = fold_arabic_punct_confusables(out)
     if strip_replacement:
         out = out.replace(REPLACEMENT, "")
+    if strip_zero_width:
+        for ch in ZERO_WIDTH_ARTIFACTS:
+            out = out.replace(ch, "")
     if apply_nfc:
         out = unicodedata.normalize("NFC", out)
     if collapse_spaces:

@@ -37,6 +37,11 @@ vocabulary، مع إبقاء word frequency وbigrams وcharacter trigrams. أض
 PDF معلّمة تثبت تحسناً في CER/WER. كما بقيت CharacterConfusionModel وPDF confusion
 generator وGlyphEvidence مصادر مرشحين قابلة للحقن، لا قواعد إصلاح افتراضية.
 
+أضيف حارس يمنع Context من مطابقة prefix داخل كلمة تحتوي حركة داخلية، كما رُفعت
+حماية النص المقتبس إلى `UNSAFE` فعلياً، وبقيت عناوين عربية المنتهية بنقطتين خارج
+حماية code-island. بعد ذلك بقيت النتائج **61/61** و**57/57**، وFPR **0%**،
+وبقي SHA-256 للـPDF الحقيقي مطابقاً في المسارين off/on.
+
 ---
 
 ### Context Scoring and Glyph Evidence evaluation — 2026-08-12

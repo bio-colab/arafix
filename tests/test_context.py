@@ -10,6 +10,7 @@ from arafix import (
     EvidenceFusion,
     GlyphEvidence,
     NegativeEvidence,
+    NegativeEvidenceModel,
     PipelineConfig,
     Stage,
     extract_pdf,
@@ -87,6 +88,21 @@ def test_negative_evidence_forces_unsafe_abstention() -> None:
         [candidate],
         negative_evidence=(NegativeEvidence("code_island", 1.0),),
     )
+    assert decision.status == "unsafe"
+    assert decision.replacement is None
+
+
+def test_negative_evidence_preserves_quoted_text() -> None:
+    candidate = Candidate(
+        observed="Java",
+        text="Jawa",
+        sources=("character",),
+        signals=(("confusion_score", 1.0),),
+    )
+    negative = NegativeEvidenceModel().inspect('"Java"', 1, 5)
+
+    decision = EvidenceFusion().decide("Java", [candidate], negative_evidence=negative)
+
     assert decision.status == "unsafe"
     assert decision.replacement is None
 

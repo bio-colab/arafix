@@ -194,7 +194,9 @@ class NegativeEvidenceModel:
             end < len(text) and text[end] in self._QUOTES
         ):
             evidence.append(
-                NegativeEvidence("quoted_text", 0.45, "quoted span is preserved by default")
+                NegativeEvidence(
+                    "quoted_text", 0.85, "quoted span is preserved by default"
+                )
             )
         if (start > 0 and self._ASCII_IDENTIFIER.fullmatch(text[start - 1])) or (
             end < len(text) and self._ASCII_IDENTIFIER.fullmatch(text[end])

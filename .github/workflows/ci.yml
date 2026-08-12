@@ -48,6 +48,9 @@ jobs:
       - name: التدقيق اللغويّ للشيفرة
         run: ruff check src tests examples
 
+      - name: فحص العقود النوعية
+        run: mypy src
+
       - name: الاختبارات و doctests
         run: pytest tests --doctest-modules src/arafix -q
 

@@ -59,8 +59,11 @@ def _cmd_text_pair(args: argparse.Namespace) -> int:
         print(f"  confidence (pipeline): {rep.confidence:.3f}")
         print(f"  stages: {[s.value for s in rep.stages_applied]}")
         print(f"  defects: {rep.diagnosis.summary()}")
-        print(f"  defect_confidence: "
-              f"{{{', '.join(f'{k.value}={v:.3f}' for k, v in rep.diagnosis.defect_confidence.items())}}}")
+        confidence_items = ", ".join(
+            f"{key.value}={value:.3f}"
+            for key, value in rep.diagnosis.defect_confidence.items()
+        )
+        print(f"  defect_confidence: {{{confidence_items}}}")
 
     truth = _read(args.truth)
     ecfg = EvalConfig(
@@ -113,7 +116,7 @@ def _cmd_pdf(args: argparse.Namespace) -> int:
     print(f"  min confidence (weakest link): {min_c:.3f}")
     print(f"  mean confidence: {avg_c:.3f}")
     print(f"  doc.confidence property: {doc.confidence:.3f}")
-    print(f"  note: healthy-only diagnoses are capped below 1.0 by design")
+    print("  note: healthy-only diagnoses are capped below 1.0 by design")
     if args.verbose:
         for p in doc.pages:
             print(

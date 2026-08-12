@@ -1,6 +1,6 @@
-﻿# -*- coding: utf-8 -*-
-"""Generate ultra-complex stress corpus (50 packages) for arafix 0.9.3."""
+﻿"""Generate ultra-complex stress corpus (50 packages) for arafix 0.9.3."""
 from __future__ import annotations
+
 import json
 from pathlib import Path
 
@@ -36,7 +36,7 @@ def add(cid, axis, title, kind, inp, expected=None, must_not_change=False, tags=
 add("A1-01", 1, "FLAW_04 hybrid mojibake + English + status",
     "repair_text",
     f"{MOJ_HYBRID} Report for project_v2.py (Status: 200 OK) - دراسة مقارنة",
-    f"المCustomer Report for project_v2.py (Status: 200 OK) - دراسة مقارنة",
+    "المCustomer Report for project_v2.py (Status: 200 OK) - دراسة مقارنة",
     tags=["mojibake", "hybrid"])
 
 add("A1-02", 1, "Pure classic mojibake word",
@@ -190,8 +190,12 @@ add("A3-08", 3, "Decisive + ambiguous mixed sentence",
 # Axis 4 — False-positive safeguards (12) — ZERO changes allowed
 # ═══════════════════════════════════════════════════════════════════════
 safe_samples = [
-    ("A4-01", "Python function café",
-     'def process_data(user_id="usr_99", format="json"): return {"status": "café", "rate": "15%"} # لا تمسني!'),
+    (
+        "A4-01",
+        "Python function café",
+        'def process_data(user_id="usr_99", format="json"): '
+        'return {"status": "café", "rate": "15%"} # لا تمسني!',
+    ),
     ("A4-02", "Latin accents set",
      "café résumé naïve über Österreich"),
     ("A4-03", "JSON config",
@@ -283,7 +287,7 @@ add("A5-08", 5, "Percent and range healthy logical",
 line_templates = [
     "هذه جملة عربية سليمة للاختبار رقم {i} في 2024.",
     'def f_{i}(x): return x + {i}  # café',
-    f"{{MOJ}} line {{i}} status OK".replace("{MOJ}", MOJ_ALM),
+    "{MOJ} line {i} status OK".replace("{MOJ}", MOJ_ALM),
     "صدرت المجالت العلمية رقم {i}",
     "JSON {{\"id\": {i}, \"ok\": true}}",
 ]

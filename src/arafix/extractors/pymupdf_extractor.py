@@ -54,14 +54,12 @@ class PyMuPDFExtractor(Extractor):
 
     def _open(self, path: str):
         try:
-            import fitz  # type: ignore
+            import fitz
         except ImportError as exc:  # pragma: no cover
             raise RuntimeError(
                 "محرّك PyMuPDF غير مثبَّت: pip install arafix[pdf]"
             ) from exc
         return fitz.open(path)
-
-    LINE_TOLERANCE = 0.5
 
     @staticmethod
     def _is_markable_base(text: str) -> bool:
@@ -198,7 +196,11 @@ class PyMuPDFExtractor(Extractor):
         for g in glyphs:
             y, x, t, s = g[0], g[1], g[2], g[3]
             sq = int(g[4]) if len(g) > 4 else 0
-            bbox = tuple(float(value) for value in g[7][:4]) if len(g) > 7 else None
+            bbox = (
+                (float(g[7][0]), float(g[7][1]), float(g[7][2]), float(g[7][3]))
+                if len(g) > 7 and len(g[7]) >= 4
+                else None
+            )
             out.append(Glyph(y=y, x=x, text=t, size=s, seq=sq, bbox=bbox))
         return out
 
@@ -300,7 +302,7 @@ class PyMuPDFExtractor(Extractor):
                     if basefont in out:
                         continue
                     try:
-                        name, ext_, _t, data = doc.extract_font(xref)
+                        name, _ext, _t, data = doc.extract_font(xref)
                         if data:
                             out[basefont or name] = data
                     except Exception:

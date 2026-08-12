@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from typing import Any
 
 from . import __version__
 from .diagnose import diagnose
@@ -27,7 +28,7 @@ def _cmd_diagnose(args: argparse.Namespace) -> int:
     from .extractors import get_extractor
 
     ex = get_extractor(args.extractor)
-    report = []
+    report: list[dict[str, Any]] = []
     for raw in ex.pages(args.path):
         dg = diagnose(raw.text)
         report.append(

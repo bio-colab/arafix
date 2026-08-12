@@ -82,7 +82,7 @@ def decode_glyph_name(name: str) -> str | None:
 
     # الاسم رمزيّ (`alef`, `lam-ar`, `afii57415`): نسأل قوائم AGL القياسية.
     try:
-        from fontTools.agl import toUnicode  # type: ignore
+        from fontTools.agl import toUnicode
     except ImportError:
         return None
     try:
@@ -104,7 +104,7 @@ def reverse_font_cmap(font_bytes: bytes) -> dict[str, str]:
     يسدّ ثغراته بأسماء الجليفات.
     """
     try:
-        from fontTools.ttLib import TTFont  # type: ignore
+        from fontTools.ttLib import TTFont
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("الدرجة ٣ تتطلّب fontTools: pip install arafix[cmap]") from exc
 
@@ -185,7 +185,7 @@ def build_glyph_map(font_bytes: bytes, font_name: str = "") -> GlyphMap:
     try:
         import io
 
-        from fontTools.ttLib import TTFont  # type: ignore
+        from fontTools.ttLib import TTFont
 
         f = TTFont(io.BytesIO(font_bytes), fontNumber=0, lazy=True)
         total = len(f.getGlyphOrder())
@@ -197,7 +197,7 @@ def build_glyph_map(font_bytes: bytes, font_name: str = "") -> GlyphMap:
     try:
         import io
 
-        from fontTools.ttLib import TTFont  # type: ignore
+        from fontTools.ttLib import TTFont
 
         f = TTFont(io.BytesIO(font_bytes), fontNumber=0, lazy=True)
         by_id = {

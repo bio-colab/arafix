@@ -2,6 +2,51 @@
 
 ## Unreleased
 
+### Consistency review and contract hardening — 2026-08-12
+
+أُجريت مراجعة اتساق شاملة على وحدات الحزمة والاستدعاءات والـexports. شملت
+الفحوصات `ruff` للاسماء والاستيرادات، و`mypy` على 26 وحدة، واستيراد جميع
+الوحدات وفحص `__all__` وقت التشغيل، وsmoke tests لأوامر CLI، وvulture
+للكود غير المستخدم عالي الثقة، إضافة إلى اختبار السلوك الكامل.
+
+كُشف وأُصلح خلل حقيقي في عقد التدقيق: كان `harvest_document_lexicon` يعدّل
+`PageResult.text` بعد إنشاء audit، فيبقى `repaired_sha256` والـpatch محسوبين
+على النص السابق. كان ذلك يؤدي إلى رفض العكس برسالة `patch target SHA-256
+ does not match repaired_sha256` على صفحة أصلحها معجم الوثيقة. أصبح الإصلاح
+اللاحق يسجل حدث `DOCUMENT_LEXICON_LAM_ALEF` ويعيد بناء الرقعة الكاملة من
+`PageResult.original` إلى النص النهائي، مع الحفاظ على أوضاع `summary` و`full`.
+أضيف regression test بصفحتين ومستخرج اختباري يثبت التطبيق والعكس والهاش.
+
+صُححت أيضاً عقود النوع التي كانت رخوة أو متناقضة مع الاستدعاء الفعلي:
+أصبح `_recover_broken_cmap_page` يعيد `RawPage` ويستقبل `Mapping[str,
+GlyphMap]`، وأصبح bbox في مستخرج PyMuPDF tuple رباعياً صريحاً أو `None`،
+وعولجت تقارير CLI بنوع `list[dict[str, Any]]`. أزيلت `type: ignore` غير
+المستخدمة، وحُذف وسيط `col_width` الميت من كشف الجداول وحساب `col_w` الزائد،
+وأزيل ثابت `LINE_TOLERANCE` غير المشار إليه.
+
+أضيف فحص `mypy src` إلى CI، وثُبّت في dev extra عند `mypy>=1.8,<2` حتى يبقى
+متوافقاً مع Python 3.9 المعلن. أما الدوال `normalize_result` و`fix_order_result`
+فقد راجعت ولم تُحذف: هما أغلفة convenience غير مستعملة داخلياً، لكن حذفهما
+قد يكسر مستعملاً يستورد الوحدة مباشرة؛ لم تُعتبر مفقودة أو خاطئة، ولم تُضف
+إلى سطح API العام بلا حاجة.
+
+| بوابة التحقق | النتيجة |
+|---|---:|
+| ماسح الاستيرادات و`__all__` وقت التشغيل | **CONSISTENCY_OK**؛ 26 وحدة، 109 exports في package root |
+| `ruff check src tests examples` | ناجح |
+| `mypy src` | **Success: no issues found** |
+| مجموعة الاختبارات الكاملة | **317/317 ناجحة** |
+| اختبارات العقود والـregression | ناجحة |
+| smoke tests لـ`diagnose`, `extract`, `eval`, `text`, `blocks`, `fonts` | **7/7 ناجحة** عبر `python -m arafix.cli` |
+| إزالة `col_width` وحسابات التخطيط الميتة | مخرج PDF وSHA-256 مطابقان |
+| benchmark layout alternating | فرق صغير متذبذب، نحو **0–2%**؛ لم يُعتبر تحسناً ملحوظاً |
+| تبعيات runtime | لم تتغير؛ لا تبعية جديدة للحزمة |
+
+لم تُرفع أرقام أداء جديدة إلى README لأن القياس المتناوب لم يثبت نقلة
+ملحوظة؛ التغيير مقبول لجودة العقد وتقليل الالتباس، لا كادعاء throughput.
+
+---
+
 ### Recovery Audit Engine and safety evaluation — 2026-08-12
 
 أضيفت طبقة تدقيق اختيارية لا تغيّر مخرج `repair_text()` الافتراضي. يعرّف العقد

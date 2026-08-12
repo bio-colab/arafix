@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Ultra-Complex Stress Test for arafix 0.9.3+
 

@@ -11,6 +11,7 @@ from arafix import (
     extract_pdf,
     repair_text,
 )
+from arafix.extractors.base import Extractor, RawPage
 
 
 def test_patch_apply_and_revert_are_hash_guarded() -> None:
@@ -56,6 +57,21 @@ def test_summary_keeps_spans_without_retaining_changed_text() -> None:
     assert result.reversible_patch is None
 
 
+def test_reorder_audit_keeps_detector_evidence() -> None:
+    result = repair_text(
+        ("\ufe8e\ufe92\ufea3\ufeae\ufee3" * 4),
+        PipelineConfig(audit_mode="full"),
+    )
+
+    assert result.audit is not None
+    event = next(
+        event for event in result.audit.events if event.rule == "VISUAL_ORDER_REVERSAL"
+    )
+    evidence_names = {item.name for item in event.evidence}
+    assert "visual-order-score" in evidence_names
+    assert evidence_names & {"final_only_letters", "joining_forms", "definite_article"}
+
+
 def test_ambiguous_lam_alef_is_recorded_as_abstention() -> None:
     result = repair_text("المجالت", PipelineConfig(audit_mode="full", use_core_lexicon=False))
 
@@ -95,3 +111,37 @@ def test_pdf_page_patch_is_guarded_by_page_original() -> None:
     assert page.repair.audit is not None
     assert page.repair.reversible_patch is not None
     assert page.repair.reversible_patch.revert(page.text) == page.repair.original
+
+
+def test_document_lexicon_keeps_page_audit_consistent(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeExtractor(Extractor):
+        name = "fake-audit"
+
+        def pages(self, path: str):
+            yield RawPage(number=1, text="المجلات")
+            yield RawPage(number=2, text="المجالت")
+
+        def font_bytes(self, path: str) -> dict[str, bytes]:
+            return {}
+
+    import arafix.pipeline as pipeline
+
+    monkeypatch.setattr(pipeline, "get_extractor", lambda _: FakeExtractor())
+    document = extract_pdf(
+        "unused",
+        PipelineConfig(
+            extractor="fake-audit",
+            audit_mode="full",
+            use_core_lexicon=False,
+            harvest_document_lexicon=True,
+        ),
+    )
+
+    page = document.pages[1].repair
+    assert page.text == "المجلات"
+    assert page.audit is not None
+    assert page.reversible_patch is not None
+    assert page.reversible_patch.revert(page.text) == page.original
+    assert any(
+        event.rule == "DOCUMENT_LEXICON_LAM_ALEF" for event in page.audit.events
+    )

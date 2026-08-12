@@ -633,7 +633,6 @@ def _split_line_into_cells(line: LayoutLine, cfg: LayoutConfig) -> list[str]:
 
 def _detect_tables_in_lines(
     lines: list[LayoutLine],
-    col_width: float,
     cfg: LayoutConfig,
 ) -> tuple[list[LayoutLine], list[LayoutTable]]:
     if not cfg.detect_tables or len(lines) < cfg.min_table_rows:
@@ -774,7 +773,7 @@ def analyze_layout(
     # columns فيبقى صريحاً: يستعمله المستدعي حين يعرف أن الصفحة أعمدة.
     if cfg.detect_tables and mode == "full":
         table_lines = cluster_to_lines(body_glyphs, config=cfg)
-        remaining, tables = _detect_tables_in_lines(table_lines, page_width, cfg)
+        remaining, tables = _detect_tables_in_lines(table_lines, cfg)
         if tables:
             layout.tables = tables
             layout.lines = layout.headers + remaining + layout.footers
@@ -808,7 +807,7 @@ def analyze_layout(
 
         # جداول داخل العمود الواحد
         if cfg.detect_tables and mode in ("auto", "full"):
-            rest, tables = _detect_tables_in_lines(lines, page_width, cfg)
+            rest, tables = _detect_tables_in_lines(lines, cfg)
             layout.tables = tables
             lines = rest
             if tables:
@@ -843,8 +842,7 @@ def analyze_layout(
         lines = cluster_to_lines(group, config=cfg)
         # جداول داخل العمود
         if cfg.detect_tables and mode in ("auto", "full"):
-            col_w = (max(g.x for g in group) - min(g.x for g in group)) or page_width
-            lines, tables = _detect_tables_in_lines(lines, col_w, cfg)
+            lines, tables = _detect_tables_in_lines(lines, cfg)
             layout.tables.extend(tables)
 
         for ln in lines:

@@ -15,10 +15,23 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING
 
-from .audit import AuditMode, AuditTrail, EvidenceItem, RepairDecision
+if TYPE_CHECKING:
+    from .cmap import GlyphMap
+    from .extractors.base import RawPage
+
+from .audit import (
+    AuditMode,
+    AuditTrail,
+    EvidenceItem,
+    Patch,
+    RepairAudit,
+    RepairDecision,
+    sha256_text,
+)
 from .diagnose import DEFAULT_THRESHOLDS, detect_mojibake, detect_visual_order, diagnose
 from .extractors import get_extractor
 from .hygiene import (
@@ -327,6 +340,9 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     order_conf = 1.0
     if cfg.enable_reorder:
         score, order_evidence = detect_visual_order(current, shaped_source=shaped_source)
+        order_audit_evidence = tuple(
+            EvidenceItem(item.name, item.value, item.detail) for item in order_evidence
+        )
         if cfg.force_reorder or score > th["visual_order"]:
             before = current
             current = fix_order(current, cfg.reorder)
@@ -343,6 +359,7 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                         score,
                         detail="Composite order detector score",
                     ),
+                    *order_audit_evidence,
                 ),
                 metadata={"forced": cfg.force_reorder},
             )
@@ -365,6 +382,7 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                             score,
                             detail=f"Below configured threshold {th['visual_order']:.2f}",
                         ),
+                        *order_audit_evidence,
                     ),
                     metadata={"threshold": th["visual_order"]},
                 )
@@ -660,7 +678,48 @@ def _canonical_font_name(name: str) -> str:
     return re.sub(r"[^0-9a-z]", "", name.lower()).removeprefix("subset")
 
 
-def _recover_broken_cmap_page(raw, glyph_maps) -> tuple[object, int]:
+def _append_audit_after_text_change(
+    audit: RepairAudit | None,
+    *,
+    original: str,
+    before: str,
+    after: str,
+    rule: str,
+    evidence: Iterable[EvidenceItem],
+) -> RepairAudit | None:
+    """Keep a page audit consistent after a later document-level repair."""
+    if audit is None or before == after:
+        return audit
+
+    delta_trail = AuditTrail(before, audit.mode)
+    delta_trail.record(
+        before,
+        after,
+        stage=Stage.REPAIR_LAM_ALEF.value,
+        rule=rule,
+        evidence=evidence,
+    )
+    delta = delta_trail.finalize(after)
+    if delta is None:
+        return audit
+
+    offset = len(audit.events) + len(audit.abstentions)
+    events = tuple(replace(event, event_id=offset + event.event_id) for event in delta.events)
+    abstentions = tuple(
+        replace(event, event_id=offset + event.event_id) for event in delta.abstentions
+    )
+    return replace(
+        audit,
+        repaired_sha256=sha256_text(after),
+        events=(*audit.events, *events),
+        abstentions=(*audit.abstentions, *abstentions),
+        patch=Patch.from_texts(original, after) if audit.mode is AuditMode.FULL else None,
+    )
+
+
+def _recover_broken_cmap_page(
+    raw: RawPage, glyph_maps: Mapping[str, GlyphMap]
+) -> tuple[RawPage, int]:
     """استبدل PUA/FFFD فقط حين يثبت glyph ID معناه في الخط المضمّن.
 
     لا توجد هنا محاولة لغوية أو تخمين اسم glyph: إن غاب المعرّف أو الخريطة
@@ -671,7 +730,7 @@ def _recover_broken_cmap_page(raw, glyph_maps) -> tuple[object, int]:
 
     normalized = {_canonical_font_name(name): glyph_map for name, glyph_map in glyph_maps.items()}
 
-    def find_map(font: str):
+    def find_map(font: str) -> GlyphMap | None:
         key = _canonical_font_name(font)
         if key in normalized:
             return normalized[key]
@@ -691,7 +750,11 @@ def _recover_broken_cmap_page(raw, glyph_maps) -> tuple[object, int]:
         glyph_id = int(glyph[5]) if len(glyph) > 5 else None
         font = str(glyph[6]) if len(glyph) > 6 else ""
         glyph_map = find_map(font) if glyph_id is not None and font else None
-        replacement = glyph_map.lookup_id(glyph_id) if glyph_map else None
+        replacement = (
+            glyph_map.lookup_id(glyph_id)
+            if glyph_map is not None and glyph_id is not None
+            else None
+        )
         if is_unmapped and replacement:
             glyph = (*glyph[:2], replacement, *glyph[3:])
             replacement_candidates.setdefault(text, set()).add(replacement)
@@ -761,7 +824,7 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
     doc.metadata["extractor"] = extractor.name
     doc.metadata["layout"] = cfg.layout
 
-    glyph_maps = None
+    glyph_maps: dict[str, GlyphMap] | None = None
     cmap_recovered = 0
     noise_removed = 0
     noise_reasons: dict[str, int] = {}
@@ -801,8 +864,20 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
             vocab |= extra
         fixed_pages = 0
         for page in doc.pages:
-            rep = repair_lam_alef_transposition(page.repair.text, vocab)
-            if rep.text != page.repair.text:
+            before = page.repair.text
+            rep = repair_lam_alef_transposition(before, vocab)
+            if rep.text != before:
+                page.repair.audit = _append_audit_after_text_change(
+                    page.repair.audit,
+                    original=page.repair.original,
+                    before=before,
+                    after=rep.text,
+                    rule="DOCUMENT_LEXICON_LAM_ALEF",
+                    evidence=(
+                        EvidenceItem("lexicon-fixes", rep.fixed_by_lexicon),
+                        EvidenceItem("decisive-fixes", rep.fixed_decisive),
+                    ),
+                )
                 page.repair.text = rep.text
                 fixed_pages += 1
                 page.repair.notes.append(

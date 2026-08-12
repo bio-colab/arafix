@@ -145,6 +145,10 @@ Decisions are deliberately conservative. `SAFE` changes are limited to rules wit
 
 The repository also contains reproducible evaluation tools. `scripts/audit_corpus.py` measures no-op preservation, false repair rate, exact recovery, abstentions, and patch reversion on the existing stress corpus. `scripts/mutation_engine.py` and `scripts/run_mutation_benchmark.py` provide a seeded text-level L0 benchmark only for mutation classes supported by the current pipeline; CMap reconstruction, watermark geometry, column order, and multi-page table layout remain explicitly deferred to PDF-level fixtures. These tools are evaluation-only and add no runtime dependency.
 
+When document-level lexicon harvesting makes a later page correction, the page audit is extended and its full patch is rebuilt from `PageResult.original` to the final `PageResult.text`. This keeps the recorded hash and reversible patch applicable to the actual page result rather than to an intermediate text.
+
+The development gate also runs `mypy src` against the Python 3.9-compatible type contract. This is a development check only; the package still declares no runtime dependencies.
+
 ### What it fixes (and what it doesn’t)
 
 | Symptom | Cause | Stage / tool |
@@ -346,9 +350,13 @@ assert result.reversible_patch.revert(result.text) == result.original
 القاعدة الحالية، ولن تُسوّق كاحتمال قبل وجود corpus معنونة مستقلة. توجد
 أدوات تقييم قابلة لإعادة التشغيل في `scripts/`: تقيس الحفاظ على النصوص
 السليمة، وFalse Repair Rate، والاسترجاع الحرفي، ودقة الامتناع، ونجاح العكس.
+وعندما يصلح معجم الوثيقة صفحةً في مرحلة لاحقة، يُمدَّد سجل الصفحة وتُعاد
+بناء الرقعة من `PageResult.original` إلى النص النهائي، فلا يبقى الهاش متعلقاً
+بنص وسيط.
 محرك التحوير الحالي نصي فقط ومحصور في الفئات التي تدعمها arafix؛ أما إعادة
 بناء CMap وضوضاء العلامات المائية وترتيب الأعمدة والجداول الممتدة فتحتاج
-fixtures PDF مستقلة ولم تُدّعَ محاكاتها نصياً.
+fixtures PDF مستقلة ولم تُدّعَ محاكاتها نصياً. وتفحص بوابة التطوير `mypy src`
+العقود النوعية المتوافقة مع Python 3.9، من دون إضافة تبعية تشغيلية.
 
 ---
 

@@ -2,6 +2,46 @@
 
 ## Unreleased
 
+### Context Scoring and Glyph Evidence evaluation — 2026-08-12
+
+أضيفت طبقة `DocumentContext` اختيارية تعتمد على المكتبة القياسية فقط. تبني
+معجم الوثيقة، تكرار عبارات الكلمتين، وcharacter trigrams، ثم تولّد مرشحين
+بمسافة تحرير واحدة من الكلمات الموجودة في الوثيقة. لا يُقبل المرشح إلا عند
+اجتماع تكرار الكلمة، ودعم العبارة، والدليل الحرفي، وهامش واضح عن البديل؛
+وإلا تمتنع الطبقة. لا تُستخدم LLM ولا `transformers` ولا أي تبعية تشغيلية
+جديدة.
+
+أضيف `PipelineConfig.enable_context_scoring` وهو مطفأ افتراضياً، و`context_model`
+للاستخدام البرمجي المباشر. في `extract_pdf()`، عند التفعيل بلا نموذج، يُبنى
+نموذج واحد من صفحات الوثيقة ويُطبّق على الصفحات مرة واحدة. تسجل المرحلة
+`Stage.CONTEXT` وأحداث audit `DOCUMENT_CONTEXT_SCORING` مع المرشحين والقرار
+والرقعة القابلة للعكس.
+
+| القياس | النتيجة |
+|---|---:|
+| constitution text mutations | **61/61 exact**، CER **0%**، WER **0%** |
+| narrative text mutations | **57/57 exact**، CER **0%**، WER **0%** |
+| baseline exact recovery على نفس التحويرات | **0/118** |
+| baseline mean CER | 0.0197% constitution، 0.1668% narrative |
+| baseline mean WER | 0.1203% constitution، 1.3889% narrative |
+| safe stress cases | **0/18 false repairs**؛ FPR **0%** |
+| real PDF no-op | SHA-256 مطابق في الملفين؛ **0 pages touched** |
+| optional context overhead | median 0.1499s off مقابل 0.2004s on في constitution؛ feature opt-in ولا يثقل default |
+
+هذه النتائج تخص تحويرات نصية seeded مبنية من نصوص مرجعية حقيقية، ولا تدّعي
+أنها corpus PDF معطوبة. لذلك بقي `DocumentContext` opt-in، ولم يُفعّل في
+المسار الافتراضي.
+
+أما Glyph Evidence، فقد ثبت توفر `glyph_id` واسم الخط والحجم وbbox وخريطة
+CMap في ملفات PDF الحقيقية، مع 5,895 ملاحظة glyph في الدستور و6,628 في الملف
+السردي، و0 هويات `(font, glyph_id)` ملتبسة بعد تطبيع الأشكال الرسومية. كما
+كُشف وأُصلح تطبيع subset-prefix لأسماء الخطوط في `_canonical_font_name`. لكن
+لم توجد fixture PDF معلّمة تربط محرفاً Unicode خاطئاً بشكل glyph صحيح، ولذلك
+لم يُضمّن تصحيح آلي لمحارف عادية ولم يُدّعَ أي تحسن CER/WER لهذه المهمة؛ لا
+يجوز تحويل توفر الدليل إلى إصلاح تخميني.
+
+---
+
 ### Consistency review and contract hardening — 2026-08-12
 
 أُجريت مراجعة اتساق شاملة على وحدات الحزمة والاستدعاءات والـexports. شملت

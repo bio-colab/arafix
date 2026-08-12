@@ -44,6 +44,7 @@ from .audit import (
     sha256_text,
 )
 from .cmap import GlyphMap, build_glyph_map, decode_glyph_name
+from .context import ContextCandidate, ContextDecision, ContextRepair, DocumentContext
 from .diagnose import (
     DEFAULT_THRESHOLDS,
     detect_mojibake,
@@ -174,6 +175,10 @@ __all__ = [
     "RAGChunk",
     "PipelineConfig",
     "harvest_document_lexicon",
+    "DocumentContext",
+    "ContextCandidate",
+    "ContextDecision",
+    "ContextRepair",
     # مهايئات
     "fix_any",
     "fix_markitdown",

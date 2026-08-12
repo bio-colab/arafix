@@ -32,6 +32,7 @@ from .audit import (
     RepairDecision,
     sha256_text,
 )
+from .context import DocumentContext
 from .diagnose import DEFAULT_THRESHOLDS, detect_mojibake, detect_visual_order, diagnose
 from .extractors import get_extractor
 from .hygiene import (
@@ -179,6 +180,10 @@ class PipelineConfig:
 
     #: Provenance اختياري: off (افتراضي)، summary، أو full مع رقعة قابلة للعكس.
     audit_mode: AuditMode | str = AuditMode.OFF
+
+    #: نموذج سياق وثيقة اختياري؛ لا يعمل إلا عند تفعيل العلم صراحةً.
+    context_model: DocumentContext | None = None
+    enable_context_scoring: bool = False
 
 
 def harvest_document_lexicon(texts: Iterable[str]) -> set[str]:
@@ -562,6 +567,33 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
         if spacing_changed:
             stages.append(Stage.REPAIR_SPACING)
 
+    if cfg.enable_context_scoring and cfg.context_model is not None:
+        context_result = cfg.context_model.repair(current)
+        if context_result.changed:
+            before = current
+            current = context_result.text
+            stages.append(Stage.CONTEXT)
+            audit.record(
+                before,
+                current,
+                stage=Stage.CONTEXT.value,
+                rule="DOCUMENT_CONTEXT_SCORING",
+                confidence=context_result.confidence,
+                evidence=(
+                    EvidenceItem("accepted-context-decisions", context_result.accepted_count),
+                    EvidenceItem("document-vocabulary", len(cfg.context_model.vocabulary)),
+                    EvidenceItem("phrase-support", cfg.context_model.min_phrase_support),
+                ),
+                metadata={
+                    "decisions": [
+                        decision.to_dict() for decision in context_result.decisions
+                    ]
+                },
+            )
+            notes.append(
+                f"أُصلحت {context_result.accepted_count} كلمة بدليل معجم/عبارات الوثيقة"
+            )
+
     confidence = min(_final_confidence(dg, order_conf, stages), lam_conf)
 
     return RepairResult(
@@ -675,7 +707,9 @@ def _final_confidence(dg: Diagnosis, order_conf: float, stages: list[Stage]) -> 
 
 def _canonical_font_name(name: str) -> str:
     """مقارنة متسامحة لأسماء الخط بين texttrace وموارد PDF."""
-    return re.sub(r"[^0-9a-z]", "", name.lower()).removeprefix("subset")
+    lowered = name.lower()
+    lowered = re.sub(r"^[a-z]{6}\+", "", lowered)
+    return re.sub(r"[^0-9a-z]", "", lowered).removeprefix("subset")
 
 
 def _append_audit_after_text_change(
@@ -686,6 +720,8 @@ def _append_audit_after_text_change(
     after: str,
     rule: str,
     evidence: Iterable[EvidenceItem],
+    stage: Stage = Stage.REPAIR_LAM_ALEF,
+    metadata: Mapping[str, object] | None = None,
 ) -> RepairAudit | None:
     """Keep a page audit consistent after a later document-level repair."""
     if audit is None or before == after:
@@ -695,9 +731,10 @@ def _append_audit_after_text_change(
     delta_trail.record(
         before,
         after,
-        stage=Stage.REPAIR_LAM_ALEF.value,
+        stage=stage.value,
         rule=rule,
         evidence=evidence,
+        metadata=metadata,
     )
     delta = delta_trail.finalize(after)
     if delta is None:
@@ -818,7 +855,11 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
         else:
             extractor = get_extractor(cfg.extractor)
 
-    page_cfg = replace(cfg, harvest_document_lexicon=False)
+    page_cfg = replace(
+        cfg,
+        harvest_document_lexicon=False,
+        enable_context_scoring=False,
+    )
 
     doc = DocumentResult(path=path)
     doc.metadata["extractor"] = extractor.name
@@ -851,6 +892,43 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
             cmap_recovered += count
         page = _extract_one_page(raw, page_cfg)
         doc.pages.append(page)
+
+    context_model = cfg.context_model
+    if cfg.enable_context_scoring and context_model is None and doc.pages:
+        context_model = DocumentContext.from_texts(page.text for page in doc.pages)
+    if cfg.enable_context_scoring and context_model is not None and doc.pages:
+        context_pages_touched = 0
+        for page in doc.pages:
+            before = page.repair.text
+            context_result = context_model.repair(before)
+            if not context_result.changed:
+                continue
+            page.repair.audit = _append_audit_after_text_change(
+                page.repair.audit,
+                original=page.repair.original,
+                before=before,
+                after=context_result.text,
+                stage=Stage.CONTEXT,
+                rule="DOCUMENT_CONTEXT_SCORING",
+                evidence=(
+                    EvidenceItem("accepted-context-decisions", context_result.accepted_count),
+                    EvidenceItem("document-vocabulary", len(context_model.vocabulary)),
+                    EvidenceItem("phrase-support", context_model.min_phrase_support),
+                ),
+                metadata={
+                    "decisions": [
+                        decision.to_dict() for decision in context_result.decisions
+                    ]
+                },
+            )
+            page.repair.text = context_result.text
+            page.repair.stages_applied.append(Stage.CONTEXT)
+            page.repair.notes.append(
+                f"أُصلحت {context_result.accepted_count} كلمة بدليل معجم/عبارات الوثيقة"
+            )
+            context_pages_touched += 1
+        doc.metadata["document_context_vocabulary_size"] = len(context_model.vocabulary)
+        doc.metadata["document_context_pages_touched"] = context_pages_touched
 
     if cmap_recovered:
         doc.metadata["cmap_glyphs_recovered"] = cmap_recovered

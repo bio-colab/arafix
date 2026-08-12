@@ -54,6 +54,7 @@ class Stage(str, Enum):
     REPAIR_LAM_ALEF = "repair_lam_alef"    # ترقيع عطبٍ أوقعته أداةٌ أخرى
     REPAIR_SPACING = "repair_spacing"      # طيّ/إدراج حدود كلمات ذات شاهد
     REPAIR_PDF_CONFUSIONS = "repair_pdf_confusions"  # امل/ري من كتب PDF منشورة
+    CONTEXT = "context"          # معجم/عبارات الوثيقة — اختياري ومحافظ
     REBUILD_CMAP = "rebuild_cmap"  # ٣ — إعادة بناء الخريطة من الخط
     OCR = "ocr"                    # ٤ — آخر الدواء
 

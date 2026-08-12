@@ -955,6 +955,30 @@ class TestCMapGlyphRecovery:
         assert repaired.glyphs[1][2] == "س"
 
 
+    def test_cmap_matching_ignores_subset_prefix(self):
+        from arafix.cmap import GlyphMap
+        from arafix.extractors.base import RawPage
+        from arafix.pipeline import _recover_broken_cmap_page
+
+        raw = RawPage(
+            number=1,
+            text="\ue001",
+            glyphs=[(10.0, 10.0, "\ue001", 12.0, 1, 191, "SimplifiedArabic-Bold")],
+        )
+        cmap = GlyphMap(
+            font_name="FNTSBS+SimplifiedArabic-Bold",
+            by_id={191: "م"},
+            source="font_cmap",
+            coverage=1.0,
+        )
+        repaired, count = _recover_broken_cmap_page(
+            raw, {"FNTSBS+SimplifiedArabic-Bold": cmap}
+        )
+
+        assert count == 1
+        assert repaired.text == "م"
+        assert repaired.glyphs[0][2] == "م"
+
     def test_builds_glyph_id_map_from_real_arabic_font(self):
         from pathlib import Path
 

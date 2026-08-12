@@ -149,6 +149,31 @@ When document-level lexicon harvesting makes a later page correction, the page a
 
 The development gate also runs `mypy src` against the Python 3.9-compatible type contract. This is a development check only; the package still declares no runtime dependencies.
 
+### Optional document-local Context Scoring
+
+`DocumentContext` is an opt-in recovery layer for repeated document vocabulary. It builds a dependency-free word-frequency model, word-bigram counts, and character trigrams from the document itself. It generates only edit-distance-one candidates already present in that document, and accepts a replacement only when frequency, phrase support, character evidence, and a score margin agree. Otherwise it abstains.
+
+```python
+from arafix import DocumentContext, PipelineConfig, repair_text
+
+context = DocumentContext.from_texts(["نناقش الطاقة المتجددة في العراق."] * 4)
+result = repair_text(
+    "نناقش الطاقة المتجدة في العراق.",
+    PipelineConfig(
+        context_model=context,
+        enable_context_scoring=True,
+        audit_mode="full",
+    ),
+)
+assert result.text == "نناقش الطاقة المتجددة في العراق."
+```
+
+For a complete PDF, set `enable_context_scoring=True` without supplying a model; a model is then learned from the extracted pages and applied once at document scope. The feature is disabled by default and adds no runtime dependency. It is intentionally not an LLM or a general spell checker: document-local evidence is required, and the current v1 candidate generator is limited to one edit.
+
+### Glyph Evidence status
+
+PyMuPDF already exposes optional glyph ID, font, size, sequence, and bounding-box evidence, and the embedded-font CMap layer can resolve many glyph IDs. A normal-character correction rule was **not** enabled in this release: the repository has no labeled PDF fixture where a wrong Unicode character is paired with a known correct glyph shape/identity, so no CER/WER gain can be claimed for that task. The library therefore preserves the conservative behavior and does not guess from glyph shape alone.
+
 ### What it fixes (and what it doesn’t)
 
 | Symptom | Cause | Stage / tool |
@@ -353,6 +378,12 @@ assert result.reversible_patch.revert(result.text) == result.original
 وعندما يصلح معجم الوثيقة صفحةً في مرحلة لاحقة، يُمدَّد سجل الصفحة وتُعاد
 بناء الرقعة من `PageResult.original` إلى النص النهائي، فلا يبقى الهاش متعلقاً
 بنص وسيط.
+وتوجد طبقة `DocumentContext` اختيارية تبني تكرار الكلمات، عبارات الكلمتين،
+وتسلسلات المحارف من الوثيقة نفسها، ولا تقبل سوى مرشح موجود في معجم الوثيقة
+ويحظى بتأييد مستقل. وهي مطفأة افتراضياً وليست مصححاً لغوياً عاماً أو LLM.
+أما Glyph Evidence فله أساس تشخيصي من `glyph_id` واسم الخط وbbox وCMap، لكن
+التصحيح الآلي لمحرف عادي لم يُضمّن لغياب fixture PDF معلّمة تثبت تحسناً في
+CER/WER؛ لا نخمن من الشكل وحده.
 محرك التحوير الحالي نصي فقط ومحصور في الفئات التي تدعمها arafix؛ أما إعادة
 بناء CMap وضوضاء العلامات المائية وترتيب الأعمدة والجداول الممتدة فتحتاج
 fixtures PDF مستقلة ولم تُدّعَ محاكاتها نصياً. وتفحص بوابة التطوير `mypy src`

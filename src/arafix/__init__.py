@@ -32,6 +32,17 @@ __version__ = "1.0.1"
 __license__ = "MIT"
 
 from .adapters import as_blocks, fix_any, fix_markitdown, fix_table
+from .audit import (
+    AuditEvent,
+    AuditMode,
+    AuditTrail,
+    EvidenceItem,
+    Patch,
+    PatchOperation,
+    RepairAudit,
+    RepairDecision,
+    sha256_text,
+)
 from .cmap import GlyphMap, build_glyph_map, decode_glyph_name
 from .diagnose import (
     DEFAULT_THRESHOLDS,
@@ -147,6 +158,16 @@ __all__ = [
     # الأنبوب
     "repair_text",
     "repair_blocks",
+    # التدقيق والرقع القابلة للعكس
+    "AuditMode",
+    "RepairDecision",
+    "EvidenceItem",
+    "AuditEvent",
+    "PatchOperation",
+    "Patch",
+    "RepairAudit",
+    "AuditTrail",
+    "sha256_text",
     "extract_pdf",
     "extract_pdf_rag",
     "spatial_rag_chunks",

@@ -13,6 +13,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from .audit import Patch, RepairAudit
     from .rag import RAGChunk
 
 __all__ = [
@@ -131,10 +132,17 @@ class RepairResult:
     stages_applied: list[Stage] = field(default_factory=list)
     confidence: float = 1.0
     notes: list[str] = field(default_factory=list)
+    #: Optional provenance record. ``None`` keeps the historical fast path.
+    audit: RepairAudit | None = None
 
     @property
     def changed(self) -> bool:
         return self.text != self.original
+
+    @property
+    def reversible_patch(self) -> Patch | None:
+        """Return the hash-guarded patch when full auditing was requested."""
+        return self.audit.patch if self.audit is not None else None
 
 
 @dataclass

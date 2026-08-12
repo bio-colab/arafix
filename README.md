@@ -115,6 +115,36 @@ The same output is available after normal extraction through `DocumentResult.to_
 
 Chunking is structure-aware rather than embedding-based: headings start a new ancestry scope, nearby lines are grouped until a geometric paragraph break or `max_chars`, and table cells become individually citeable chunks with row/column metadata. Exact paint bboxes are collected only for this opt-in RAG path; ordinary `extract_pdf()` keeps the previous output and does not retain them.
 
+### Recovery Audit and reversible decisions
+
+`repair_text()` keeps its historical fast path by default. For an inspectable provenance record, opt into `audit_mode="summary"` or `audit_mode="full"`:
+
+```python
+from arafix import PipelineConfig, repair_text
+
+result = repair_text(
+    "دراسة\\u00a0مقارنة المادة(١٧)",
+    PipelineConfig(audit_mode="full"),
+)
+
+print(result.text)
+print(result.audit.to_json())
+recovered_original = result.reversible_patch.revert(result.text)
+assert recovered_original == result.original
+```
+
+The audit schema is `arafix.recovery-audit.v1`. A full audit records the stage, rule, before/after span, evidence, decision, and hash-guarded reversible patch. `summary` records stage-level events without retaining changed substrings; `off` is the default and returns `audit=None`. The output text must be identical in all three modes.
+
+Decisions are deliberately conservative. `SAFE` changes are limited to rules with explicit evidence and closed or deterministic behavior. `UNCERTAIN` records a plausible but unresolved case, and `UNSAFE` records a case for which the available text or PDF evidence is insufficient. Neither `UNCERTAIN` nor `UNSAFE` changes the text automatically. A confidence field is a rule-evidence score, not a calibrated probability; the project does not claim calibrated confidence until a separately held-out labeled corpus supports it.
+
+| Decision | Automatic text change | Example |
+|---|---:|---|
+| `SAFE` | Yes | Unicode extraction cleanup, closed PDF confusion, or a decisive lam-alef repair |
+| `UNCERTAIN` | No | Ambiguous lam-alef or low-density presentation forms |
+| `UNSAFE` | No | Broken CMap with no reliable mapping or a missing text layer |
+
+The repository also contains reproducible evaluation tools. `scripts/audit_corpus.py` measures no-op preservation, false repair rate, exact recovery, abstentions, and patch reversion on the existing stress corpus. `scripts/mutation_engine.py` and `scripts/run_mutation_benchmark.py` provide a seeded text-level L0 benchmark only for mutation classes supported by the current pipeline; CMap reconstruction, watermark geometry, column order, and multi-page table layout remain explicitly deferred to PDF-level fixtures. These tools are evaluation-only and add no runtime dependency.
+
 ### What it fixes (and what it doesn’t)
 
 | Symptom | Cause | Stage / tool |
@@ -282,6 +312,43 @@ Colab مقيّد، خادم بلا إنترنت، Lambda. التبعيّات ك�
 تحتاج إلى Torch أو Transformers أو قاعدة متجهات. كما يمكن استدعاء
 `doc.to_rag_json()` بعد `extract_pdf()` العادي. يحافظ `extract_pdf()` على
 مخرجه السابق، ولا يحتفظ بـbbox الدقيق إلا في مسار RAG الاختياري.
+
+### التدقيق القابل للإثبات والامتناع الآمن
+
+المسار الافتراضي لا يتغير ولا ينشئ سجلاً إضافياً. إذا احتجت إلى معرفة ما
+غيّرته المكتبة ولماذا، فعّل التدقيق اختيارياً:
+
+```python
+from arafix import PipelineConfig, repair_text
+
+result = repair_text(
+    "دراسة\\u00a0مقارنة المادة(١٧)",
+    PipelineConfig(audit_mode="full"),
+)
+
+print(result.audit.to_json())
+assert result.reversible_patch.revert(result.text) == result.original
+```
+
+العقد هو `arafix.recovery-audit.v1`. يسجل `full` المرحلة والقاعدة والنص قبل
+وبعد التغيير والإحداثيات النصية والشواهد وهاشّي المصدر والناتج، ويصدر رقعة
+محمية بـSHA-256 يمكن تطبيقها أو عكسها. يسجل `summary` أحداثاً على مستوى
+المراحل من دون حفظ المقاطع المتغيرة، أما `off` فهو الافتراضي ويترك
+`result.audit` بقيمة `None`.
+
+| القرار | هل يتغير النص آلياً؟ | المعنى |
+|---|---:|---|
+| `SAFE` | نعم | دليل صريح وقاعدة حتمية أو قائمة مغلقة |
+| `UNCERTAIN` | لا | أكثر من قراءة معقولة أو دليل غير كافٍ |
+| `UNSAFE` | لا | خريطة CMap غير موثوقة أو غياب طبقة النص |
+
+لا تعني `confidence` احتمالاً إحصائياً معايراً؛ إنها درجة قوة الدليل في
+القاعدة الحالية، ولن تُسوّق كاحتمال قبل وجود corpus معنونة مستقلة. توجد
+أدوات تقييم قابلة لإعادة التشغيل في `scripts/`: تقيس الحفاظ على النصوص
+السليمة، وFalse Repair Rate، والاسترجاع الحرفي، ودقة الامتناع، ونجاح العكس.
+محرك التحوير الحالي نصي فقط ومحصور في الفئات التي تدعمها arafix؛ أما إعادة
+بناء CMap وضوضاء العلامات المائية وترتيب الأعمدة والجداول الممتدة فتحتاج
+fixtures PDF مستقلة ولم تُدّعَ محاكاتها نصياً.
 
 ---
 

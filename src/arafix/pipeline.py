@@ -18,6 +18,7 @@ import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace
 
+from .audit import AuditMode, AuditTrail, EvidenceItem, RepairDecision
 from .diagnose import DEFAULT_THRESHOLDS, detect_mojibake, detect_visual_order, diagnose
 from .extractors import get_extractor
 from .hygiene import (
@@ -163,6 +164,9 @@ class PipelineConfig:
     #: احتفظ بـbbox الرسم الأصلي للـRAG المكاني. مطفأ افتراضياً لتجنب كلفة إضافية.
     preserve_spatial_bboxes: bool = False
 
+    #: Provenance اختياري: off (افتراضي)، summary، أو full مع رقعة قابلة للعكس.
+    audit_mode: AuditMode | str = AuditMode.OFF
+
 
 def harvest_document_lexicon(texts: Iterable[str]) -> set[str]:
     """
@@ -198,6 +202,7 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     """
     cfg = config or PipelineConfig()
     th = {**DEFAULT_THRESHOLDS, **cfg.thresholds}
+    audit = AuditTrail(text, cfg.audit_mode)
 
     original = text
     current = text
@@ -212,8 +217,25 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
             strip_zero_width=cfg.normalize.strip_zero_width,
         )
         if cleaned != current:
+            before = current
             current = cleaned
             stages.append(Stage.HYGIENE)
+            audit.record(
+                before,
+                current,
+                stage=Stage.HYGIENE.value,
+                rule="SANITIZE_EXTRACTION",
+                evidence=(
+                    EvidenceItem(
+                        "extraction-artifacts",
+                        sum(arts.values()),
+                        detail=(
+                            "Unicode spaces, soft-hyphen, punctuation, replacement, "
+                            "or zero-width artifacts"
+                        ),
+                    ),
+                ),
+            )
             bits = []
             if arts["nbsp_like"]:
                 bits.append(f"{arts['nbsp_like']} مسافة يونيكود")
@@ -233,6 +255,23 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     dg: Diagnosis = diagnose(current, th)
     stages.append(Stage.DIAGNOSE)
 
+    presentation_count = sum(0xFE70 <= ord(char) <= 0xFE7F for char in current)
+    if audit.enabled and presentation_count and not dg.has(Defect.PRESENTATION_FORMS):
+        audit.abstain(
+            stage=Stage.NORMALIZE.value,
+            rule="PRESENTATION_FORM_BELOW_THRESHOLD",
+            decision=RepairDecision.UNCERTAIN,
+            evidence=(
+                EvidenceItem("presentation-form-count", presentation_count),
+                EvidenceItem(
+                    "arabic-sample-threshold",
+                    th["min_arabic_chars"],
+                    detail="Insufficient density for automatic normalization",
+                ),
+            ),
+            metadata={"threshold": th["presentation_forms"]},
+        )
+
     # --- الموجيبيك: يسبق كل شيء، فهو عطبٌ في الترميز لا في النص --------
     if cfg.enable_mojibake_fix and dg.has(Defect.MOJIBAKE):
         # diagnose() has already run the exact mojibake detector. For healthy
@@ -240,10 +279,24 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
         # a second time when the diagnosis established this defect.
         _is_moji, recovered, _ = detect_mojibake(current)
         if recovered:
+            before = current
             current = recovered
+            audit.record(
+                before,
+                current,
+                stage=Stage.HYGIENE.value,
+                rule="MOJIBAKE_UTF8_LATIN1_RECOVERY",
+                evidence=(EvidenceItem("exact-mojibake-detector", True),),
+            )
             notes.append("أُصلح موجيبيك (UTF-8 كان مفكوكاً بـ Latin-1)")
             dg = diagnose(current, th)  # كل تشخيصٍ سابق كان على نصٍّ مشوّه
     elif not cfg.enable_mojibake_fix and dg.has(Defect.MOJIBAKE):
+        audit.abstain(
+            stage=Stage.DIAGNOSE.value,
+            rule="MOJIBAKE_FIX_DISABLED",
+            decision=RepairDecision.UNCERTAIN,
+            evidence=(EvidenceItem("mojibake-detected", True),),
+        )
         notes.append("كُشف موجيبيك ولم يُصلَح (المفتاح مطفأ)")
 
     # --- الدرجة ١أ: الأشكال المفردة وحدها -----------------------------
@@ -258,17 +311,41 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     shaped_source = current  # الطبقة الرسومية — شاهدةُ الدرجة ٢، تُحفظ قبل محوها
     needs_norm = dg.has(Defect.PRESENTATION_FORMS) or dg.has(Defect.TATWEEL_NOISE)
     if cfg.enable_normalize and needs_norm:
+        before = current
         current = normalize_text(current, replace(cfg.normalize, expand_ligatures=False))
         stages.append(Stage.NORMALIZE)
+        audit.record(
+            before,
+            current,
+            stage=Stage.NORMALIZE.value,
+            rule="FOLD_PRESENTATION_FORMS",
+            evidence=(EvidenceItem("presentation-form-defect", True),),
+        )
         notes.append("طُبِّعت الأشكال المفردة؛ أُبقيت الرباطات ذرّاتٍ حتى يستقرّ الترتيب")
 
     # --- الدرجة ٢: يُعاد التشخيص لأن الدرجة ١ غيّرت المعطيات ----------
     order_conf = 1.0
     if cfg.enable_reorder:
-        score, _ = detect_visual_order(current, shaped_source=shaped_source)
+        score, order_evidence = detect_visual_order(current, shaped_source=shaped_source)
         if cfg.force_reorder or score > th["visual_order"]:
+            before = current
             current = fix_order(current, cfg.reorder)
             stages.append(Stage.REORDER)
+            audit.record(
+                before,
+                current,
+                stage=Stage.REORDER.value,
+                rule="VISUAL_ORDER_REVERSAL",
+                confidence=min(1.0, abs(score)) if not cfg.force_reorder else 0.5,
+                evidence=(
+                    EvidenceItem(
+                        "visual-order-score",
+                        score,
+                        detail="Composite order detector score",
+                    ),
+                ),
+                metadata={"forced": cfg.force_reorder},
+            )
             order_conf = min(1.0, abs(score)) if not cfg.force_reorder else 0.5
             notes.append(
                 f"أُصلح الاتجاه (درجة {score:+.2f})"
@@ -276,14 +353,37 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                 else "أُصلح الاتجاه قسراً بأمر المستعمل — بلا شاهد"
             )
         else:
+            if audit.enabled and 0.20 <= abs(score) < th["visual_order"]:
+                audit.abstain(
+                    stage=Stage.REORDER.value,
+                    rule="VISUAL_ORDER_BELOW_THRESHOLD",
+                    decision=RepairDecision.UNCERTAIN,
+                    confidence=abs(score),
+                    evidence=(
+                        EvidenceItem(
+                            "visual-order-score",
+                            score,
+                            detail=f"Below configured threshold {th['visual_order']:.2f}",
+                        ),
+                    ),
+                    metadata={"threshold": th["visual_order"]},
+                )
             notes.append(f"لم يُمسّ الاتجاه (درجة {score:+.2f} دون العتبة)")
 
     # --- الدرجة ١ب: الآن استقرّ الترتيب، فليُفكَّ الرباط بأمان ----------
     if cfg.enable_normalize and cfg.normalize.expand_ligatures:
         expanded = expand_deferred_forms(current)
         if expanded != current:
+            before = current
             current = expanded
             stages.append(Stage.EXPAND_LIGATURES)
+            audit.record(
+                before,
+                current,
+                stage=Stage.EXPAND_LIGATURES.value,
+                rule="EXPAND_DEFERRED_FORMS",
+                evidence=(EvidenceItem("deferred-presentation-forms", True),),
+            )
             notes.append("طُبِّع المؤجَّل (الرباطات والتشكيل الفاصل) بعد استقرار الترتيب")
 
     # --- ترقيع ما وَرِثناه معطوباً من أداةٍ أخرى ------------------------
@@ -298,9 +398,21 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
         if has_decisive or has_ambiguous or vocab is not None:
             rep = repair_lam_alef_transposition(current, vocab)
             if rep.fixed_decisive or rep.fixed_by_lexicon:
+                before = current
                 current = rep.text
                 stages.append(Stage.REPAIR_LAM_ALEF)
                 lam_conf = rep.confidence
+                audit.record(
+                    before,
+                    current,
+                    stage=Stage.REPAIR_LAM_ALEF.value,
+                    rule="LAM_ALEF_TRANSPOSITION",
+                    confidence=rep.confidence,
+                    evidence=(
+                        EvidenceItem("decisive-fixes", rep.fixed_decisive),
+                        EvidenceItem("lexicon-fixes", rep.fixed_by_lexicon),
+                    ),
+                )
                 if rep.fixed_decisive:
                     notes.append(
                         f"رُدَّ {rep.fixed_decisive} انقلابَ لام-ألف بشاهدٍ قاطع "
@@ -311,6 +423,13 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                         f"وحُسم {rep.fixed_by_lexicon} موضعاً مُبهَماً بالمعجم"
                     )
             elif rep.suspects_left:
+                audit.abstain(
+                    stage=Stage.REPAIR_LAM_ALEF.value,
+                    rule="LAM_ALEF_AMBIGUOUS",
+                    decision=RepairDecision.UNCERTAIN,
+                    evidence=(EvidenceItem("suspect-count", rep.suspects_left),),
+                    metadata={"suspect_words": rep.suspect_words[:5]},
+                )
                 notes.append(
                     f"بقي {rep.suspects_left} موضعاً مُبهَماً لم يُمسّ: "
                     + "، ".join(rep.suspect_words[:5])
@@ -324,19 +443,39 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
 
     # --- الدرجة ٣: نُصرّح بالحاجة ولا ندّعي القدرة في هذا المسار -------
     if dg.has(Defect.BROKEN_CMAP):
+        audit.abstain(
+            stage=Stage.REBUILD_CMAP.value,
+            rule="BROKEN_CMAP_NOT_RESOLVED_IN_TEXT_MODE",
+            decision=RepairDecision.UNSAFE,
+            evidence=(EvidenceItem("broken-cmap-defect", True),),
+        )
         notes.append(
             "كُشفت محارف PUA: الخريطة تالفة. النص وحده لا يُنجيك هنا — "
             "استعمل extract_pdf() لتُبنى الخريطة من الخط المضمَّن (الدرجة ٣)."
         )
 
     if dg.has(Defect.NO_TEXT_LAYER):
+        audit.abstain(
+            stage=Stage.OCR.value,
+            rule="NO_TEXT_LAYER_OCR_NOT_SHIPPED",
+            decision=RepairDecision.UNSAFE,
+            evidence=(EvidenceItem("no-text-layer", True),),
+        )
         notes.append("لا طبقة نصية — هذه حالة الدرجة ٤ (OCR) الوحيدة المشروعة.")
 
     # --- P1: PDF homoglyph fold (always, even when PF normalize was skipped) -
     if cfg.normalize.fold_pdf_homoglyphs:
         folded = fold_pdf_homoglyphs(current)
         if folded != current:
+            before = current
             current = folded
+            audit.record(
+                before,
+                current,
+                stage=Stage.NORMALIZE.value,
+                rule="FOLD_PDF_HOMOGLYPHS",
+                evidence=(EvidenceItem("closed-pdf-homoglyph-map", True),),
+            )
             notes.append("طُوِيَت محارف PDF الهجينة (ی/ھ → ي/ه)")
 
     # --- مرحلة الفراغات ثم التباسات PDF (حلقات Safahat 2–3) -------------
@@ -348,15 +487,35 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     if cfg.enable_spacing_repair:
         collapsed = collapse_midword_spaces(current)
         if collapsed != current:
+            before = current
             current = collapsed
+            audit.record(
+                before,
+                current,
+                stage=Stage.REPAIR_SPACING.value,
+                rule="COLLAPSE_MIDWORD_SPACES",
+                evidence=(EvidenceItem("arabic-neighbour-geometry", True),),
+            )
             spacing_changed = True
             notes.append("طُويت مسافات هندسية داخل الكلمات (مو ضع → موضع، …)")
 
     if cfg.enable_pdf_confusion_repair:
         conf = repair_pdf_confusions(current)
         if conf.total:
+            before = current
             current = conf.text
             stages.append(Stage.REPAIR_PDF_CONFUSIONS)
+            audit.record(
+                before,
+                current,
+                stage=Stage.REPAIR_PDF_CONFUSIONS.value,
+                rule="CLOSED_PDF_CONFUSIONS",
+                evidence=(
+                    EvidenceItem("closed-list-total", conf.total),
+                    EvidenceItem("al-meem-fixes", conf.al_meem_fixes),
+                    EvidenceItem("ye-reh-fixes", conf.ye_reh_fixes),
+                ),
+            )
             bits = []
             if conf.al_meem_fixes:
                 bits.append(f"امل→الم ×{conf.al_meem_fixes}")
@@ -371,7 +530,15 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
         spaced = insert_particle_spaces(current)
         spaced = normalize_arabic_punctuation_spacing(spaced)
         if spaced != current:
+            before = current
             current = spaced
+            audit.record(
+                before,
+                current,
+                stage=Stage.REPAIR_SPACING.value,
+                rule="CONTEXTUAL_ARABIC_SPACING",
+                evidence=(EvidenceItem("arabic-punctuation-context", True),),
+            )
             spacing_changed = True
             notes.append("أُصلحت حدود الترقيم العربية سياقياً (المادة(١٧) → المادة (١٧)، …)")
         if spacing_changed:
@@ -386,6 +553,7 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
         stages_applied=stages,
         confidence=confidence,
         notes=notes,
+        audit=audit.finalize(current),
     )
 
 
@@ -690,6 +858,24 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
             text = layout.reassemble_from_blocks(by_id, page_number=raw.number)
             # تشخيص نهائي على المُجمَّع — السطور أُصلحت؛ لا عكس جماعيّ قسري
             final = repair_text(text, cfg)
+            page_audit = AuditTrail(raw.text, cfg.audit_mode)
+            page_audit.record(
+                raw.text,
+                final.text,
+                stage="layout",
+                rule="STRUCTURAL_REASSEMBLY",
+                evidence=(
+                    EvidenceItem("columns", layout.n_columns),
+                    EvidenceItem("tables", len(layout.tables)),
+                    EvidenceItem("repaired-blocks", len(repaired.blocks)),
+                ),
+                metadata={
+                    "inner_events": final.audit.changed_events if final.audit else 0,
+                    "inner_abstentions": final.audit.abstention_count
+                    if final.audit
+                    else 0,
+                },
+            )
             notes = list(dict.fromkeys([*final.notes, *layout.notes]))  # فريد مع حفظ الترتيب
             notes.append(
                 f"بنيويّ: {layout.n_columns} عمود، "
@@ -703,6 +889,7 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
                 stages_applied=final.stages_applied,
                 confidence=min(repaired.confidence, final.confidence),
                 notes=notes,
+                audit=page_audit.finalize(final.text),
             )
             if raw.is_empty and raw.has_images:
                 result.notes.append(
@@ -727,6 +914,19 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
         result.notes.append("صفحة بلا نصّ وفيها صور — ممسوحة ضوئياً على الأرجح")
     if layout is not None and layout.notes:
         result.notes.extend(layout.notes)
+    page_audit = AuditTrail(raw.text, cfg.audit_mode)
+    page_audit.record(
+        raw.text,
+        result.text,
+        stage="linear",
+        rule="LINEAR_PAGE_REPAIR",
+        evidence=(EvidenceItem("layout-source", layout is not None),),
+        metadata={
+            "inner_events": result.audit.changed_events if result.audit else 0,
+            "inner_abstentions": result.audit.abstention_count if result.audit else 0,
+        },
+    )
+    result.audit = page_audit.finalize(result.text)
     return PageResult(
         page_number=raw.number,
         repair=result,

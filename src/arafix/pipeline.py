@@ -29,13 +29,13 @@ from .hygiene import (
 )
 from .lamalef import repair_lam_alef_transposition
 from .layout import LayoutConfig, LayoutMode
+from .noise import GeometricNoiseConfig
 from .normalize import (
     NormalizeConfig,
     expand_deferred_forms,
     fold_pdf_homoglyphs,
     normalize_text,
 )
-from .noise import GeometricNoiseConfig
 from .order import ReorderConfig, fix_order
 from .pdf_confusions import repair_pdf_confusions
 from .types import (
@@ -504,7 +504,11 @@ def _recover_broken_cmap_page(raw, glyph_maps) -> tuple[object, int]:
         key = _canonical_font_name(font)
         if key in normalized:
             return normalized[key]
-        matches = [value for name, value in normalized.items() if name.startswith(key) or key.startswith(name)]
+        matches = [
+            value
+            for name, value in normalized.items()
+            if name.startswith(key) or key.startswith(name)
+        ]
         return matches[0] if len(matches) == 1 else None
 
     recovered = 0

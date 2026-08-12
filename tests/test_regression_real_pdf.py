@@ -36,7 +36,6 @@ from collections import Counter
 from pathlib import Path
 
 import pytest
-
 from arafix import (
     Defect,
     EvalConfig,

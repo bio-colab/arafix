@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import pytest
-
 from arafix.layout import (
     Glyph,
     LayoutConfig,
@@ -79,7 +78,11 @@ class TestColumnsRTL:
         assert "يمين" in lay.columns[0].text
         assert "وسط" in lay.columns[1].text
         assert "يسار" in lay.columns[2].text
-        assert lay.plain_text.index("يمينأ") < lay.plain_text.index("وسطأ") < lay.plain_text.index("يسارأ")
+        assert (
+            lay.plain_text.index("يمينأ")
+            < lay.plain_text.index("وسطأ")
+            < lay.plain_text.index("يسارأ")
+        )
 
     def test_single_column_stays_linear(self):
         glyphs = _col_glyphs(

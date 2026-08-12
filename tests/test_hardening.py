@@ -4,11 +4,9 @@ import json
 from pathlib import Path
 
 import pytest
-
 from arafix import GeometricNoiseConfig, GeometricNoiseFilter, extract_pdf
 from arafix.hygiene import normalize_arabic_punctuation_spacing
 from arafix.order import fix_order
-
 
 CORPUS = Path(__file__).parents[1] / "benchmarks" / "adversarial_bidi_corpus.json"
 
@@ -30,8 +28,21 @@ def test_arabic_punctuation_spacing_is_context_aware():
     )
 
 
-def _span(text, *, color=(0.78, 0.78, 0.78), direction=(0.9, -0.43), size=30.0, bbox=(100, 100, 300, 140)):
-    return {"chars": [(ord(ch), 0, (0, 0), bbox) for ch in text], "color": color, "dir": direction, "size": size, "bbox": bbox}
+def _span(
+    text,
+    *,
+    color=(0.78, 0.78, 0.78),
+    direction=(0.9, -0.43),
+    size=30.0,
+    bbox=(100, 100, 300, 140),
+):
+    return {
+        "chars": [(ord(ch), 0, (0, 0), bbox) for ch in text],
+        "color": color,
+        "dir": direction,
+        "size": size,
+        "bbox": bbox,
+    }
 
 
 def test_geometric_filter_drops_light_gray_rotated_span():
@@ -49,9 +60,29 @@ def test_geometric_filter_keeps_black_rotated_content():
 
 
 def test_geometric_filter_requires_physical_evidence_for_repetition():
-    filt = GeometricNoiseFilter(GeometricNoiseConfig(repeated_min_pages=2, remove_repeated_short_spans=True))
-    pages = [[_span("X", color=(0.78, 0.78, 0.78), direction=(1.0, 0.0), size=10.0, bbox=(10, 10, 20, 20))],
-             [_span("X", color=(0.78, 0.78, 0.78), direction=(1.0, 0.0), size=10.0, bbox=(10, 10, 20, 20))]]
+    filt = GeometricNoiseFilter(
+        GeometricNoiseConfig(repeated_min_pages=2, remove_repeated_short_spans=True)
+    )
+    pages = [
+        [
+            _span(
+                "X",
+                color=(0.78, 0.78, 0.78),
+                direction=(1.0, 0.0),
+                size=10.0,
+                bbox=(10, 10, 20, 20),
+            )
+        ],
+        [
+            _span(
+                "X",
+                color=(0.78, 0.78, 0.78),
+                direction=(1.0, 0.0),
+                size=10.0,
+                bbox=(10, 10, 20, 20),
+            )
+        ],
+    ]
     keys = filt.repeated_keys(pages)
     kept, removed, reasons = filt.filter_spans(pages[0], keys)
     assert kept == []
@@ -59,7 +90,10 @@ def test_geometric_filter_requires_physical_evidence_for_repetition():
     assert reasons == {"repeated-short-span": 1}
 
 
-@pytest.mark.skipif(__import__("importlib").util.find_spec("fitz") is None, reason="PyMuPDF not installed")
+@pytest.mark.skipif(
+    __import__("importlib").util.find_spec("fitz") is None,
+    reason="PyMuPDF not installed",
+)
 def test_noise_filter_removes_rotated_gray_watermark_from_pdf(tmp_path):
     fitz = pytest.importorskip("fitz")
     path = tmp_path / "noise.pdf"

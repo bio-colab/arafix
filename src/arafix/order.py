@@ -159,12 +159,10 @@ def _solid_ltr_quality(run: str) -> float:
             score += 8.0
         elif 1 <= left_i <= 12 < right_i <= 31:
             score -= 8.0
-    if _SOLID_PHONE.fullmatch(candidate):
-        if candidate.startswith(("+", "0")):
-            score += 8.0
-    if _SOLID_VERSION.fullmatch(candidate):
-        if re.match(r"^(?:v|[A-Za-z]+-)", candidate):
-            score += 6.0
+    if _SOLID_PHONE.fullmatch(candidate) and candidate.startswith(("+", "0")):
+        score += 8.0
+    if _SOLID_VERSION.fullmatch(candidate) and re.match(r"^(?:v|[A-Za-z]+-)", candidate):
+        score += 6.0
     if _SOLID_EMAIL.fullmatch(candidate):
         score += 10.0
     if _SOLID_HYBRID.fullmatch(candidate):

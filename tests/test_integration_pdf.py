@@ -163,7 +163,6 @@ def test_raw_extraction_is_actually_broken(broken_pdf):
     وهو أخبث أنواع الاختبارات الخضراء الكاذبة.
     """
     import fitz
-
     from arafix.diagnose import detect_presentation_forms
 
     raw = fitz.open(broken_pdf)[0].get_text()
@@ -318,9 +317,8 @@ def test_measured_not_asserted(broken_pdf, tmp_path):
     from pathlib import Path
 
     sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
-    from make_broken_pdf import SAMPLE
-
     from arafix import EvalConfig, compare_extractors
+    from make_broken_pdf import SAMPLE
 
     truth = tmp_path / "truth.txt"
     truth.write_text("\n".join(SAMPLE), encoding="utf-8")

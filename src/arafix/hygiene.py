@@ -26,6 +26,7 @@ __all__ = [
     "sanitize_extraction",
     "collapse_midword_spaces",
     "insert_particle_spaces",
+    "normalize_arabic_punctuation_spacing",
     "count_artifacts",
     "UNICODE_SPACES",
     "SOFT_HYPHEN",
@@ -399,6 +400,9 @@ _SAFE_PARTICLE_RE = re.compile(
     rf"(?<![{_ARABIC_BASE}])({'|'.join(re.escape(p) for p in _GLUE_SPLIT_SAFE)})(?=[{_ARABIC_BASE}]{{2,}})"
 )
 _PUNCT_BEFORE_ARABIC_RE = re.compile(r"([.،؛:!?؟»])(?=[\u0621-\u064A])")
+_PUNCT_SPACE_BEFORE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}])[ ]+(?=[،؛:!?؟.,)])")
+_PUNCT_SPACE_AFTER_RE = re.compile(rf"([،؛:!?؟.,])[ ]*(?=[{_ARABIC_BASE}])")
+_ARABIC_OPEN_PUNCT_RE = re.compile(rf"(?<=[{_ARABIC_BASE}])(?=[(«])")
 _ARABIC_MULTI_SPACE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}])[^\S\n\r]{{2,}}(?=[{_ARABIC_BASE}])")
 
 
@@ -435,6 +439,20 @@ def insert_particle_spaces(text: str) -> str:
     # immediate non-space neighbours are Arabic letters, where it is a PDF
     # word-boundary artifact rather than user formatting.
     return _ARABIC_MULTI_SPACE_RE.sub(" ", out)
+
+
+def normalize_arabic_punctuation_spacing(text: str) -> str:
+    """Normalize punctuation boundaries only when an Arabic letter proves context.
+
+    This deliberately does not touch Latin/code spacing, decimal numbers, or
+    line breaks. It repairs PDF artifacts such as ``المادة(١٧)`` and
+    ``كلمة ،جديدة`` without globally reformatting the input.
+    """
+    if not text:
+        return text
+    out = _PUNCT_SPACE_BEFORE_RE.sub("", text)
+    out = _ARABIC_OPEN_PUNCT_RE.sub(" ", out)
+    return _PUNCT_SPACE_AFTER_RE.sub(r"\1 ", out)
 
 
 def sanitize_extraction(

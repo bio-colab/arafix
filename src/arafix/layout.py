@@ -139,7 +139,9 @@ def join_glyphs_preserving_ltr(
     ordered = sorted(glyphs, key=lambda g: g.x)
 
     # Segment into LTR islands (seq-reordered) or single non-LTR glyphs.
-    tokens: list[list[Glyph]] = []
+    token_texts: list[str] = []
+    token_firsts: list[Glyph] = []
+    token_lasts: list[Glyph] = []
     i = 0
     n = len(ordered)
     while i < n:
@@ -161,10 +163,14 @@ def join_glyphs_preserving_ltr(
             run = ordered[i:j]
             if any(g.seq for g in run):
                 run = sorted(run, key=lambda g: g.seq)
-            tokens.append(run)
+            token_firsts.append(run[0])
+            token_lasts.append(run[-1])
+            token_texts.append("".join(g.text for g in run))
             i = j
         else:
-            tokens.append([g])
+            token_firsts.append(g)
+            token_lasts.append(g)
+            token_texts.append(g.text)
             i += 1
 
     # Whitespace glyphs are stronger evidence than coordinate gaps. In
@@ -173,8 +179,8 @@ def join_glyphs_preserving_ltr(
     # carries explicit PDF spaces fragments valid words (دراسة → درا سة).
     # Keep geometry inference for the genuinely space-less extraction case.
     has_explicit_space = any(_glyph_is_ltr_space(g.text) for g in ordered)
-    if not insert_spaces or has_explicit_space or len(tokens) <= 1:
-        return "".join("".join(g.text for g in tok) for tok in tokens)
+    if not insert_spaces or has_explicit_space or len(token_texts) <= 1:
+        return "".join(token_texts)
 
     th = _space_threshold(
         ordered,
@@ -185,10 +191,10 @@ def join_glyphs_preserving_ltr(
         space_max_factor=space_max_factor,
     )
     parts: list[str] = []
-    for ti, tok in enumerate(tokens):
+    for ti in range(len(token_texts)):
         if ti > 0:
-            prev_last = tokens[ti - 1][-1]
-            cur_first = tok[0]
+            prev_last = token_lasts[ti - 1]
+            cur_first = token_firsts[ti]
             gap = cur_first.x - prev_last.x
             prev_t = prev_last.text
             cur_t = cur_first.text
@@ -200,7 +206,7 @@ def join_glyphs_preserving_ltr(
                 and not cur_t[0].isspace()
             ):
                 parts.append(" ")
-        parts.append("".join(g.text for g in tok))
+        parts.append(token_texts[ti])
     return "".join(parts)
 
 

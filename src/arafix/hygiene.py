@@ -260,11 +260,18 @@ def collapse_midword_spaces(text: str) -> str:
     # Space immediately before a combining mark → always glue
     out = re.sub(r"\s+(?=[\u064B-\u0652\u0670])", "", text)
 
+    # A haraka is part of the neighbouring Arabic letter, not a boundary.
+    # Count base letters through optional marks on both sides; otherwise
+    # ``حين شنّت`` is misread as a 3+2 split and glued to ``حينشنّت``.
+    letter_with_marks = r"[\u0621-\u064A][\u064B-\u0652\u0670]*"
+
     def _repl(m: re.Match[str]) -> str:
-        left = m.group(1)
+        left_cluster = m.group(1)
+        left = re.sub(r"[\u064B-\u0652\u0670]", "", left_cluster)
         rest = m.string[m.end() :]
-        mright = re.match(r"[\u0621-\u064A]{1,6}", rest)
-        right = mright.group(0) if mright else ""
+        mright = re.match(rf"(?:{letter_with_marks}){{1,6}}", rest)
+        right_cluster = mright.group(0) if mright else ""
+        right = re.sub(r"[\u064B-\u0652\u0670]", "", right_cluster)
         if left in _KEEP_SPACE_AFTER or right in _KEEP_SPACE_AFTER:
             return m.group(0)
         if len(left) == 1 and left in _NO_COLLAPSE_SINGLE:
@@ -285,11 +292,11 @@ def collapse_midword_spaces(text: str) -> str:
         # (``عاد ي``) — not ``بكم في`` (right is a function word, already kept)
         if len(left) == 3 and len(right) > 2:
             return m.group(0)
-        return left
+        return left_cluster
 
-    # 1–3 letter left fragment + space + Arabic letter
+    # 1–3 letter fragments, allowing harakat within each fragment.
     out = re.sub(
-        r"(?<![\u0621-\u064A])([\u0621-\u064A]{1,3})\s+(?=[\u0621-\u064A])",
+        rf"(?<![\u0621-\u064A])((?:{letter_with_marks}){{1,3}})\s+(?=[\u0621-\u064A])",
         _repl,
         out,
     )
@@ -358,6 +365,43 @@ _GLUE_SPLIT_SAFE: tuple[str, ...] = (
 )
 
 
+# Precompile the audited closed-list rules. The prior implementation ran one
+# regex pass per entry; grouping the same guarded alternatives preserves their
+# evidence constraints while avoiding repeated full-text scans.
+_ARABIC_BASE = r"\u0621-\u064A"
+
+
+def _compile_guarded_pairs(pairs: tuple[tuple[str, str], ...]) -> re.Pattern[str]:
+    grouped: dict[str, list[str]] = {}
+    for left, right in pairs:
+        grouped.setdefault(left, []).append(right)
+    alternatives = "|".join(
+        re.escape(left)
+        + r"(?="
+        + "|".join(re.escape(right) for right in rights)
+        + r")"
+        for left, rights in grouped.items()
+    )
+    return re.compile(rf"(?<![{_ARABIC_BASE}])({alternatives})")
+
+
+_ARTICLE_PARTICLES = ("من", "في", "عن", "على", "إلى", "الى", "مع", "بين", "عند", "بعد", "قبل")
+_PARTICLE_ARTICLE_RE = re.compile(
+    rf"(?<![{_ARABIC_BASE}])({'|'.join(re.escape(p) for p in _ARTICLE_PARTICLES)})(?=ال[{_ARABIC_BASE}])"
+)
+_FUNCTION_BOUNDARY_RE = _compile_guarded_pairs(_SAFE_GLUED_FUNCTION_BOUNDARIES)
+_NAME_BOUNDARY_RE = _compile_guarded_pairs(_SAFE_GLUED_NAME_BOUNDARIES)
+_NAME_ANCHOR_MAP = dict(_SAFE_GLUED_NAME_ANCHORS)
+_NAME_ANCHOR_RE = re.compile(
+    rf"(?<![{_ARABIC_BASE}])({'|'.join(re.escape(p) for p in sorted(_NAME_ANCHOR_MAP, key=len, reverse=True))})"
+)
+_SAFE_PARTICLE_RE = re.compile(
+    rf"(?<![{_ARABIC_BASE}])({'|'.join(re.escape(p) for p in _GLUE_SPLIT_SAFE)})(?=[{_ARABIC_BASE}]{{2,}})"
+)
+_PUNCT_BEFORE_ARABIC_RE = re.compile(r"([.،؛:!?؟»])(?=[\u0621-\u064A])")
+_ARABIC_MULTI_SPACE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}])[^\S\n\r]{{2,}}(?=[{_ARABIC_BASE}])")
+
+
 def insert_particle_spaces(text: str) -> str:
     """
     Insert a space after common Arabic particles glued to the next word.
@@ -370,60 +414,27 @@ def insert_particle_spaces(text: str) -> str:
     """
     if not text:
         return text
-    out = text
-    # punctuation often lacks following space in book extracts
-    out = re.sub(r"([.،؛:!?؟»])(?=[\u0621-\u064A])", r"\1 ", out)
-    _B = r"\u0621-\u064A"
-    # من/في/على… + ال
-    for p in ("من", "في", "عن", "على", "إلى", "الى", "مع", "بين", "عند", "بعد", "قبل"):
-        out = re.sub(
-            rf"(?<![{_B}]){re.escape(p)}(?=ال[{_B}])",
-            p + " ",
-            out,
-        )
-    # High-confidence glued pairs observed in real PDF output. Require a
-    # non-Arabic left boundary so a pair is never cut out of a larger word.
-    for left, right in _SAFE_GLUED_FUNCTION_BOUNDARIES:
-        out = re.sub(
-            rf"(?<![{_B}]){re.escape(left)}(?={re.escape(right)})",
-            left + " ",
-            out,
-        )
+    out = _PUNCT_BEFORE_ARABIC_RE.sub(r"\1 ", text)
+    out = _PARTICLE_ARTICLE_RE.sub(r"\1 ", out)
+    out = _FUNCTION_BOUNDARY_RE.sub(r"\1 ", out)
 
     # A first restored boundary exposes the next one in long name chains
     # (e.g. سليمانبنعبدالملكرضيالله). Two passes are sufficient for the
     # fixed, audited patterns below and avoid an unbounded rewrite loop.
     for _ in range(2):
-        for glued, restored in _SAFE_GLUED_NAME_ANCHORS:
-            out = re.sub(
-                rf"(?<![{_B}]){re.escape(glued)}",
-                restored,
-                out,
-            )
-        for left, right in _SAFE_GLUED_NAME_BOUNDARIES:
-            out = re.sub(
-                rf"(?<![{_B}]){re.escape(left)}(?={re.escape(right)})",
-                left + " ",
-                out,
-            )
+        out = _NAME_ANCHOR_RE.sub(lambda m: _NAME_ANCHOR_MAP[m.group(1)], out)
+        # A boundary restored by one alternative exposes the next one in the
+        # same chain (بنعبدالملك). Re-scan once, rather than relying on regex
+        # substitution to revisit its own replacement span.
+        out = _NAME_BOUNDARY_RE.sub(r"\1 ", out)
+        out = _NAME_BOUNDARY_RE.sub(r"\1 ", out)
 
-    # safe multi-char particles + any Arabic stem ≥ 2 letters
-    for p in _GLUE_SPLIT_SAFE:
-        out = re.sub(
-            rf"(?<![{_B}]){re.escape(p)}(?=[{_B}]{{2,}})",
-            p + " ",
-            out,
-        )
+    out = _SAFE_PARTICLE_RE.sub(r"\1 ", out)
     # Do not normalize arbitrary ASCII spacing: code, regexes, tables, and
     # aligned Latin text are valid inputs. Collapse only a run whose two
     # immediate non-space neighbours are Arabic letters, where it is a PDF
     # word-boundary artifact rather than user formatting.
-    out = re.sub(
-        rf"(?<=[{_B}])[^\S\n\r]{{2,}}(?=[{_B}])",
-        " ",
-        out,
-    )
-    return out
+    return _ARABIC_MULTI_SPACE_RE.sub(" ", out)
 
 
 def sanitize_extraction(

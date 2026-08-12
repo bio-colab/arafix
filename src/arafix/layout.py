@@ -167,7 +167,13 @@ def join_glyphs_preserving_ltr(
             tokens.append([g])
             i += 1
 
-    if not insert_spaces or len(tokens) <= 1:
+    # Whitespace glyphs are stronger evidence than coordinate gaps. In
+    # shaped Arabic fonts the origin-to-origin advance varies substantially
+    # by glyph, so inferring *additional* spaces on a line that already
+    # carries explicit PDF spaces fragments valid words (دراسة → درا سة).
+    # Keep geometry inference for the genuinely space-less extraction case.
+    has_explicit_space = any(_glyph_is_ltr_space(g.text) for g in ordered)
+    if not insert_spaces or has_explicit_space or len(tokens) <= 1:
         return "".join("".join(g.text for g in tok) for tok in tokens)
 
     th = _space_threshold(

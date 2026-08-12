@@ -11,8 +11,8 @@ from __future__ import annotations
 import math
 import re
 from collections import defaultdict
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Mapping, Sequence
 
 __all__ = ["GeometricNoiseConfig", "GeometricNoiseFilter"]
 
@@ -111,7 +111,9 @@ class GeometricNoiseFilter:
         minimum = max(2, int(self.config.repeated_min_pages))
         return {key for key, page_numbers in seen.items() if len(page_numbers) >= minimum}
 
-    def should_drop(self, span: Mapping, repeated_keys: set[tuple] | None = None) -> tuple[bool, str]:
+    def should_drop(
+        self, span: Mapping, repeated_keys: set[tuple] | None = None
+    ) -> tuple[bool, str]:
         """Return ``(drop, reason)`` for one text-trace span."""
         text = self.span_text(span)
         if not text:

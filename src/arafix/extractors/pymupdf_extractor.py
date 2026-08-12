@@ -11,8 +11,8 @@ import contextlib
 import unicodedata
 from collections.abc import Iterator
 
-from .base import Extractor, RawPage
 from ..noise import GeometricNoiseConfig, GeometricNoiseFilter
+from .base import Extractor, RawPage
 
 __all__ = ["PyMuPDFExtractor"]
 
@@ -183,7 +183,10 @@ class PyMuPDFExtractor(Extractor):
                 bases[best_i][2] = self._attach_mark(bases[best_i][2], mch)
                 last_i, last_mx, last_my = best_i, mx, my
 
-        return [(y, x, text, sz, sq, glyph_id, font) for y, x, text, sz, sq, glyph_id, font in bases]
+        return [
+            (y, x, text, sz, sq, glyph_id, font)
+            for y, x, text, sz, sq, glyph_id, font in bases
+        ]
 
     @staticmethod
     def _glyphs_to_layout_glyphs(glyphs: list[tuple]) -> list:

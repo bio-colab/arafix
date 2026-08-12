@@ -388,16 +388,21 @@ def _compile_guarded_pairs(pairs: tuple[tuple[str, str], ...]) -> re.Pattern[str
 
 _ARTICLE_PARTICLES = ("من", "في", "عن", "على", "إلى", "الى", "مع", "بين", "عند", "بعد", "قبل")
 _PARTICLE_ARTICLE_RE = re.compile(
-    rf"(?<![{_ARABIC_BASE}])({'|'.join(re.escape(p) for p in _ARTICLE_PARTICLES)})(?=ال[{_ARABIC_BASE}])"
+    rf"(?<![{_ARABIC_BASE}])"
+    rf"({'|'.join(re.escape(p) for p in _ARTICLE_PARTICLES)})"
+    rf"(?=ال[{_ARABIC_BASE}])"
 )
 _FUNCTION_BOUNDARY_RE = _compile_guarded_pairs(_SAFE_GLUED_FUNCTION_BOUNDARIES)
 _NAME_BOUNDARY_RE = _compile_guarded_pairs(_SAFE_GLUED_NAME_BOUNDARIES)
 _NAME_ANCHOR_MAP = dict(_SAFE_GLUED_NAME_ANCHORS)
 _NAME_ANCHOR_RE = re.compile(
-    rf"(?<![{_ARABIC_BASE}])({'|'.join(re.escape(p) for p in sorted(_NAME_ANCHOR_MAP, key=len, reverse=True))})"
+    rf"(?<![{_ARABIC_BASE}])"
+    rf"({'|'.join(re.escape(p) for p in sorted(_NAME_ANCHOR_MAP, key=len, reverse=True))})"
 )
 _SAFE_PARTICLE_RE = re.compile(
-    rf"(?<![{_ARABIC_BASE}])({'|'.join(re.escape(p) for p in _GLUE_SPLIT_SAFE)})(?=[{_ARABIC_BASE}]{{2,}})"
+    rf"(?<![{_ARABIC_BASE}])"
+    rf"({'|'.join(re.escape(p) for p in _GLUE_SPLIT_SAFE)})"
+    rf"(?=[{_ARABIC_BASE}]{{2,}})"
 )
 _PUNCT_BEFORE_ARABIC_RE = re.compile(r"([.،؛:!?؟»])(?=[\u0621-\u064A])")
 _PUNCT_SPACE_BEFORE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}])[ ]+(?=[،؛:!?؟.,)])")

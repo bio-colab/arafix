@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from arafix import GeometricNoiseConfig, GeometricNoiseFilter, extract_pdf
+from arafix.hygiene import normalize_arabic_punctuation_spacing
 from arafix.order import fix_order
 
 
@@ -20,6 +21,13 @@ def test_adversarial_bidi_corpus_is_exactly_recovered():
         counts[case["category"]] = counts.get(case["category"], 0) + 1
         assert fix_order(case["visual_input"]) == case["logical_gold"], case["id"]
     assert counts == {"dates": 250, "versions": 250, "hybrid": 250, "phones": 250}
+
+
+def test_arabic_punctuation_spacing_is_context_aware():
+    raw = "نصت المادة(١٧)  على كلمة ،جديدة. GDP,2024 3.14\\nالسطر التالي"
+    assert normalize_arabic_punctuation_spacing(raw) == (
+        "نصت المادة (١٧)  على كلمة، جديدة. GDP,2024 3.14\\nالسطر التالي"
+    )
 
 
 def _span(text, *, color=(0.78, 0.78, 0.78), direction=(0.9, -0.43), size=30.0, bbox=(100, 100, 300, 140)):

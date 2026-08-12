@@ -24,6 +24,7 @@ from .hygiene import (
     collapse_midword_spaces,
     count_artifacts,
     insert_particle_spaces,
+    normalize_arabic_punctuation_spacing,
     sanitize_extraction,
 )
 from .lamalef import repair_lam_alef_transposition
@@ -365,10 +366,11 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
 
     if cfg.enable_spacing_repair:
         spaced = insert_particle_spaces(current)
+        spaced = normalize_arabic_punctuation_spacing(spaced)
         if spaced != current:
             current = spaced
             spacing_changed = True
-            notes.append("أُدرجت مسافات بعد أدوات/ترقيم ملصوق (كماأن → كما أن، …)")
+            notes.append("أُصلحت حدود الترقيم العربية سياقياً (المادة(١٧) → المادة (١٧)، …)")
         if spacing_changed:
             stages.append(Stage.REPAIR_SPACING)
 

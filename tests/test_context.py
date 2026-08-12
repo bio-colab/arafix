@@ -1,7 +1,20 @@
 from __future__ import annotations
 
 import pytest
-from arafix import DocumentContext, PipelineConfig, Stage, extract_pdf, repair_text
+from arafix import (
+    Candidate,
+    CandidateGenerator,
+    CharacterConfusionModel,
+    Confusion,
+    DocumentContext,
+    EvidenceFusion,
+    GlyphEvidence,
+    NegativeEvidence,
+    PipelineConfig,
+    Stage,
+    extract_pdf,
+    repair_text,
+)
 from arafix.extractors.base import Extractor, RawPage
 
 PHRASE = "نناقش الطاقة المتجددة في العراق."
@@ -15,6 +28,77 @@ def test_context_scoring_recovers_document_phrase() -> None:
     assert result.accepted_count == 1
     assert result.decisions[0].replacement == "المتجددة"
     assert result.decisions[0].candidates[0].document_frequency == 4
+    assert result.fusion_decisions[0].replacement == "المتجددة"
+    assert result.fusion_decisions[0].status == "safe"
+
+
+def test_candidate_generator_and_fusion_are_separate_contracts() -> None:
+    model = DocumentContext(" ".join([PHRASE] * 4))
+    generator = CandidateGenerator(
+        confusion_model=CharacterConfusionModel(
+            [Confusion("ة", "ه", source="test-confusion", cost=0.2)]
+        )
+    )
+    candidates = generator.generate(
+        "المتجدة",
+        document_context=model,
+        left="الطاقة",
+        right="العراق",
+    )
+    assert candidates
+    assert any(candidate.text == "المتجددة" for candidate in candidates)
+    assert any(candidate.text == "المتجده" for candidate in candidates)
+    decision = EvidenceFusion().decide("المتجدة", candidates)
+    assert decision.status == "safe"
+    assert decision.replacement == "المتجددة"
+    assert decision.candidates[0].sources
+
+
+def test_character_confusion_has_provenance_and_glyph_is_only_evidence() -> None:
+    confusion = Confusion("ة", "ه", source="font-specific", cost=0.3)
+    generated = CharacterConfusionModel([confusion]).candidates("لغة")
+    assert generated[0].candidate == "لغه"
+    assert generated[0].source == "font-specific"
+    glyph_candidates = CandidateGenerator().generate(
+        "المتجدة",
+        glyph_evidence=[
+            GlyphEvidence(
+                observed="المتجدة",
+                candidate="المتجدّة",
+                score=0.96,
+                font="ArabicFont",
+                glyph_id=191,
+                bbox=(1.0, 2.0, 3.0, 4.0),
+            )
+        ],
+    )
+    assert glyph_candidates[0].signal_map()["glyph_score"] == 0.96
+
+
+def test_negative_evidence_forces_unsafe_abstention() -> None:
+    candidate = Candidate(
+        observed="Java",
+        text="Jawa",
+        sources=("character",),
+        signals=(("confusion_score", 1.0),),
+    )
+    decision = EvidenceFusion().decide(
+        "Java",
+        [candidate],
+        negative_evidence=(NegativeEvidence("code_island", 1.0),),
+    )
+    assert decision.status == "unsafe"
+    assert decision.replacement is None
+
+
+def test_context_scoring_does_not_split_diacritic_word() -> None:
+    source = "ونصّت المادة على كفالة الدولة."
+    model = DocumentContext(" ".join([source] * 4))
+
+    result = model.repair(source)
+
+    assert result.text == source
+    assert not result.changed
 
 
 def test_context_scoring_abstains_without_independent_support() -> None:

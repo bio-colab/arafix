@@ -64,6 +64,17 @@ from .evaluate import (
     levenshtein_reference,
     wer,
 )
+from .evidence import (
+    Candidate,
+    CandidateGenerator,
+    CharacterConfusionModel,
+    Confusion,
+    EvidenceDecision,
+    EvidenceFusion,
+    GlyphEvidence,
+    NegativeEvidence,
+    NegativeEvidenceModel,
+)
 from .extractors import Extractor, RawPage, get_extractor, register
 from .hygiene import (
     count_artifacts,
@@ -179,6 +190,15 @@ __all__ = [
     "ContextCandidate",
     "ContextDecision",
     "ContextRepair",
+    "Candidate",
+    "CandidateGenerator",
+    "CharacterConfusionModel",
+    "Confusion",
+    "EvidenceDecision",
+    "EvidenceFusion",
+    "GlyphEvidence",
+    "NegativeEvidence",
+    "NegativeEvidenceModel",
     # مهايئات
     "fix_any",
     "fix_markitdown",

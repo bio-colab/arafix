@@ -34,6 +34,11 @@ from .audit import (
 )
 from .context import DocumentContext
 from .diagnose import DEFAULT_THRESHOLDS, detect_mojibake, detect_visual_order, diagnose
+from .evidence import (
+    CandidateGenerator,
+    EvidenceFusion,
+    NegativeEvidenceModel,
+)
 from .extractors import get_extractor
 from .hygiene import (
     collapse_midword_spaces,
@@ -184,6 +189,11 @@ class PipelineConfig:
     #: نموذج سياق وثيقة اختياري؛ لا يعمل إلا عند تفعيل العلم صراحةً.
     context_model: DocumentContext | None = None
     enable_context_scoring: bool = False
+
+    #: مكوّنات evidence اختيارية تُستخدم عند بناء DocumentContext تلقائياً.
+    candidate_generator: CandidateGenerator | None = None
+    evidence_fusion: EvidenceFusion | None = None
+    negative_evidence: NegativeEvidenceModel | None = None
 
 
 def harvest_document_lexicon(texts: Iterable[str]) -> set[str]:
@@ -587,11 +597,41 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                 metadata={
                     "decisions": [
                         decision.to_dict() for decision in context_result.decisions
-                    ]
+                    ],
+                    "fusion_decisions": [
+                        decision.to_dict()
+                        for decision in context_result.fusion_decisions
+                    ],
                 },
             )
             notes.append(
                 f"أُصلحت {context_result.accepted_count} كلمة بدليل معجم/عبارات الوثيقة"
+            )
+        elif cfg.enable_context_scoring and context_result.fusion_decisions:
+            has_unsafe = any(
+                decision.decision is RepairDecision.UNSAFE
+                for decision in context_result.fusion_decisions
+            )
+            audit.abstain(
+                stage=Stage.CONTEXT.value,
+                rule="DOCUMENT_CONTEXT_EVIDENCE_ABSTENTION",
+                decision=(
+                    RepairDecision.UNSAFE if has_unsafe else RepairDecision.UNCERTAIN
+                ),
+                evidence=(
+                    EvidenceItem(
+                        "fusion-decisions",
+                        len(context_result.fusion_decisions),
+                        detail="Candidates were generated but no SAFE decision was authorized",
+                        source="evidence-fusion",
+                    ),
+                ),
+                metadata={
+                    "fusion_decisions": [
+                        decision.to_dict()
+                        for decision in context_result.fusion_decisions
+                    ]
+                },
             )
 
     confidence = min(_final_confidence(dg, order_conf, stages), lam_conf)
@@ -710,6 +750,41 @@ def _canonical_font_name(name: str) -> str:
     lowered = name.lower()
     lowered = re.sub(r"^[a-z]{6}\+", "", lowered)
     return re.sub(r"[^0-9a-z]", "", lowered).removeprefix("subset")
+
+
+def _append_audit_abstention_after_text(
+    audit: RepairAudit | None,
+    *,
+    original: str,
+    after: str,
+    decision: RepairDecision,
+    evidence: Iterable[EvidenceItem],
+    metadata: Mapping[str, object] | None = None,
+) -> RepairAudit | None:
+    """Append a no-op evidence decision while preserving page hashes and patch."""
+    if audit is None:
+        return None
+    trail = AuditTrail(original, audit.mode)
+    trail.abstain(
+        stage=Stage.CONTEXT.value,
+        rule="DOCUMENT_CONTEXT_EVIDENCE_ABSTENTION",
+        decision=decision,
+        evidence=evidence,
+        metadata=metadata,
+    )
+    delta = trail.finalize(after)
+    if delta is None:
+        return audit
+    offset = len(audit.events) + len(audit.abstentions)
+    abstentions = tuple(
+        replace(event, event_id=offset + event.event_id)
+        for event in delta.abstentions
+    )
+    return replace(
+        audit,
+        repaired_sha256=sha256_text(after),
+        abstentions=(*audit.abstentions, *abstentions),
+    )
 
 
 def _append_audit_after_text_change(
@@ -895,13 +970,50 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
 
     context_model = cfg.context_model
     if cfg.enable_context_scoring and context_model is None and doc.pages:
-        context_model = DocumentContext.from_texts(page.text for page in doc.pages)
+        context_model = DocumentContext.from_texts(
+            (page.text for page in doc.pages),
+            candidate_generator=cfg.candidate_generator,
+            evidence_fusion=cfg.evidence_fusion,
+            negative_evidence=cfg.negative_evidence,
+        )
     if cfg.enable_context_scoring and context_model is not None and doc.pages:
         context_pages_touched = 0
         for page in doc.pages:
             before = page.repair.text
             context_result = context_model.repair(before)
             if not context_result.changed:
+                if context_result.fusion_decisions:
+                    has_unsafe = any(
+                        decision.decision is RepairDecision.UNSAFE
+                        for decision in context_result.fusion_decisions
+                    )
+                    page.repair.audit = _append_audit_abstention_after_text(
+                        page.repair.audit,
+                        original=page.repair.original,
+                        after=before,
+                        decision=(
+                            RepairDecision.UNSAFE
+                            if has_unsafe
+                            else RepairDecision.UNCERTAIN
+                        ),
+                        evidence=(
+                            EvidenceItem(
+                                "fusion-decisions",
+                                len(context_result.fusion_decisions),
+                                detail=(
+                                    "Candidates were generated but no SAFE decision "
+                                    "was authorized"
+                                ),
+                                source="evidence-fusion",
+                            ),
+                        ),
+                        metadata={
+                            "fusion_decisions": [
+                                decision.to_dict()
+                                for decision in context_result.fusion_decisions
+                            ]
+                        },
+                    )
                 continue
             page.repair.audit = _append_audit_after_text_change(
                 page.repair.audit,
@@ -918,7 +1030,11 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
                 metadata={
                     "decisions": [
                         decision.to_dict() for decision in context_result.decisions
-                    ]
+                    ],
+                    "fusion_decisions": [
+                        decision.to_dict()
+                        for decision in context_result.fusion_decisions
+                    ],
                 },
             )
             page.repair.text = context_result.text

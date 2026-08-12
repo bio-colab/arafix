@@ -151,7 +151,11 @@ The development gate also runs `mypy src` against the Python 3.9-compatible type
 
 ### Optional document-local Context Scoring
 
-`DocumentContext` is an opt-in recovery layer for repeated document vocabulary. It builds a dependency-free word-frequency model, word-bigram counts, and character trigrams from the document itself. It generates only edit-distance-one candidates already present in that document, and accepts a replacement only when frequency, phrase support, character evidence, and a score margin agree. Otherwise it abstains.
+`DocumentContext` is an opt-in recovery layer for repeated document vocabulary, and it is now connected to the same recovery path rather than acting as a parallel spell checker. The flow is `detector → CandidateGenerator → evidence sources → EvidenceFusion → SAFE/UNCERTAIN/UNSAFE decision → repair → audit`. `DocumentContext` contributes document-local evidence; it does not authorize a repair by itself.
+
+The dependency-free evidence layer exposes `CandidateGenerator`, `CharacterConfusionModel`, `Confusion`, `GlyphEvidence`, `NegativeEvidenceModel`, and `EvidenceFusion`. Candidates can come from document vocabulary, edit-distance-one insertion/deletion/substitution/transposition, explicitly injected character confusions, the closed PDF-confusion list, or caller-supplied glyph evidence. `CharacterConfusionModel` records observed-to-candidate substitutions with source and cost but never decides. `NegativeEvidenceModel` protects URLs, identifiers, quoted text, and actual Latin/code islands. `EvidenceFusion` is the only component that can authorize a `SAFE` repair; otherwise it records `UNCERTAIN` or `UNSAFE` and leaves the text unchanged.
+
+The document model retains word frequencies, word bigrams, word trigrams, character trigrams, character 4-grams, and paragraph-local counts. The extra features are evidence signals, not a large external language model. Character confusions and glyph-derived candidates are opt-in inputs; no normal-character glyph correction is enabled automatically without a labeled PDF fixture.
 
 ```python
 from arafix import DocumentContext, PipelineConfig, repair_text
@@ -168,7 +172,33 @@ result = repair_text(
 assert result.text == "نناقش الطاقة المتجددة في العراق."
 ```
 
-For a complete PDF, set `enable_context_scoring=True` without supplying a model; a model is then learned from the extracted pages and applied once at document scope. The feature is disabled by default and adds no runtime dependency. It is intentionally not an LLM or a general spell checker: document-local evidence is required, and the current v1 candidate generator is limited to one edit.
+For a complete PDF, set `enable_context_scoring=True` without supplying a model; a model is then learned from the extracted pages and applied once at document scope. The feature is disabled by default and adds no runtime dependency. The same fusion decisions are recorded in `audit_mode="summary"` or `"full"`, including ranked candidates, source signals, negative evidence, and reversible patches.
+
+The accepted mutation benchmark remains unchanged after the architectural refactor: constitution **61/61 exact**, narrative **57/57 exact**, CER/WER **0%** on both supported mutation sets, and **0/18 false repairs** on the safe gate. Clean real-document inputs remain byte-for-byte unchanged. These are seeded text mutations based on real reference texts, not a claim of labeled PDF glyph-repair performance.
+
+To add an explicit confusion source without enabling it by accident, inject it into the pipeline:
+
+```python
+from arafix import (
+    CandidateGenerator, CharacterConfusionModel, Confusion,
+    DocumentContext, PipelineConfig, repair_text,
+)
+
+confusions = CharacterConfusionModel([
+    Confusion("ة", "ه", source="font-specific", cost=0.7),
+])
+context = DocumentContext.from_texts(
+    ["نناقش الطاقة المتجددة في العراق."] * 4,
+    candidate_generator=CandidateGenerator(confusion_model=confusions),
+)
+config = PipelineConfig(
+    enable_context_scoring=True,
+    context_model=context,
+)
+result = repair_text("نناقش الطاقة المتجدة في العراق.", config)
+```
+
+The closed PDF list is similarly available through `CandidateGenerator.with_pdf_confusions()`. Glyph evidence can be supplied as `GlyphEvidence` to the generator, but it remains evidence only; without a labeled fixture proving normal-character CER/WER improvement, the default pipeline does not invent glyph-based repairs.
 
 ### Glyph Evidence status
 

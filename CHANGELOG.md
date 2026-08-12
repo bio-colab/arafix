@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+### Evidence pipeline architecture — 2026-08-12
+
+أُعيد ربط `DocumentContext` بمحرك الاسترجاع بدلاً من اعتباره API مستقلاً:
+`detector → CandidateGenerator → evidence sources → EvidenceFusion → decision → repair → audit`.
+يبقى `DocumentContext.repair()` متاحاً للتوافق، لكنه يستخدم داخلياً نفس مولّد
+المرشحين وقرار الدمج؛ ولا يملك أي detector منفرد صلاحية فرض الإصلاح.
+
+أضيفت طبقة stdlib-only في `arafix.evidence`:
+
+| المكوّن | الدور |
+|---|---|
+| `CandidateGenerator` | جمع المرشحين من document vocabulary ومسافة تحرير واحدة، ومصادر confusion وPDF وglyph؛ لا يتخذ قراراً |
+| `Confusion` / `CharacterConfusionModel` | تمثيل observed→candidate مع `source` و`cost`؛ لا يعمل تلقائياً إلا عند الحقن الصريح |
+| `GlyphEvidence` | حمل font وglyph_id وbbox ودرجة الدليل إلى candidate layer؛ لا يفرض تصحيحاً |
+| `NegativeEvidenceModel` | حماية URL/email والـidentifiers والنص المقتبس وجزر Latin/code الفعلية |
+| `EvidenceFusion` | دمج الإشارات وإخراج `SAFE` أو `UNCERTAIN` أو `UNSAFE` عبر عقد `RepairDecision` المركزي |
+
+أضيفت إلى `DocumentContext` إحصاءات word trigrams وcharacter 4-grams وparagraph-local
+vocabulary، مع إبقاء word frequency وbigrams وcharacter trigrams. أضيفت حقول
+`fusion_decisions` ومرشحات الأدلة إلى `ContextRepair` وaudit. الإضافات لا تضيف
+تبعية تشغيلية، ولا تُفعّل CharacterConfusion أو glyph-derived candidates افتراضياً.
+
+| بوابة القياس | النتيجة |
+|---|---:|
+| constitution mutation recovery | **61/61 exact**، CER **0%**، WER **0%** |
+| narrative mutation recovery | **57/57 exact**، CER **0%**، WER **0%** |
+| baseline exact recovery | **0/118** |
+| safe corpus | **0/18 false repairs**؛ FPR **0%** |
+| clean real-document no-op | SHA-256 وسلوك النص محفوظان |
+| full regression suite | جميع الاختبارات ناجحة بعد إضافة عقود evidence |
+
+تم إلغاء أي تصحيح تلقائي لمحرف عادي مستند إلى glyph shape لأن لا توجد fixture
+PDF معلّمة تثبت تحسناً في CER/WER. كما بقيت CharacterConfusionModel وPDF confusion
+generator وGlyphEvidence مصادر مرشحين قابلة للحقن، لا قواعد إصلاح افتراضية.
+
+---
+
 ### Context Scoring and Glyph Evidence evaluation — 2026-08-12
 
 أضيفت طبقة `DocumentContext` اختيارية تعتمد على المكتبة القياسية فقط. تبني

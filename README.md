@@ -17,7 +17,9 @@
 | **1.0.1** | Glyph word-spacing + closed PDF confusions from **published Arabic books** (not AI fixtures) |
 | **1.0** | Core lexicon, smart BiDi/LTR, hybrid mojibake, stress-gated (FPR=0, RAR=100%) |
 | **Quality** | Cluster-aware diacritics, PDF homoglyph fold, scientific metrics (MCS/DBR/BFE/SHDR) |
-| **Eval** | Independent Safahat book samples + manual gold (`benchmarks/independent_eval/`) |
+| **Hardening** | Conservative embedded-font CMap fallback, geometric-noise filtering, and solid-block Latin/Bidi protection |
+| **Spacing** | Explicit PDF-space preservation and context-aware Arabic punctuation spacing |
+| **Eval** | Independent Safahat book samples + manual gold, plus a 1,000-case adversarial Bidi corpus (`benchmarks/`) |
 | **Status** | **Stable 1.0.1** — production-ready for native Arabic PDF recovery |
 
 ### Install
@@ -28,6 +30,8 @@ pip install "arafix[pdf]"       # recommended — PDF extract
 pip install "arafix[all]"       # + fonttools (CMap / stage 3)
 pip install "arafix[markitdown]"  # MarkItDown plugin
 ```
+
+> **Dependency guarantee:** the core package declares no runtime dependencies. PDF, CMap, and MarkItDown support remain opt-in extras; the hardening and spacing improvements listed below do not add Torch, Transformers, OCR, or any other mandatory dependency.
 
 ### 30-second start
 
@@ -70,6 +74,20 @@ python scripts/eval_unified.py --pdf thesis.pdf --truth thesis.txt -v
 python scripts/stress_test_report.py --skip-ultra
 ```
 
+### Verified improvements in `main`
+
+The current `main` branch includes the following measured improvements. Detailed methodology, limitations, and rollback decisions are recorded in [CHANGELOG.md](CHANGELOG.md).
+
+| Area | What is shipped | Evidence |
+|---|---|---|
+| Embedded-font recovery | Conservative `glyph_id → Unicode` CMap fallback for PUA and `U+FFFD` only when font and glyph evidence agree | Avoids broad text substitutions and preserves ambiguous mappings |
+| Arabic spacing | Explicit PDF spaces take precedence over geometric gaps; punctuation spacing is context-aware and leaves Latin and decimal contexts alone | Constitution CER/WER improved from **3.486% / 20.939%** to **3.092% / 17.208%** |
+| Latin/Bidi islands | Solid-block protection for dates, versions, phone numbers, email, hybrid terms, and page ranges | **1000/1000** adversarial cases pass: dates, versions, hybrid terms, and phones |
+| Geometric noise | Conservative light-gray rotated watermark filtering from text-trace metadata | Three watermark spans removed while table count stayed 3/3; repeated multi-page filtering remains opt-in |
+| Hot-path work | Batch joining of glyph tokens and removal of redundant diagnosis work | 2000-page extraction improved by **3.35%** with byte-for-byte output identity |
+
+No speculative layout cache is shipped: its measured profiler result was slower than the uncached path. No C/Rust extension or OCR dependency was added because the measured evidence did not justify either.
+
 ### What it fixes (and what it doesn’t)
 
 | Symptom | Cause | Stage / tool |
@@ -111,7 +129,7 @@ repair_text(broken, cfg)
 
 **Philosophy:** never invent characters; never “fix just in case”; every decision carries evidence and confidence. Release gated by **FPR = 0** and **RAR ≥ 98%** on the 50-pack stress corpus.
 
-Further reading: [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md) · [CITATION.cff](CITATION.cff)
+Further reading: [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md) · [CITATION.cff](CITATION.cff) · [PR #3](https://github.com/bio-colab/arafix/pull/3) · [PR #5](https://github.com/bio-colab/arafix/pull/5) · [PR #7](https://github.com/bio-colab/arafix/pull/7)
 
 
 
@@ -223,6 +241,11 @@ cd arafix && pip install -e ".[dev]" && pytest
 
 قرارٌ مقصود: **النواة بلا تبعيّات**. الدرجات ٠–٢ تعمل في أيّ بيئة —
 Colab مقيّد، خادم بلا إنترنت، Lambda. التبعيّات كلها اختيارية.
+
+في `main` الحالية أضيف استرداد CMap محافظ من الخطوط المضمّنة، وحماية
+للجزر اللاتينية مثل التواريخ والإصدارات وأرقام الهواتف، وفلتر هندسي محافظ
+للعلامات المائية، وقواعد سياقية للفراغات حول الترقيم العربي. لم تُضف تبعية
+إجبارية أو OCR، ولم يُعتمد cache للتخطيط لأن القياس أثبت أنه أبطأ.
 
 ---
 

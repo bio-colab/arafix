@@ -10,7 +10,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .rag import RAGChunk
 
 __all__ = [
     "Defect",
@@ -146,6 +149,9 @@ class PageResult:
     #: كتل مُصلَحة مستقلة (سطور/خلايا) مع معرّفاتها.
     blocks: BlocksResult | None = None
     n_columns: int = 1
+    #: أبعاد الصفحة بالنقاط، لاستخدامها في مخرجات الاستشهاد المكاني.
+    width: float = 0.0
+    height: float = 0.0
     #: جداول مُصلَحة: قائمة شبكات [صف][عمود].
     tables: list[list[list[str]]] = field(default_factory=list)
 
@@ -182,6 +188,26 @@ class DocumentResult:
         if substantive:
             return min(substantive)
         return min((p.repair.confidence for p in self.pages), default=0.0)
+
+    def to_rag_chunks(self, *, max_chars: int = 1200) -> list[RAGChunk]:
+        """Return deterministic citation-ready spatial chunks for this document."""
+        from .rag import spatial_rag_chunks
+
+        return spatial_rag_chunks(self, max_chars=max_chars)
+
+    def to_rag_json(self, *, max_chars: int = 1200, indent: int | None = 2) -> str:
+        """Serialize citation-ready spatial chunks as the native RAG JSON format."""
+        import json
+
+        payload = {
+            "schema": "arafix.spatial-rag.v1",
+            "source": self.path,
+            "chunking": {"method": "structure-aware", "max_chars": max_chars},
+            "chunks": [
+                chunk.to_dict() for chunk in self.to_rag_chunks(max_chars=max_chars)
+            ],
+        }
+        return json.dumps(payload, ensure_ascii=False, indent=indent)
 
     @property
     def all_tables(self) -> list[list[list[str]]]:

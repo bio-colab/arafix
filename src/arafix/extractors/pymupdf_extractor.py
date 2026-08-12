@@ -27,6 +27,7 @@ class PyMuPDFExtractor(Extractor):
         *,
         layout_mode: str = "auto",
         geometric_noise: GeometricNoiseConfig | None = None,
+        preserve_spatial_bboxes: bool = False,
     ) -> None:
         """
         :param sort: يرتّب الكتل بإحداثياتها قبل الإخراج (مُهلِك للعربية غالباً).
@@ -36,6 +37,7 @@ class PyMuPDFExtractor(Extractor):
         self.sort = sort
         self.bidi = bidi
         self.layout_mode = layout_mode
+        self.preserve_spatial_bboxes = preserve_spatial_bboxes
         self.noise_filter = (
             GeometricNoiseFilter(geometric_noise)
             if geometric_noise is not None
@@ -120,7 +122,7 @@ class PyMuPDFExtractor(Extractor):
 
         Never glue marks onto whitespace or punctuation.
         """
-        bases: list[list] = []  # mutable [y, x, text, size, seq, glyph_id, font]
+        bases: list[list] = []  # mutable [y, x, text, size, seq, glyph_id, font, bbox]
         # (y, x, ch, size) — size carried for stack thresholds
         marks: list[tuple[float, float, str, float]] = []
         size_hint = 10.0
@@ -143,7 +145,10 @@ class PyMuPDFExtractor(Extractor):
                     for m in mark_exp:
                         marks.append((y, x, m, size))
                 else:
-                    bases.append([y, x, ch, size, seq, int(glyph_id), font])
+                    base = [y, x, ch, size, seq, int(glyph_id), font]
+                    if self.preserve_spatial_bboxes:
+                        base.append(tuple(float(value) for value in _bbox[:4]))
+                    bases.append(base)
 
         last_i: int | None = None
         last_mx: float | None = None
@@ -183,10 +188,7 @@ class PyMuPDFExtractor(Extractor):
                 bases[best_i][2] = self._attach_mark(bases[best_i][2], mch)
                 last_i, last_mx, last_my = best_i, mx, my
 
-        return [
-            (y, x, text, sz, sq, glyph_id, font)
-            for y, x, text, sz, sq, glyph_id, font in bases
-        ]
+        return [tuple(base) for base in bases]
 
     @staticmethod
     def _glyphs_to_layout_glyphs(glyphs: list[tuple]) -> list:
@@ -196,7 +198,8 @@ class PyMuPDFExtractor(Extractor):
         for g in glyphs:
             y, x, t, s = g[0], g[1], g[2], g[3]
             sq = int(g[4]) if len(g) > 4 else 0
-            out.append(Glyph(y=y, x=x, text=t, size=s, seq=sq))
+            bbox = tuple(float(value) for value in g[7][:4]) if len(g) > 7 else None
+            out.append(Glyph(y=y, x=x, text=t, size=s, seq=sq, bbox=bbox))
         return out
 
     def _geometric_text_from_glyphs(

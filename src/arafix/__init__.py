@@ -107,6 +107,7 @@ from .pipeline import (
     repair_blocks,
     repair_text,
 )
+from .rag import RAGChunk, extract_pdf_rag, spatial_rag_chunks
 from .scientific import (
     BFEReport,
     DBRReport,
@@ -147,6 +148,9 @@ __all__ = [
     "repair_text",
     "repair_blocks",
     "extract_pdf",
+    "extract_pdf_rag",
+    "spatial_rag_chunks",
+    "RAGChunk",
     "PipelineConfig",
     "harvest_document_lexicon",
     # مهايئات

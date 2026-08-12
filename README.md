@@ -88,6 +88,33 @@ The current `main` branch includes the following measured improvements. Detailed
 
 No speculative layout cache is shipped: its measured profiler result was slower than the uncached path. No C/Rust extension or OCR dependency was added because the measured evidence did not justify either.
 
+### Native Spatial RAG output
+
+For retrieval-augmented generation pipelines, `extract_pdf_rag()` returns a deterministic JSON document whose chunks contain repaired text, page number, exact PDF coordinates when PyMuPDF provides them, structural role, and parent heading context. It uses the existing reading-order and table analysis; it does not download an embedding model, call an LLM, or add a vector-store dependency.
+
+```python
+from arafix import extract_pdf_rag
+
+rag_json = extract_pdf_rag("thesis.pdf", max_chars=1200)
+```
+
+The same output is available after normal extraction through `DocumentResult.to_rag_json()`. The schema is `arafix.spatial-rag.v1`:
+
+```json
+{
+  "id": "p2-b3-0",
+  "text": "Repaired Arabic paragraph",
+  "page": 2,
+  "bbox": [72.0, 144.2, 510.4, 198.7],
+  "role": "paragraph",
+  "parent_context": ["الفصل الأول"],
+  "source": "thesis.pdf",
+  "metadata": {"line_count": 3}
+}
+```
+
+Chunking is structure-aware rather than embedding-based: headings start a new ancestry scope, nearby lines are grouped until a geometric paragraph break or `max_chars`, and table cells become individually citeable chunks with row/column metadata. Exact paint bboxes are collected only for this opt-in RAG path; ordinary `extract_pdf()` keeps the previous output and does not retain them.
+
 ### What it fixes (and what it doesn’t)
 
 | Symptom | Cause | Stage / tool |
@@ -246,6 +273,15 @@ Colab مقيّد، خادم بلا إنترنت، Lambda. التبعيّات ك�
 للجزر اللاتينية مثل التواريخ والإصدارات وأرقام الهواتف، وفلتر هندسي محافظ
 للعلامات المائية، وقواعد سياقية للفراغات حول الترقيم العربي. لم تُضف تبعية
 إجبارية أو OCR، ولم يُعتمد cache للتخطيط لأن القياس أثبت أنه أبطأ.
+
+ولأن النص المسترد يحتاج أحياناً إلى الاستشهاد داخل نظام RAG، توفر المكتبة
+`extract_pdf_rag("thesis.pdf")` مخرج JSON منظماً: كل chunk يحمل النص المصحح،
+رقم الصفحة، `bbox` بالإحداثيات المكانية، الدور البنيوي (`heading` أو
+`paragraph` أو `table_cell`)، والسياق الأبوي للعناوين. التجزئة حتمية ومبنية
+على العناوين والفواصل الهندسية وحدّ المحارف، لا على نموذج خارجي؛ لذلك لا
+تحتاج إلى Torch أو Transformers أو قاعدة متجهات. كما يمكن استدعاء
+`doc.to_rag_json()` بعد `extract_pdf()` العادي. يحافظ `extract_pdf()` على
+مخرجه السابق، ولا يحتفظ بـbbox الدقيق إلا في مسار RAG الاختياري.
 
 ---
 

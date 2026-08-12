@@ -53,6 +53,8 @@ class Glyph:
     size: float = 10.0
     #: ترتيب التيار (seqno) — يُستعمل لإعادة ترتيب جزر LTR بعد الفرز بـ x.
     seq: int = 0
+    #: رسم الجليف الأصلي، إن وفره المستخرج (x0, y0, x1, y1).
+    bbox: tuple[float, float, float, float] | None = None
 
 
 def _glyph_is_ltr_unit(text: str) -> bool:
@@ -260,6 +262,19 @@ class LayoutLine:
         size = self.glyphs[0].size if self.glyphs else 10.0
         return (self.x0, self.y - size, self.x1, self.y + size * 0.3)
 
+    @property
+    def spatial_bbox(self) -> tuple[float, float, float, float]:
+        """Use exact paint bboxes when available, without changing layout logic."""
+        exact = [g.bbox for g in self.glyphs if g.bbox is not None]
+        if not exact:
+            return self.bbox
+        return (
+            min(box[0] for box in exact),
+            min(box[1] for box in exact),
+            max(box[2] for box in exact),
+            max(box[3] for box in exact),
+        )
+
 
 @dataclass
 class LayoutColumn:
@@ -278,6 +293,7 @@ class LayoutTable:
     rows: list[list[str]]
     bbox: tuple[float, float, float, float] = (0, 0, 0, 0)
     n_cols: int = 0
+    cell_bboxes: list[list[tuple[float, float, float, float]]] = field(default_factory=list)
 
     def to_blocks(self, page: int = 0, table_id: int = 0) -> list[TextBlock]:
         blocks: list[TextBlock] = []
@@ -288,6 +304,11 @@ class LayoutTable:
                         text=cell,
                         id=f"p{page}t{table_id}r{i}c{j}",
                         role="cell",
+                        bbox=(
+                            self.cell_bboxes[i][j]
+                            if i < len(self.cell_bboxes) and j < len(self.cell_bboxes[i])
+                            else self.bbox
+                        ),
                         meta={"row": i, "col": j, "table": table_id, "page": page},
                     )
                 )
@@ -587,7 +608,9 @@ def _band_filter_glyphs(
     return headers, body, footers
 
 
-def _split_line_into_cells(line: LayoutLine, cfg: LayoutConfig) -> list[str]:
+def _split_line_glyphs_into_cells(
+    line: LayoutLine, cfg: LayoutConfig
+) -> list[list[Glyph]]:
     if not line.glyphs:
         return []
     gs = sorted(line.glyphs, key=lambda g: g.x)
@@ -601,7 +624,11 @@ def _split_line_into_cells(line: LayoutLine, cfg: LayoutConfig) -> list[str]:
             cells.append([g])
         else:
             cells[-1].append(g)
-    return ["".join(g.text for g in cell) for cell in cells]
+    return cells
+
+
+def _split_line_into_cells(line: LayoutLine, cfg: LayoutConfig) -> list[str]:
+    return ["".join(g.text for g in cell) for cell in _split_line_glyphs_into_cells(line, cfg)]
 
 
 def _detect_tables_in_lines(
@@ -613,6 +640,14 @@ def _detect_tables_in_lines(
         return lines, []
 
     cell_rows = [_split_line_into_cells(ln, cfg) for ln in lines]
+    has_spatial_bboxes = any(
+        g.bbox is not None for line in lines for g in line.glyphs
+    )
+    cell_glyph_rows = (
+        [_split_line_glyphs_into_cells(ln, cfg) for ln in lines]
+        if has_spatial_bboxes
+        else []
+    )
     tables: list[LayoutTable] = []
     consumed: set[int] = set()
     i = 0
@@ -631,9 +666,38 @@ def _detect_tables_in_lines(
                 n_cols = int(statistics.median(counts))
 
             rows_data: list[list[str]] = []
+            cell_bboxes: list[list[tuple[float, float, float, float]]] = []
             for k in range(i, j):
                 row = cell_rows[k][:n_cols]
                 row = row + [""] * (n_cols - len(row))
+                if cell_glyph_rows:
+                    boxes: list[tuple[float, float, float, float]] = []
+                    for cell in cell_glyph_rows[k][:n_cols]:
+                        if not cell:
+                            boxes.append(lines[k].bbox)
+                            continue
+                        exact = [g.bbox for g in cell if g.bbox is not None]
+                        if exact:
+                            boxes.append(
+                                (
+                                    min(box[0] for box in exact),
+                                    min(box[1] for box in exact),
+                                    max(box[2] for box in exact),
+                                    max(box[3] for box in exact),
+                                )
+                            )
+                        else:
+                            boxes.append(
+                                (
+                                    min(g.x for g in cell),
+                                    min(g.y - g.size for g in cell),
+                                    max(g.x + g.size * 0.5 for g in cell),
+                                    max(g.y + g.size * 0.3 for g in cell),
+                                )
+                            )
+                    if len(boxes) < n_cols:
+                        boxes.extend([lines[k].bbox] * (n_cols - len(boxes)))
+                    cell_bboxes.append(boxes[:n_cols])
                 rows_data.append(row)
                 consumed.add(k)
 
@@ -642,7 +706,12 @@ def _detect_tables_in_lines(
             x0 = min(lines[k].x0 for k in range(i, j))
             x1 = max(lines[k].x1 for k in range(i, j))
             tables.append(
-                LayoutTable(rows=rows_data, bbox=(x0, y0, x1, y1), n_cols=n_cols)
+                LayoutTable(
+                    rows=rows_data,
+                    bbox=(x0, y0, x1, y1),
+                    n_cols=n_cols,
+                    cell_bboxes=cell_bboxes,
+                )
             )
             i = j
         else:

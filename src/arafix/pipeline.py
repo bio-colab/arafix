@@ -160,6 +160,9 @@ class PipelineConfig:
         default_factory=GeometricNoiseConfig
     )
 
+    #: احتفظ بـbbox الرسم الأصلي للـRAG المكاني. مطفأ افتراضياً لتجنب كلفة إضافية.
+    preserve_spatial_bboxes: bool = False
+
 
 def harvest_document_lexicon(texts: Iterable[str]) -> set[str]:
     """
@@ -567,6 +570,7 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
             PyMuPDFExtractor(
                 layout_mode=cfg.layout,
                 geometric_noise=cfg.geometric_noise,
+                preserve_spatial_bboxes=cfg.preserve_spatial_bboxes,
             )
             if PyMuPDFExtractor.available()
             else get_extractor("auto")
@@ -576,7 +580,10 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
 
         cls = REGISTRY.get(cfg.extractor)
         if cls is not None and cfg.extractor == "pymupdf":
-            extractor = cls(layout_mode=cfg.layout)  # type: ignore[call-arg]
+            extractor = cls(
+                layout_mode=cfg.layout,
+                preserve_spatial_bboxes=cfg.preserve_spatial_bboxes,
+            )  # type: ignore[call-arg]
         else:
             extractor = get_extractor(cfg.extractor)
 
@@ -708,6 +715,8 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
                 layout=layout,
                 blocks=repaired,
                 n_columns=layout.n_columns,
+                width=raw.width,
+                height=raw.height,
                 tables=_repaired_tables(layout, by_id, raw.number),
             )
 
@@ -724,6 +733,8 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
         fonts=raw.fonts,
         layout=layout,
         n_columns=layout.n_columns if layout else 1,
+        width=raw.width,
+        height=raw.height,
         tables=_raw_tables(layout) if layout else [],
     )
 

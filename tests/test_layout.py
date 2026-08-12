@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import pytest
-
 from arafix.layout import (
     Glyph,
     LayoutConfig,
@@ -79,7 +78,11 @@ class TestColumnsRTL:
         assert "يمين" in lay.columns[0].text
         assert "وسط" in lay.columns[1].text
         assert "يسار" in lay.columns[2].text
-        assert lay.plain_text.index("يمينأ") < lay.plain_text.index("وسطأ") < lay.plain_text.index("يسارأ")
+        assert (
+            lay.plain_text.index("يمينأ")
+            < lay.plain_text.index("وسطأ")
+            < lay.plain_text.index("يسارأ")
+        )
 
     def test_single_column_stays_linear(self):
         glyphs = _col_glyphs(
@@ -156,6 +159,29 @@ class TestTables:
         assert lay.tables[0].n_cols >= 2
         md = table_to_markdown(lay.tables[0].rows)
         assert "|" in md
+
+    def test_merged_heading_is_kept_in_table_grid(self):
+        glyphs: list[Glyph] = []
+        for j, ch in enumerate("عنوان مدمج"):
+            glyphs.append(Glyph(y=100, x=220 + j * 9, text=ch, size=11))
+        rows = [
+            ("اسم", 90, "قيمة", 250, "وحدة", 410),
+            ("طول", 90, "12", 250, "سم", 410),
+            ("عرض", 90, "8", 250, "سم", 410),
+            ("ارتفاع", 90, "3", 250, "م", 410),
+        ]
+        for i, (a, xa, b, xb, c, xc) in enumerate(rows, start=1):
+            y = 100 + i * 24
+            for j, ch in enumerate(a):
+                glyphs.append(Glyph(y=y, x=xa + j * 10, text=ch, size=11))
+            for j, ch in enumerate(b):
+                glyphs.append(Glyph(y=y, x=xb + j * 10, text=ch, size=11))
+            for j, ch in enumerate(c):
+                glyphs.append(Glyph(y=y, x=xc + j * 10, text=ch, size=11))
+
+        lay = analyze_layout(glyphs, page_width=600, page_height=842, mode="full")
+        assert lay.tables
+        assert "عنوان مدمج" in lay.tables[0].rows[0][0]
 
     def test_to_blocks_and_reassemble(self):
         glyphs = _col_glyphs(

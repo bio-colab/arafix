@@ -29,13 +29,13 @@ from .hygiene import (
 )
 from .lamalef import repair_lam_alef_transposition
 from .layout import LayoutConfig, LayoutMode
+from .noise import GeometricNoiseConfig
 from .normalize import (
     NormalizeConfig,
     expand_deferred_forms,
     fold_pdf_homoglyphs,
     normalize_text,
 )
-from .noise import GeometricNoiseConfig
 from .order import ReorderConfig, fix_order
 from .pdf_confusions import repair_pdf_confusions
 from .types import (
@@ -504,7 +504,11 @@ def _recover_broken_cmap_page(raw, glyph_maps) -> tuple[object, int]:
         key = _canonical_font_name(font)
         if key in normalized:
             return normalized[key]
-        matches = [value for name, value in normalized.items() if name.startswith(key) or key.startswith(name)]
+        matches = [
+            value
+            for name, value in normalized.items()
+            if name.startswith(key) or key.startswith(name)
+        ]
         return matches[0] if len(matches) == 1 else None
 
     recovered = 0
@@ -642,10 +646,15 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
 
 def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
     """صفحة واحدة: بنيويّ إن لزم، وإلا خطّيّ كلاسيكي."""
-    from .layout import Glyph, analyze_layout
+    from .layout import Glyph, LayoutConfig, analyze_layout
 
     layout = raw.layout
-    if raw.glyphs:
+    # PyMuPDF geometry extraction has already built this exact default layout
+    # to produce RawPage.text. Reusing it avoids a second full pass over the
+    # same glyphs (bands, gutters, lines, and table candidates) without
+    # changing the result. Rebuild only after CMap changed glyphs (layout=None)
+    # or when the caller supplied non-default layout heuristics.
+    if raw.glyphs and (layout is None or cfg.layout_config != LayoutConfig()):
         gs = []
         for g in raw.glyphs:
             y, x, t, s = g[0], g[1], g[2], g[3]

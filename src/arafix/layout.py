@@ -630,14 +630,32 @@ def _detect_tables_in_lines(
             except statistics.StatisticsError:
                 n_cols = int(statistics.median(counts))
 
+            # A merged heading is represented by one text run immediately
+            # before the regular grid. Include it only when it is vertically
+            # adjacent and horizontally inside the detected table bbox; this
+            # avoids absorbing unrelated page titles into tables.
+            table_start = i
+            while table_start > 0 and len(cell_rows[table_start - 1]) == 1:
+                previous = lines[table_start - 1]
+                first = lines[table_start]
+                row_gap = first.y - previous.y
+                size = statistics.median([g.size for g in previous.glyphs]) or 10.0
+                if row_gap > max(size * 3.5, 24.0):
+                    break
+                grid_x0 = min(lines[k].x0 for k in range(i, j))
+                grid_x1 = max(lines[k].x1 for k in range(i, j))
+                if previous.x0 < grid_x0 or previous.x1 > grid_x1:
+                    break
+                table_start -= 1
+
             rows_data: list[list[str]] = []
-            for k in range(i, j):
+            for k in range(table_start, j):
                 row = cell_rows[k][:n_cols]
                 row = row + [""] * (n_cols - len(row))
                 rows_data.append(row)
                 consumed.add(k)
 
-            y0 = lines[i].bbox[1]
+            y0 = lines[table_start].bbox[1]
             y1 = lines[j - 1].bbox[3]
             x0 = min(lines[k].x0 for k in range(i, j))
             x1 = max(lines[k].x1 for k in range(i, j))

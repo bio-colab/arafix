@@ -9,19 +9,20 @@ Corpus
 
 What we assert (and what we do not)
 -----------------------------------
-* **Gate (must hold):** Letters-only CER (ignoring spaces, digits, and punctuation) is near-perfect (< 2%).
-* **Content/Full CER:** Stays below 18% (accounting for the PDF's inherent spacing noise).
-* **Stages/Defects:** Diagnosis detects PRESENTATION_FORMS and VISUAL_ORDER, and applies NORMALIZE and REORDER.
+* **Gate (must hold):** Letters-only CER (ignoring spaces, digits, and punctuation)
+  is near-perfect (< 2%).
+* **Content/Full CER:** Stays below 18% (accounting for the PDF's inherent
+  spacing noise).
+* **Stages/Defects:** Diagnosis detects PRESENTATION_FORMS and VISUAL_ORDER,
+  and applies NORMALIZE and REORDER.
 * **Documented ceilings:** Headroom is provided for platforms and future minor spacing improvements.
 """
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
-
 from arafix import (
     Defect,
     EvalConfig,

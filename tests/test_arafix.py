@@ -9,7 +9,6 @@ import pathlib
 import unicodedata
 
 import pytest
-
 from arafix import (
     Defect,
     NormalizeConfig,
@@ -958,6 +957,7 @@ class TestCMapGlyphRecovery:
 
     def test_builds_glyph_id_map_from_real_arabic_font(self):
         from pathlib import Path
+
         import pytest
         from arafix.cmap import build_glyph_map
 
@@ -971,4 +971,8 @@ class TestCMapGlyphRecovery:
         glyph_map = build_glyph_map(font.read_bytes(), font.name)
         assert glyph_map.by_name
         assert glyph_map.by_id
-        assert any("\u0621" <= char <= "\u064a" for value in glyph_map.by_id.values() for char in value)
+        assert any(
+            "\u0621" <= char <= "\u064a"
+            for value in glyph_map.by_id.values()
+            for char in value
+        )

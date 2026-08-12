@@ -75,6 +75,7 @@ from .layout import (
     table_to_markdown,
 )
 from .lexicon import clear_core_lexicon_cache, core_lexicon_size, get_core_lexicon
+from .noise import GeometricNoiseConfig, GeometricNoiseFilter
 from .normalize import (
     NormalizeConfig,
     expand_deferred_forms,
@@ -84,7 +85,6 @@ from .normalize import (
     fold_simple_forms,
     normalize_text,
 )
-from .noise import GeometricNoiseConfig, GeometricNoiseFilter
 from .order import (
     MIRROR_PAIRS,
     ReorderConfig,

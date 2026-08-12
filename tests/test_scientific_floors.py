@@ -17,7 +17,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from arafix import extract_pdf, scientific_audit
 from arafix.extractors import PyMuPDFExtractor
 

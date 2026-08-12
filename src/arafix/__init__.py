@@ -84,6 +84,7 @@ from .normalize import (
     fold_simple_forms,
     normalize_text,
 )
+from .noise import GeometricNoiseConfig, GeometricNoiseFilter
 from .order import (
     MIRROR_PAIRS,
     ReorderConfig,
@@ -182,6 +183,8 @@ __all__ = [
     "expand_deferred_forms",
     "expand_ligatures",
     "NormalizeConfig",
+    "GeometricNoiseConfig",
+    "GeometricNoiseFilter",
     # معجم النواة
     "get_core_lexicon",
     "core_lexicon_size",

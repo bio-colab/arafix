@@ -12,6 +12,7 @@ import unicodedata
 from collections.abc import Iterator
 
 from .base import Extractor, RawPage
+from ..noise import GeometricNoiseConfig, GeometricNoiseFilter
 
 __all__ = ["PyMuPDFExtractor"]
 
@@ -25,6 +26,7 @@ class PyMuPDFExtractor(Extractor):
         bidi: str = "geometry",
         *,
         layout_mode: str = "auto",
+        geometric_noise: GeometricNoiseConfig | None = None,
     ) -> None:
         """
         :param sort: يرتّب الكتل بإحداثياتها قبل الإخراج (مُهلِك للعربية غالباً).
@@ -34,6 +36,11 @@ class PyMuPDFExtractor(Extractor):
         self.sort = sort
         self.bidi = bidi
         self.layout_mode = layout_mode
+        self.noise_filter = (
+            GeometricNoiseFilter(geometric_noise)
+            if geometric_noise is not None
+            else None
+        )
 
     @classmethod
     def available(cls) -> bool:
@@ -93,7 +100,7 @@ class PyMuPDFExtractor(Extractor):
         base, existing = base_text[0], base_text[1:]
         return base + order_combining_marks(existing + mark)
 
-    def _extract_glyphs(self, page) -> list[tuple[float, float, str, float, int]]:
+    def _extract_glyphs(self, page, spans=None) -> list[tuple[float, float, str, float, int]]:
         """
         Read the paint stream: ``(y, x, text, size, seq)``.
 
@@ -118,7 +125,8 @@ class PyMuPDFExtractor(Extractor):
         marks: list[tuple[float, float, str, float]] = []
         size_hint = 10.0
         seq = 0
-        for span in sorted(page.get_texttrace(), key=lambda s: s.get("seqno", 0)):
+        traces = spans if spans is not None else page.get_texttrace()
+        for span in sorted(traces, key=lambda s: s.get("seqno", 0)):
             if span.get("type", 0) != 0:
                 continue
             font = str(span.get("font") or "")
@@ -218,7 +226,21 @@ class PyMuPDFExtractor(Extractor):
     def pages(self, path: str) -> Iterator[RawPage]:
         doc = self._open(path)
         try:
-            for i, page in enumerate(doc, start=1):
+            repeated_keys: set[tuple] = set()
+            if (
+                self.noise_filter is not None
+                and self.bidi == "geometry"
+                and self.noise_filter.config.remove_repeated_short_spans
+            ):
+                # Keep only compact fingerprints in the first pass; full spans
+                # are loaded again page-by-page in the extraction pass.
+                repeated_keys = self.noise_filter.repeated_keys(
+                    page.get_texttrace() for page in doc
+                )
+
+            for i in range(len(doc)):
+                page = doc.load_page(i)
+                number = i + 1
                 rect = page.rect
                 width, height = float(rect.width), float(rect.height)
                 fonts: list[str] = []
@@ -227,11 +249,18 @@ class PyMuPDFExtractor(Extractor):
                 has_images = bool(page.get_images(full=True))
 
                 if self.bidi == "geometry":
-                    glyphs = self._extract_glyphs(page)
+                    traces = page.get_texttrace()
+                    noise_removed = 0
+                    noise_reasons: dict[str, int] = {}
+                    if self.noise_filter is not None:
+                        traces, noise_removed, noise_reasons = self.noise_filter.filter_spans(
+                            traces, repeated_keys
+                        )
+                    glyphs = self._extract_glyphs(page, traces)
                     layout = self._build_layout(glyphs, width, height)
                     text = layout.plain_text if layout else self._geometric_text_from_glyphs(glyphs)
                     yield RawPage(
-                        number=i,
+                        number=number,
                         text=text,
                         fonts=fonts,
                         has_images=has_images,
@@ -239,11 +268,13 @@ class PyMuPDFExtractor(Extractor):
                         height=height,
                         glyphs=glyphs,
                         layout=layout,
+                        noise_spans_removed=noise_removed,
+                        noise_reasons=noise_reasons,
                     )
                 else:
                     text = page.get_text("text", sort=self.sort)
                     yield RawPage(
-                        number=i,
+                        number=number,
                         text=text,
                         fonts=fonts,
                         has_images=has_images,

@@ -34,6 +34,7 @@ from .normalize import (
     fold_pdf_homoglyphs,
     normalize_text,
 )
+from .noise import GeometricNoiseConfig
 from .order import ReorderConfig, fix_order
 from .pdf_confusions import repair_pdf_confusions
 from .types import (
@@ -151,6 +152,12 @@ class PipelineConfig:
     #: independent-eval books: امل→الم، كثري→كثير، …). Not AI-generated.
     #: See ``arafix.pdf_confusions``. Off = leave raw after PF/order only.
     enable_pdf_confusion_repair: bool = True
+
+    #: فلترة spans PDF ذات دليل هندسي قوي (watermark رمادي مائل/تكرار موضعي).
+    #: None يعطلها؛ الافتراضي المحافظ مفعّل في مسار PyMuPDF الهندسي فقط.
+    geometric_noise: GeometricNoiseConfig | None = field(
+        default_factory=GeometricNoiseConfig
+    )
 
 
 def harvest_document_lexicon(texts: Iterable[str]) -> set[str]:
@@ -551,7 +558,10 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
         from .extractors import PyMuPDFExtractor
 
         extractor = (
-            PyMuPDFExtractor(layout_mode=cfg.layout)
+            PyMuPDFExtractor(
+                layout_mode=cfg.layout,
+                geometric_noise=cfg.geometric_noise,
+            )
             if PyMuPDFExtractor.available()
             else get_extractor("auto")
         )
@@ -572,7 +582,12 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
 
     glyph_maps = None
     cmap_recovered = 0
+    noise_removed = 0
+    noise_reasons: dict[str, int] = {}
     for raw in extractor.pages(path):
+        noise_removed += int(getattr(raw, "noise_spans_removed", 0) or 0)
+        for reason, count in (getattr(raw, "noise_reasons", {}) or {}).items():
+            noise_reasons[reason] = noise_reasons.get(reason, 0) + int(count)
         has_unmapped = any(
             any("\ue000" <= char <= "\uf8ff" or char == "\ufffd" for char in glyph[2])
             for glyph in raw.glyphs
@@ -595,7 +610,9 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
 
     if cmap_recovered:
         doc.metadata["cmap_glyphs_recovered"] = cmap_recovered
-
+    if noise_removed:
+        doc.metadata["geometric_noise_spans_removed"] = noise_removed
+        doc.metadata["geometric_noise_reasons"] = noise_reasons
     if cfg.harvest_document_lexicon and cfg.enable_lam_alef_repair and doc.pages:
         vocab = harvest_document_lexicon(p.text for p in doc.pages)
         extra = _effective_lexicon(cfg)

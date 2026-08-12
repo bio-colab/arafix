@@ -33,6 +33,10 @@ class RawPage:
     glyphs: list[tuple] = field(default_factory=list)
     #: ``PageLayout`` جاهز إن حُسب أثناء الاستخراج.
     layout: Any = None
+    #: عدد spans التي حذفها فلتر الضوضاء الهندسية قبل بناء الجليفات.
+    noise_spans_removed: int = 0
+    #: أسباب الحذف بحسب نوع الدليل الفيزيائي.
+    noise_reasons: dict[str, int] = field(default_factory=dict)
 
     @property
     def is_empty(self) -> bool:

@@ -56,11 +56,11 @@ MIRROR_PAIRS = {
 _LTR_ATOM = r"[0-9\u0660-\u0669\u06F0-\u06F9A-Za-z\u00C0-\u024F]"
 _LTR_CONT = (
     r"[0-9\u0660-\u0669\u06F0-\u06F9A-Za-z\u00C0-\u024F"
-    r".,:/\\\-+%°'\u2019_\u2013\u2014]"
+    r".,:/\\\\\-+%@°'\u2019_\u2013\u2014]"
 )
-#: Currency/percent often sit on the edge of a number; after reverse they
+#: Currency/percent/signs often sit on the edge of a number; after reverse they
 #: land on the wrong side unless the island includes them (``3.5%`` ↔ ``%5.3``).
-_LTR_EDGE = r"[%#$€£]"
+_LTR_EDGE = r"[%#$€£+]"
 #: Island: optional edge marks + LTR tokens separated by spaces
 #: (``M/V Ever Lovely``, ``13-7``, ``GDP_2024``, ``3.5%``).
 _LTR_RUN = re.compile(
@@ -71,6 +71,115 @@ _LTR_RUN = re.compile(
 
 #: فرق الدرجة الذي يبرّر الإبقاء على الجزيرة بدل إعادة عكسها التقليدية.
 _LTR_SCORE_MARGIN = 2.0
+
+# A solid LTR block is restored after the Arabic grapheme sequence has been
+# reversed.  It must not be reversed a second time by the heuristic scorer.
+# Keep these patterns intentionally ASCII/number-focused: they are not a
+# language model and must never rewrite Arabic text.
+_LTR_DIGIT_CHARS = r"0-9\u0660-\u0669\u06F0-\u06F9"
+_LTR_DIGIT = rf"[{_LTR_DIGIT_CHARS}]"
+_SOLID_DATE = re.compile(
+    rf"^{_LTR_DIGIT}{{1,4}}[-–—]{_LTR_DIGIT}{{1,2}}[-–—]{_LTR_DIGIT}{{1,4}}$"
+)
+_SOLID_RANGE = re.compile(
+    rf"^{_LTR_DIGIT}{{1,4}}[-–—]{_LTR_DIGIT}{{1,4}}$"
+)
+_SOLID_PHONE = re.compile(
+    rf"^\+?{_LTR_DIGIT}(?:[{_LTR_DIGIT_CHARS} ()-]){{5,}}{_LTR_DIGIT}$"
+)
+_SOLID_VERSION = re.compile(
+    r"^(?:[A-Za-z]+-)?v?[0-9]+(?:\.[0-9]+)+(?:-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)?$"
+    r"|^[A-Za-z]+-v?[0-9]+(?:\.[0-9]+)+(?:-[A-Za-z0-9.]+)*$"
+)
+_SOLID_EMAIL = re.compile(
+    r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+)
+_SOLID_HYBRID = re.compile(
+    r"^(?=.*[A-Za-z])[0-9A-Za-z][0-9A-Za-z._/@+%-]*"
+    r"(?:[ \t]+[0-9A-Za-z][0-9A-Za-z._/@+%-]*)+$"
+    r"|^(?=.*[A-Za-z])(?=.*[0-9])[0-9A-Za-z][0-9A-Za-z._/@+%-]*$"
+    r"|^(?=.*[A-Za-z])(?=.*[/_@+-])[0-9A-Za-z][0-9A-Za-z._/@+%-]*$"
+)
+
+
+def _solid_ltr_candidate(run: str) -> str:
+    """Strip only edge punctuation permitted by `_LTR_RUN`."""
+    return run.strip().rstrip(".,;:!?")
+
+
+def _is_solid_ltr_block(run: str) -> bool:
+    """Return whether *run* is an atomic mixed-direction token sequence.
+
+    Dates, page ranges, phone numbers, versions, and Latin/number hybrids are
+    semantic units. Once the surrounding grapheme sequence is reversed,
+    flipping such a run again corrupts digits, separators, or Latin word order.
+    """
+    candidate = _solid_ltr_candidate(run)
+    if not candidate:
+        return False
+    return any(
+        pattern.fullmatch(candidate)
+        for pattern in (
+            _SOLID_DATE,
+            _SOLID_RANGE,
+            _SOLID_PHONE,
+            _SOLID_VERSION,
+            _SOLID_EMAIL,
+            _SOLID_HYBRID,
+        )
+    )
+
+
+def _solid_ltr_quality(run: str) -> float:
+    """Score the direction of a solid block without linguistic guessing."""
+    candidate = _solid_ltr_candidate(run)
+    if not candidate:
+        return -100.0
+    score = 0.0
+    date = _SOLID_DATE.fullmatch(candidate)
+    if date:
+        parts = re.split(r"[-–—]", candidate)
+        if parts[-1].startswith(("19", "20")):
+            score += 12.0
+        if len(parts[0]) <= 2:
+            score += 1.0
+    page_range = _SOLID_RANGE.fullmatch(candidate)
+    if page_range:
+        left, right = re.split(r"[-–—]", candidate)
+        left_i, right_i = int(left), int(right)
+        if not left.startswith("0"):
+            score += 3.0
+        if left_i <= right_i:
+            score += 1.0
+        # A two-part token can be a DD-MM date or a page range. Prefer
+        # DD-MM only when the alternative is calendar-invalid; otherwise keep
+        # the geometrically recovered order and let page-range normalization
+        # handle explicit `ص.`/`p.` ranges later.
+        if 1 <= left_i <= 31 and 1 <= right_i <= 12:
+            score += 8.0
+        elif 1 <= left_i <= 12 < right_i <= 31:
+            score -= 8.0
+    if _SOLID_PHONE.fullmatch(candidate):
+        if candidate.startswith(("+", "0")):
+            score += 8.0
+    if _SOLID_VERSION.fullmatch(candidate):
+        if re.match(r"^(?:v|[A-Za-z]+-)", candidate):
+            score += 6.0
+    if _SOLID_EMAIL.fullmatch(candidate):
+        score += 10.0
+    if _SOLID_HYBRID.fullmatch(candidate):
+        tokens = candidate.split()
+        if tokens and tokens[0][:1].isalpha():
+            score += 2.0
+        for token in tokens:
+            letters = "".join(ch for ch in token if ch.isalpha())
+            if len(letters) >= 2:
+                if token[0].isupper() and token[-1].islower():
+                    score += 2.0
+                if token[0].islower() and token[-1].isupper():
+                    score -= 2.0
+    return score
+
 
 _CURRENCY_CODE = re.compile(
     r"\b(?:USD|EUR|GBP|IQD|SAR|AED|YER|OMR|KWD|BHD|QAR|EGP|JOD)\b",
@@ -289,8 +398,15 @@ def _restore_one_ltr_run(run: str, *, smart: bool) -> str:
     if not smart:
         return run[::-1]
     flipped = run[::-1]
-    s0 = _ltr_wellformed_score(run)
-    s1 = _ltr_wellformed_score(flipped)
+    if _is_solid_ltr_block(run):
+        if not _is_solid_ltr_block(flipped):
+            return run
+        if _solid_ltr_quality(run) >= _solid_ltr_quality(flipped):
+            return run
+        return flipped
+    candidate = _solid_ltr_candidate(run)
+    s0 = _ltr_wellformed_score(candidate)
+    s1 = _ltr_wellformed_score(candidate[::-1])
     # إن تفوّقت الصيغة الحالية بهامش واضح أبقِها (مبلغ سليم بعد عكس كامل).
     if s0 > s1 + _LTR_SCORE_MARGIN:
         return run
@@ -300,8 +416,25 @@ def _restore_one_ltr_run(run: str, *, smart: bool) -> str:
     return flipped
 
 
+_PAGE_RANGE_CONTEXT = re.compile(
+    r"(?:^|[\s()])(?:ص|p{1,2})\s*\.?\s*$",
+    re.IGNORECASE,
+)
+
+
 def _restore_ltr_runs(text: str, *, smart: bool) -> str:
-    return _LTR_RUN.sub(lambda m: _restore_one_ltr_run(m.group(0), smart=smart), text)
+    def repl(match: re.Match[str]) -> str:
+        run = match.group(0)
+        candidate = _solid_ltr_candidate(run)
+        before = text[: match.start()]
+        if _SOLID_RANGE.fullmatch(candidate) and _PAGE_RANGE_CONTEXT.search(before):
+            # The range is adjacent to an explicit page marker.  It is a
+            # page-range token, not a DD-MM date; reverse its visual digits
+            # and let normalize_page_ranges order its endpoints afterwards.
+            return run[::-1]
+        return _restore_one_ltr_run(run, smart=smart)
+
+    return _LTR_RUN.sub(repl, text)
 
 
 def _looks_ltr_heavy(inner: str) -> bool:

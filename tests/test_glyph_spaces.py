@@ -33,6 +33,17 @@ class TestGlyphSpaces:
         text = join_glyphs_preserving_ltr(_line(left + right), insert_spaces=False)
         assert " " not in text
 
+    def test_explicit_pdf_spaces_disable_inferred_letter_spaces(self):
+        # Advances in shaped Arabic fonts vary by glyph width. Once a line
+        # contains explicit whitespace glyphs, inferring additional geometry
+        # spaces fragments valid words.
+        gs = _line([
+            (0.0, "د"), (7.0, "ر"), (16.0, "ا"), (21.0, "س"), (31.0, "ة"),
+            (38.0, " "),
+            (45.0, "م"), (57.0, "ق"), (67.0, "ا"), (72.0, "ر"), (81.0, "ن"), (90.0, "ة"),
+        ], size=16.0)
+        assert join_glyphs_preserving_ltr(gs) == "دراسة مقارنة"
+
 
 class TestCollapseMidword:
     def test_collapses_false_split(self):
@@ -48,6 +59,12 @@ class TestCollapseMidword:
     def test_keeps_short_real_words_before_normal_words(self):
         assert collapse_midword_spaces("نص سليم") == "نص سليم"
         assert collapse_midword_spaces("أي إصلاح") == "أي إصلاح"
+
+    def test_keeps_word_boundary_before_diacritized_normal_word(self):
+        # Counting only contiguous base letters mistakes شنّت for a 2-letter
+        # fragment because shadda interrupts the regex before the third base.
+        assert collapse_midword_spaces("حين شنّت") == "حين شنّت"
+        assert collapse_midword_spaces("مَن قرّر") == "مَن قرّر"
 
 
 class TestSpacingPipelineStage:

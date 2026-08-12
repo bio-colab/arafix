@@ -223,13 +223,16 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     stages.append(Stage.DIAGNOSE)
 
     # --- الموجيبيك: يسبق كل شيء، فهو عطبٌ في الترميز لا في النص --------
-    if cfg.enable_mojibake_fix:
-        is_moji, recovered, _ = detect_mojibake(current)
-        if is_moji and recovered:
+    if cfg.enable_mojibake_fix and dg.has(Defect.MOJIBAKE):
+        # diagnose() has already run the exact mojibake detector. For healthy
+        # input, running it again is an expensive duplicate scan; only decode
+        # a second time when the diagnosis established this defect.
+        _is_moji, recovered, _ = detect_mojibake(current)
+        if recovered:
             current = recovered
             notes.append("أُصلح موجيبيك (UTF-8 كان مفكوكاً بـ Latin-1)")
             dg = diagnose(current, th)  # كل تشخيصٍ سابق كان على نصٍّ مشوّه
-    elif dg.has(Defect.MOJIBAKE):
+    elif not cfg.enable_mojibake_fix and dg.has(Defect.MOJIBAKE):
         notes.append("كُشف موجيبيك ولم يُصلَح (المفتاح مطفأ)")
 
     # --- الدرجة ١أ: الأشكال المفردة وحدها -----------------------------
@@ -472,6 +475,61 @@ def _final_confidence(dg: Diagnosis, order_conf: float, stages: list[Stage]) -> 
     return round(conf, 3)
 
 
+def _canonical_font_name(name: str) -> str:
+    """مقارنة متسامحة لأسماء الخط بين texttrace وموارد PDF."""
+    return re.sub(r"[^0-9a-z]", "", name.lower()).removeprefix("subset")
+
+
+def _recover_broken_cmap_page(raw, glyph_maps) -> tuple[object, int]:
+    """استبدل PUA/FFFD فقط حين يثبت glyph ID معناه في الخط المضمّن.
+
+    لا توجد هنا محاولة لغوية أو تخمين اسم glyph: إن غاب المعرّف أو الخريطة
+    الموثوقة يبقى النص كما هو وتستمر بوابة التشخيص في إظهار BROKEN_CMAP.
+    """
+    if not raw.glyphs or not glyph_maps:
+        return raw, 0
+
+    normalized = {_canonical_font_name(name): glyph_map for name, glyph_map in glyph_maps.items()}
+
+    def find_map(font: str):
+        key = _canonical_font_name(font)
+        if key in normalized:
+            return normalized[key]
+        matches = [value for name, value in normalized.items() if name.startswith(key) or key.startswith(name)]
+        return matches[0] if len(matches) == 1 else None
+
+    recovered = 0
+    glyphs = []
+    replacement_candidates: dict[str, set[str]] = {}
+    for glyph in raw.glyphs:
+        text = glyph[2]
+        is_unmapped = any("\ue000" <= char <= "\uf8ff" or char == "\ufffd" for char in text)
+        glyph_id = int(glyph[5]) if len(glyph) > 5 else None
+        font = str(glyph[6]) if len(glyph) > 6 else ""
+        glyph_map = find_map(font) if glyph_id is not None and font else None
+        replacement = glyph_map.lookup_id(glyph_id) if glyph_map else None
+        if is_unmapped and replacement:
+            glyph = (*glyph[:2], replacement, *glyph[3:])
+            replacement_candidates.setdefault(text, set()).add(replacement)
+            recovered += 1
+        glyphs.append(glyph)
+
+    if not recovered:
+        return raw, 0
+    # A PUA codepoint is not globally meaningful across fonts. Only rewrite
+    # the page text when every occurrence observed for that codepoint agrees;
+    # structural consumers still receive the per-glyph replacements above.
+    replacements = {
+        old: next(iter(values))
+        for old, values in replacement_candidates.items()
+        if len(values) == 1
+    }
+    text = raw.text
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return replace(raw, glyphs=glyphs, text=text, layout=None), recovered
+
+
 def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResult:
     """
     يستخرج ملف PDF كاملاً ويصلحه صفحةً صفحة.
@@ -512,9 +570,31 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
     doc.metadata["extractor"] = extractor.name
     doc.metadata["layout"] = cfg.layout
 
+    glyph_maps = None
+    cmap_recovered = 0
     for raw in extractor.pages(path):
+        has_unmapped = any(
+            any("\ue000" <= char <= "\uf8ff" or char == "\ufffd" for char in glyph[2])
+            for glyph in raw.glyphs
+        )
+        if has_unmapped:
+            if glyph_maps is None:
+                try:
+                    from .cmap import build_glyph_map
+
+                    glyph_maps = {
+                        name: build_glyph_map(data, name)
+                        for name, data in extractor.font_bytes(path).items()
+                    }
+                except Exception:
+                    glyph_maps = {}
+            raw, count = _recover_broken_cmap_page(raw, glyph_maps)
+            cmap_recovered += count
         page = _extract_one_page(raw, page_cfg)
         doc.pages.append(page)
+
+    if cmap_recovered:
+        doc.metadata["cmap_glyphs_recovered"] = cmap_recovered
 
     if cfg.harvest_document_lexicon and cfg.enable_lam_alef_repair and doc.pages:
         vocab = harvest_document_lexicon(p.text for p in doc.pages)

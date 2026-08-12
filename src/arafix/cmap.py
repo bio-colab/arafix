@@ -150,12 +150,18 @@ class GlyphMap:
 
     font_name: str
     by_name: dict[str, str] = field(default_factory=dict)
+    #: رقم glyph داخل الخط ← Unicode. PyMuPDF يوفّر هذا الرقم في texttrace
+    #: حتى عندما تكون ToUnicode تالفة ولا يوفّر اسم glyph.
+    by_id: dict[int, str] = field(default_factory=dict)
     source: str = "unknown"
     coverage: float = 0.0
     notes: list[str] = field(default_factory=list)
 
     def lookup(self, glyph_name: str) -> str | None:
         return self.by_name.get(glyph_name)
+
+    def lookup_id(self, glyph_id: int) -> str | None:
+        return self.by_id.get(glyph_id)
 
     @property
     def confidence(self) -> float:
@@ -187,10 +193,34 @@ def build_glyph_map(font_bytes: bytes, font_name: str = "") -> GlyphMap:
     except Exception:
         total = len(mapping)
 
+    by_id: dict[int, str] = {}
+    try:
+        import io
+
+        from fontTools.ttLib import TTFont  # type: ignore
+
+        f = TTFont(io.BytesIO(font_bytes), fontNumber=0, lazy=True)
+        by_id = {
+            glyph_id: mapping[glyph_name]
+            for glyph_id, glyph_name in enumerate(f.getGlyphOrder())
+            if glyph_name in mapping
+        }
+        f.close()
+    except Exception:
+        # Name recovery remains useful even where a malformed embedded font
+        # cannot expose an order table; do not invent numeric IDs.
+        by_id = {}
+
     coverage = len(mapping) / total if total else 0.0
     source = "font_cmap" if coverage > 0.5 else "glyph_names"
 
-    gm = GlyphMap(font_name=font_name, by_name=mapping, source=source, coverage=round(coverage, 3))
+    gm = GlyphMap(
+        font_name=font_name,
+        by_name=mapping,
+        by_id=by_id,
+        source=source,
+        coverage=round(coverage, 3),
+    )
     if coverage < 0.5:
         gm.notes.append(
             "تغطية منخفضة — الخط غالباً مرمَّز CID بأسماء بلا دلالة؛ "

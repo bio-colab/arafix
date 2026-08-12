@@ -218,6 +218,24 @@ class TestPipeline:
         r = repair_text(MOJIBAKE)
         assert "السلام" in r.text
 
+    def test_healthy_text_does_not_repeat_mojibake_decoding(self, monkeypatch):
+        # diagnose() already checked the clean text. Calling the same decoder
+        # again in the pipeline is pure cost and must not happen.
+        import arafix.pipeline as pipeline
+
+        calls = 0
+        original = pipeline.detect_mojibake
+
+        def counted(text):
+            nonlocal calls
+            calls += 1
+            return original(text)
+
+        monkeypatch.setattr(pipeline, "detect_mojibake", counted)
+        result = pipeline.repair_text("هذه دراسة عربية سليمة لا عطب ترميز فيها")
+        assert result.text == "هذه دراسة عربية سليمة لا عطب ترميز فيها"
+        assert calls == 0
+
     def test_broken_cmap_caps_confidence(self):
         """قرار: لا ثقة عالية في نصٍّ مصدره خريطة تالفة، مهما نظّفناه."""
         r = repair_text("\ue001\ue002\ue003 نص عربي مع رموز خاصة كثيرة هنا")
@@ -908,3 +926,49 @@ class TestFastClassificationMatchesReference:
         from arafix.unicode_tables import _ARABIC_CPS, _PRESENTATION_CPS
 
         assert len(_ARABIC_CPS) + len(_PRESENTATION_CPS) < 4000
+
+
+class TestCMapGlyphRecovery:
+    def test_recovers_only_unmapped_glyphs_from_matching_embedded_font(self):
+        from arafix.cmap import GlyphMap
+        from arafix.extractors.base import RawPage
+        from arafix.pipeline import _recover_broken_cmap_page
+
+        raw = RawPage(
+            number=1,
+            text="\ue001س",
+            fonts=["Example Arabic Book"],
+            glyphs=[
+                (100.0, 10.0, "\ue001", 12.0, 1, 42, "ExampleArabic"),
+                (100.0, 20.0, "س", 12.0, 2, 99, "ExampleArabic"),
+            ],
+        )
+        cmap = GlyphMap(
+            font_name="Example Arabic Book",
+            by_id={42: "م", 99: "لا ينبغي استعمالها"},
+            by_name={},
+            source="font_cmap",
+            coverage=1.0,
+        )
+        repaired, count = _recover_broken_cmap_page(raw, {"Example Arabic Book": cmap})
+        assert count == 1
+        assert repaired.glyphs[0][2] == "م"
+        assert repaired.glyphs[1][2] == "س"
+
+
+    def test_builds_glyph_id_map_from_real_arabic_font(self):
+        from pathlib import Path
+        import pytest
+        from arafix.cmap import build_glyph_map
+
+        candidates = (
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+            Path("/usr/share/fonts/truetype/freefont/FreeSerif.ttf"),
+        )
+        font = next((path for path in candidates if path.is_file()), None)
+        if font is None:
+            pytest.skip("no system Arabic font available for CMap integration")
+        glyph_map = build_glyph_map(font.read_bytes(), font.name)
+        assert glyph_map.by_name
+        assert glyph_map.by_id
+        assert any("\u0621" <= char <= "\u064a" for value in glyph_map.by_id.values() for char in value)

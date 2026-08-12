@@ -28,8 +28,9 @@ class RawPage:
     #: عرض/ارتفاع الصفحة بنقاط PDF — للتحليل البنيويّ.
     width: float = 0.0
     height: float = 0.0
-    #: جليفات هندسية ``(y, x, text, size)`` إن وفّرها المحرّك.
-    glyphs: list[tuple[float, float, str, float]] = field(default_factory=list)
+    #: جليفات هندسية ``(y, x, text, size[, seq, glyph_id, font])`` إن وفّرها
+    #: المحرّك. الحقول الإضافية اختيارية لحفظ توافق المستخرجات الخارجية.
+    glyphs: list[tuple] = field(default_factory=list)
     #: ``PageLayout`` جاهز إن حُسب أثناء الاستخراج.
     layout: Any = None
 

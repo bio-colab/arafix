@@ -113,7 +113,7 @@ class PyMuPDFExtractor(Extractor):
 
         Never glue marks onto whitespace or punctuation.
         """
-        bases: list[list] = []  # mutable [y, x, text, size, seq]
+        bases: list[list] = []  # mutable [y, x, text, size, seq, glyph_id, font]
         # (y, x, ch, size) — size carried for stack thresholds
         marks: list[tuple[float, float, str, float]] = []
         size_hint = 10.0
@@ -121,10 +121,11 @@ class PyMuPDFExtractor(Extractor):
         for span in sorted(page.get_texttrace(), key=lambda s: s.get("seqno", 0)):
             if span.get("type", 0) != 0:
                 continue
+            font = str(span.get("font") or "")
             size = float(span.get("size") or size_hint or 10.0)
             if size:
                 size_hint = size
-            for uni, _gid, origin, _bbox in span["chars"]:
+            for uni, glyph_id, origin, _bbox in span["chars"]:
                 ch = chr(uni)
                 y, x = float(origin[1]), float(origin[0])
                 seq += 1
@@ -134,7 +135,7 @@ class PyMuPDFExtractor(Extractor):
                     for m in mark_exp:
                         marks.append((y, x, m, size))
                 else:
-                    bases.append([y, x, ch, size, seq])
+                    bases.append([y, x, ch, size, seq, int(glyph_id), font])
 
         last_i: int | None = None
         last_mx: float | None = None
@@ -174,7 +175,7 @@ class PyMuPDFExtractor(Extractor):
                 bases[best_i][2] = self._attach_mark(bases[best_i][2], mch)
                 last_i, last_mx, last_my = best_i, mx, my
 
-        return [(y, x, text, sz, sq) for y, x, text, sz, sq in bases]
+        return [(y, x, text, sz, sq, glyph_id, font) for y, x, text, sz, sq, glyph_id, font in bases]
 
     @staticmethod
     def _glyphs_to_layout_glyphs(glyphs: list[tuple]) -> list:

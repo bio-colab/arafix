@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/arafix-logo.png" alt="Arafix — إصلاح واسترجاع النص العربي من PDF" width="360">
+</p>
+
 # arafix
 
 [![PyPI version](https://img.shields.io/pypi/v/arafix.svg)](https://pypi.org/project/arafix/)

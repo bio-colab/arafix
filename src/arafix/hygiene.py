@@ -170,6 +170,7 @@ _KEEP_SPACE_AFTER = frozenset(
         "قبل",
         "بعد",
         "غير",
+        "لله",
         "سوى",
         "منذ",
         "نحو",
@@ -258,13 +259,22 @@ def collapse_midword_spaces(text: str) -> str:
     if not text or " " not in text:
         return text
 
+    # A haraka is part of the neighbouring Arabic letter, not a boundary.
+    # Count base letters through optional marks on both sides.
+    letter_with_marks = r"[\u0621-\u064A][\u064B-\u0652\u0670]*"
+
     # Space immediately before a combining mark → always glue
     out = re.sub(r"\s+(?=[\u064B-\u0652\u0670])", "", text)
 
-    # A haraka is part of the neighbouring Arabic letter, not a boundary.
-    # Count base letters through optional marks on both sides; otherwise
+    # Reversed visual streams can leave the final ta-marbuta as ``مقدم ة``.
+    # It cannot be a standalone word after a 3+ letter Arabic stem.
+    out = re.sub(
+        rf"((?:{letter_with_marks}){{3,}})\s+(?=ة(?:[\u064B-\u0652\u0670])*(?![\u0621-\u064A]))",
+        r"\1",
+        out,
+    )
+
     # ``حين شنّت`` is misread as a 3+2 split and glued to ``حينشنّت``.
-    letter_with_marks = r"[\u0621-\u064A][\u064B-\u0652\u0670]*"
 
     def _repl(m: re.Match[str]) -> str:
         left_cluster = m.group(1)
@@ -464,7 +474,7 @@ def sanitize_extraction(
     text: str,
     *,
     fold_unicode_spaces: bool = True,
-    soft_hyphen_to: str = "-",
+    soft_hyphen_to: str | None = "-",
     fold_punct_confusables: bool = True,
     strip_replacement: bool = True,
     apply_nfc: bool = True,

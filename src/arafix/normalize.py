@@ -37,6 +37,7 @@ from .unicode_tables import (
 __all__ = [
     "NormalizeConfig",
     "fold_presentation_forms",
+    "fold_presentation_punctuation",
     "fold_simple_forms",
     "fold_pdf_homoglyphs",
     "expand_deferred_forms",
@@ -84,6 +85,22 @@ class NormalizeConfig:
 
 
 _ALEF_VARIANTS = "أإآٱ"
+
+
+def _build_presentation_punctuation_table() -> dict[int, str]:
+    """Build a narrow NFKC map for punctuation presentation forms only."""
+    table: dict[int, str] = {}
+    for codepoint in range(0xFE10, 0xFE6C):
+        char = chr(codepoint)
+        if not unicodedata.category(char).startswith("P"):
+            continue
+        normalized = unicodedata.normalize("NFKC", char)
+        if normalized != char:
+            table[codepoint] = normalized
+    return table
+
+
+_PRESENTATION_PUNCTUATION_TABLE = _build_presentation_punctuation_table()
 _ZERO_WIDTH = (ZWJ, ZWNJ, "\u200b", "\u200e", "\u200f", "\ufeff")
 
 # PDF fonts often map Arabic yeh/heh to Farsi / Doachashmee codepoints.
@@ -98,6 +115,11 @@ _PDF_HOMOGLYPH_TABLE = str.maketrans(
         "\u06c3": "\u0629",  # TEH MARBUTA GOAL → TEH MARBUTA
     }
 )
+
+
+def fold_presentation_punctuation(text: str) -> str:
+    """Fold only Unicode punctuation presentation forms to base marks."""
+    return text.translate(_PRESENTATION_PUNCTUATION_TABLE) if text else text
 
 
 def fold_pdf_homoglyphs(text: str) -> str:
@@ -221,6 +243,7 @@ def normalize_text(text: str, config: NormalizeConfig | None = None) -> str:
 
     if cfg.fold_presentation_forms:
         out = fold_simple_forms(out, strip_pf_tatweel=cfg.strip_tatweel_in_pf_runs)
+        out = fold_presentation_punctuation(out)
         if cfg.expand_ligatures:
             out = expand_deferred_forms(out)
 

@@ -94,6 +94,8 @@ _SOLID_VERSION = re.compile(
 _SOLID_EMAIL = re.compile(
     r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
 )
+_SOLID_TIME = re.compile(r"^\d{1,2}:\d{2}$")
+_SOLID_PERCENT = re.compile(r"^(?:%\d+(?:\.\d+)?|\d+(?:\.\d+)?%)$")
 _SOLID_HYBRID = re.compile(
     r"^(?=.*[A-Za-z])[0-9A-Za-z][0-9A-Za-z._/@+%-]*"
     r"(?:[ \t]+[0-9A-Za-z][0-9A-Za-z._/@+%-]*)+$"
@@ -125,6 +127,8 @@ def _is_solid_ltr_block(run: str) -> bool:
             _SOLID_PHONE,
             _SOLID_VERSION,
             _SOLID_EMAIL,
+            _SOLID_TIME,
+            _SOLID_PERCENT,
             _SOLID_HYBRID,
         )
     )
@@ -159,8 +163,20 @@ def _solid_ltr_quality(run: str) -> float:
             score += 8.0
         elif 1 <= left_i <= 12 < right_i <= 31:
             score -= 8.0
-    if _SOLID_PHONE.fullmatch(candidate) and candidate.startswith(("+", "0")):
+    if (
+        _SOLID_PHONE.fullmatch(candidate)
+        and candidate.startswith(("+", "0"))
+        and not _SOLID_RANGE.fullmatch(candidate)
+    ):
         score += 8.0
+    time = _SOLID_TIME.fullmatch(candidate)
+    if time:
+        hour, minute = (int(part) for part in candidate.split(":", 1))
+        score += 8.0 if hour < 24 and minute < 60 else -8.0
+    percent = _SOLID_PERCENT.fullmatch(candidate)
+    if percent:
+        score += 4.0 if candidate.endswith("%") else 0.0
+        score -= 4.0 if candidate.startswith("%") else 0.0
     if _SOLID_VERSION.fullmatch(candidate) and re.match(r"^(?:v|[A-Za-z]+-)", candidate):
         score += 6.0
     if _SOLID_EMAIL.fullmatch(candidate):

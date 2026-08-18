@@ -10,8 +10,13 @@ from __future__ import annotations
 import contextlib
 import unicodedata
 from collections.abc import Iterator
+from functools import cache
+from typing import TYPE_CHECKING
 
 from ..noise import GeometricNoiseConfig, GeometricNoiseFilter
+
+if TYPE_CHECKING:
+    from ..layout import LayoutConfig
 from .base import Extractor, RawPage
 
 __all__ = ["PyMuPDFExtractor"]
@@ -28,6 +33,7 @@ class PyMuPDFExtractor(Extractor):
         layout_mode: str = "auto",
         geometric_noise: GeometricNoiseConfig | None = None,
         preserve_spatial_bboxes: bool = False,
+        layout_config: LayoutConfig | None = None,
     ) -> None:
         """
         :param sort: يرتّب الكتل بإحداثياتها قبل الإخراج (مُهلِك للعربية غالباً).
@@ -38,6 +44,7 @@ class PyMuPDFExtractor(Extractor):
         self.bidi = bidi
         self.layout_mode = layout_mode
         self.preserve_spatial_bboxes = preserve_spatial_bboxes
+        self.layout_config = layout_config
         self.noise_filter = (
             GeometricNoiseFilter(geometric_noise)
             if geometric_noise is not None
@@ -45,6 +52,7 @@ class PyMuPDFExtractor(Extractor):
         )
 
     @classmethod
+    @cache
     def available(cls) -> bool:
         try:
             import fitz  # noqa: F401
@@ -227,7 +235,7 @@ class PyMuPDFExtractor(Extractor):
             gs,
             page_width=width,
             page_height=height,
-            config=LayoutConfig(),
+            config=self.layout_config or LayoutConfig(),
             mode=mode,  # type: ignore[arg-type]
         )
 

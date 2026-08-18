@@ -238,10 +238,18 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     notes: list[str] = []
 
     # --- بوابة النظافة: قبل التشخيص، كي لا تشوّش الشواهد ---------------
+    # Latin-1 mojibake may contain U+00AD (byte 0xAD). Preserve it until the
+    # exact UTF-8 recovery path consumes the original byte sequence.
+    protect_mojibake = (
+        cfg.enable_mojibake_fix
+        and "\u00ad" in current
+        and detect_mojibake(current)[0]
+    )
     if cfg.enable_hygiene:
         arts = count_artifacts(current)
         cleaned = sanitize_extraction(
             current,
+            soft_hyphen_to=None if protect_mojibake else "-",
             strip_zero_width=cfg.normalize.strip_zero_width,
         )
         if cleaned != current:
@@ -267,7 +275,7 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
             bits = []
             if arts["nbsp_like"]:
                 bits.append(f"{arts['nbsp_like']} مسافة يونيكود")
-            if arts["soft_hyphen"]:
+            if arts["soft_hyphen"] and not protect_mojibake:
                 bits.append(f"{arts['soft_hyphen']} soft-hyphen→-")
             if arts.get("thousands_as_comma"):
                 bits.append(f"{arts['thousands_as_comma']} ٬→،")
@@ -719,13 +727,40 @@ def _apply_harvested_lexicon_to_blocks(
     for br in results:
         rep = repair_lam_alef_transposition(br.repair.text, vocab)
         if rep.fixed_by_lexicon or rep.fixed_decisive:
+            before = br.repair.text
+            br.repair.audit = _append_audit_after_text_change(
+                br.repair.audit,
+                original=br.repair.original,
+                before=before,
+                after=rep.text,
+                rule="DOCUMENT_LEXICON_LAM_ALEF",
+                evidence=(
+                    EvidenceItem("lexicon-fixes", rep.fixed_by_lexicon),
+                    EvidenceItem("decisive-fixes", rep.fixed_decisive),
+                ),
+            )
             br.repair.text = rep.text
+            _refresh_diagnosis_after_text_change(br.repair, cfg)
             if rep.fixed_by_lexicon:
                 br.repair.notes.append(
                     f"حُسم {rep.fixed_by_lexicon} موضعاً مُبهَماً بمعجم الوثيقة/النواة"
                 )
             if Stage.REPAIR_LAM_ALEF not in br.repair.stages_applied:
                 br.repair.stages_applied.append(Stage.REPAIR_LAM_ALEF)
+
+
+def _refresh_diagnosis_after_text_change(repair: RepairResult, cfg: PipelineConfig) -> None:
+    """Refresh derived diagnosis after a document-level text post-pass.
+
+    The post-pass is already audited and must not rerun the full repair ladder;
+    only derived diagnostics are refreshed here. Existing confidence remains a
+    conservative lower bound for the earlier, evidence-bearing stages.
+    """
+    repair.diagnosis = diagnose(repair.text, {**DEFAULT_THRESHOLDS, **cfg.thresholds})
+    repair.confidence = min(
+        repair.confidence,
+        _final_confidence(repair.diagnosis, repair.confidence, repair.stages_applied),
+    )
 
 
 def _final_confidence(dg: Diagnosis, order_conf: float, stages: list[Stage]) -> float:
@@ -914,6 +949,7 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
                 layout_mode=cfg.layout,
                 geometric_noise=cfg.geometric_noise,
                 preserve_spatial_bboxes=cfg.preserve_spatial_bboxes,
+                layout_config=cfg.layout_config,
             )
             if PyMuPDFExtractor.available()
             else get_extractor("auto")
@@ -926,6 +962,7 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
             extractor = cls(
                 layout_mode=cfg.layout,
                 preserve_spatial_bboxes=cfg.preserve_spatial_bboxes,
+                layout_config=cfg.layout_config,
             )  # type: ignore[call-arg]
         else:
             extractor = get_extractor(cfg.extractor)
@@ -1038,6 +1075,7 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
                 },
             )
             page.repair.text = context_result.text
+            _refresh_diagnosis_after_text_change(page.repair, cfg)
             page.repair.stages_applied.append(Stage.CONTEXT)
             page.repair.notes.append(
                 f"أُصلحت {context_result.accepted_count} كلمة بدليل معجم/عبارات الوثيقة"
@@ -1073,6 +1111,7 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
                     ),
                 )
                 page.repair.text = rep.text
+                _refresh_diagnosis_after_text_change(page.repair, cfg)
                 fixed_pages += 1
                 page.repair.notes.append(
                     f"معجم الوثيقة/النواة: حُسم {rep.fixed_by_lexicon} مُبهَم "
@@ -1093,7 +1132,7 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
     from .layout import Glyph, analyze_layout
 
     layout = raw.layout
-    if raw.glyphs:
+    if raw.glyphs and layout is None:
         gs = []
         for g in raw.glyphs:
             y, x, t, s = g[0], g[1], g[2], g[3]
@@ -1125,8 +1164,21 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
             repaired = repair_blocks(blocks_in, cfg)
             by_id = {b.id: b.text for b in repaired.blocks if b.id}
             text = layout.reassemble_from_blocks(by_id, page_number=raw.number)
-            # تشخيص نهائي على المُجمَّع — السطور أُصلحت؛ لا عكس جماعيّ قسري
-            final = repair_text(text, cfg)
+            # Blocks already ran the content stages. Reassembly only needs
+            # boundary hygiene; do not reverse/normalize the whole page again.
+            final = repair_text(
+                text,
+                replace(
+                    cfg,
+                    enable_mojibake_fix=False,
+                    enable_normalize=False,
+                    enable_reorder=False,
+                    enable_lam_alef_repair=False,
+                    enable_pdf_confusion_repair=False,
+                    enable_context_scoring=False,
+                    harvest_document_lexicon=False,
+                ),
+            )
             page_audit = AuditTrail(raw.text, cfg.audit_mode)
             page_audit.record(
                 raw.text,

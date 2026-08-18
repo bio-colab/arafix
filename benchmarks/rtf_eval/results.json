@@ -1,0 +1,18 @@
+{
+  "fixture": "الشاء.rtf",
+  "selection": "random_arabic_rtf_from_alshamela",
+  "source_note": "اختير الملف عشوائياً ونُزّل من المكتبة الشاملة لأغراض الاختبار.",
+  "pdf_pages": 8,
+  "rtf_sha256": "d2b15b7264f743905b6dd2e2242be3a5d1c40fbd3112358b42b03b3efbfac16e",
+  "evaluation": {
+    "cer": 0.02187922666878829,
+    "wer": 0.07801724137931035,
+    "extracted_characters": 12619,
+    "replacement_characters": 0,
+    "presentation_forms": 0,
+    "private_use_characters": 0,
+    "soft_hyphens": 0,
+    "zero_width_characters": 0
+  },
+  "library_version": "1.0.1"
+}

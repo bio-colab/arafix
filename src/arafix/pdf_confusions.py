@@ -146,7 +146,9 @@ def repair_pdf_confusions(text: str) -> PdfConfusionReport:
 
     # Geometry sometimes inserts a space inside a glued token
     # (املع ضلة، املُ شرفي). Collapse spaces right after امل[+harakat].
-    out, n_sp = re.subn(rf"(امل[{_MARK}]*)\s+", r"\1", out)
+    # Only collapse after a token boundary.  ``كامل السراج`` contains the
+    # letters ``امل`` but is not a broken definite article.
+    out, n_sp = re.subn(rf"(?<![{_AR}])(امل[{_MARK}]*)\s+", r"\1", out)
     ye_n += n_sp
 
     # Whole-form first (may include امل… that generic regex also covers).
@@ -177,8 +179,9 @@ def repair_pdf_confusions(text: str) -> PdfConfusionReport:
             out = out.replace(broken, fixed)
             ye_n += n
             continue
+        prefix = r"(?<!ال)" if broken == "غري" else ""
         pat = re.compile(
-            rf"(?:(?<![{_B}])|(?<=[{_CLITIC}])){re.escape(broken)}"
+            rf"{prefix}(?:(?<![{_B}])|(?<=[{_CLITIC}])){re.escape(broken)}"
         )
         out, n = pat.subn(fixed, out)
         ye_n += n

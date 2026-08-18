@@ -140,6 +140,19 @@ def join_glyphs_preserving_ltr(
         return ""
     ordered = sorted(glyphs, key=lambda g: g.x)
 
+    # Some PDF fonts split a lam-alef ligature into two glyphs with the same
+    # origin but emit them as lam, alef. Swap only that geometric signature;
+    # broad text-level swapping is unsafe because ``ال`` is ordinary text too.
+    for index in range(len(ordered) - 1):
+        left, right = ordered[index], ordered[index + 1]
+        if (
+            left.text == "ل"
+            and right.text == "ا"
+            and abs(left.x - right.x) <= 0.05
+            and abs(left.y - right.y) <= 0.05
+        ):
+            ordered[index], ordered[index + 1] = right, left
+
     # Segment into LTR islands (seq-reordered) or single non-LTR glyphs.
     token_texts: list[str] = []
     token_firsts: list[Glyph] = []
@@ -225,18 +238,21 @@ class LayoutLine:
     space_k: float = 1.5
     space_min_factor: float = 0.42
     space_max_factor: float = 1.05
+    _text_cache: str | None = field(default=None, init=False, repr=False)
 
     @property
     def text(self) -> str:
-        return join_glyphs_preserving_ltr(
-            self.glyphs,
-            insert_spaces=self.insert_spaces,
-            space_mode=self.space_mode,
-            space_percentile=self.space_percentile,
-            space_k=self.space_k,
-            space_min_factor=self.space_min_factor,
-            space_max_factor=self.space_max_factor,
-        )
+        if self._text_cache is None:
+            self._text_cache = join_glyphs_preserving_ltr(
+                self.glyphs,
+                insert_spaces=self.insert_spaces,
+                space_mode=self.space_mode,
+                space_percentile=self.space_percentile,
+                space_k=self.space_k,
+                space_min_factor=self.space_min_factor,
+                space_max_factor=self.space_max_factor,
+            )
+        return self._text_cache
 
     @property
     def x0(self) -> float:
@@ -533,31 +549,47 @@ def _find_gutters(
     if len(glyphs) < 8 or page_width <= 0:
         return []
 
-    xs = sorted({round(g.x, 1) for g in glyphs})
+    grouped: dict[float, list[float]] = {}
+    for glyph in glyphs:
+        grouped.setdefault(round(glyph.x, 1), []).append(glyph.y)
+    xs = sorted(grouped)
     if len(xs) < 4:
         return []
 
     min_gap = max(page_width * cfg.gutter_ratio, cfg.min_gutter_pt)
-    candidates: list[tuple[float, float]] = []  # (gap, mid_x)
+    n = len(glyphs)
+    page_span = max(g.y for g in glyphs) - min(g.y for g in glyphs) or 1.0
 
+    prefix_count = [0]
+    prefix_min = [float("inf")]
+    prefix_max = [float("-inf")]
+    for x in xs:
+        ys = grouped[x]
+        prefix_count.append(prefix_count[-1] + len(ys))
+        prefix_min.append(min(prefix_min[-1], min(ys)))
+        prefix_max.append(max(prefix_max[-1], max(ys)))
+
+    suffix_min = [float("inf")] * (len(xs) + 1)
+    suffix_max = [float("-inf")] * (len(xs) + 1)
+    for i in range(len(xs) - 1, -1, -1):
+        ys = grouped[xs[i]]
+        suffix_min[i] = min(suffix_min[i + 1], min(ys))
+        suffix_max[i] = max(suffix_max[i + 1], max(ys))
+
+    candidates: list[tuple[float, float]] = []  # (gap, mid_x)
     for i in range(len(xs) - 1):
         gap = xs[i + 1] - xs[i]
-        if gap >= min_gap:
-            mid = (xs[i] + xs[i + 1]) / 2
-            left_n = sum(1 for g in glyphs if g.x < mid)
-            right_n = sum(1 for g in glyphs if g.x >= mid)
-            n = len(glyphs)
-            if left_n / n >= cfg.min_side_fraction and right_n / n >= cfg.min_side_fraction:
-                # هل يمتد المحتوى عمودياً على الجانبين؟
-                left_ys = [g.y for g in glyphs if g.x < mid]
-                right_ys = [g.y for g in glyphs if g.x >= mid]
-                if not left_ys or not right_ys:
-                    continue
-                left_span = max(left_ys) - min(left_ys)
-                right_span = max(right_ys) - min(right_ys)
-                page_span = max(g.y for g in glyphs) - min(g.y for g in glyphs) or 1.0
-                if left_span > page_span * 0.25 and right_span > page_span * 0.25:
-                    candidates.append((gap, mid))
+        if gap < min_gap:
+            continue
+        mid = (xs[i] + xs[i + 1]) / 2
+        left_n = prefix_count[i + 1]
+        right_n = n - left_n
+        if left_n / n < cfg.min_side_fraction or right_n / n < cfg.min_side_fraction:
+            continue
+        left_span = prefix_max[i + 1] - prefix_min[i + 1]
+        right_span = suffix_max[i + 1] - suffix_min[i + 1]
+        if left_span > page_span * 0.25 and right_span > page_span * 0.25:
+            candidates.append((gap, mid))
 
     if not candidates:
         return []

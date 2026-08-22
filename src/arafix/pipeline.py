@@ -54,6 +54,7 @@ from .normalize import (
     NormalizeConfig,
     expand_deferred_forms,
     fold_pdf_homoglyphs,
+    fold_simple_forms,
     normalize_text,
 )
 from .order import ReorderConfig, fix_order
@@ -69,6 +70,7 @@ from .types import (
     Stage,
     TextBlock,
 )
+from .unicode_tables import is_arabic, is_presentation_form
 
 __all__ = [
     "PipelineConfig",
@@ -149,6 +151,12 @@ class PipelineConfig:
     #: اعكس النص ولو لم يُشخَّص معكوساً. للحالات التي تعرفها يقيناً.
     force_reorder: bool = False
 
+    #: إنقاذ الانعكاس الجزئي: صفحةٌ سليمة إجمالاً قد تخفي سطراً معكوساً
+    #: (ترويسة، عنوان، اقتباس) يغرقَه التصويتُ الصفحيّ فيمرّ بلا علاج.
+    #: عند التفعيل تُفحص كل سطرٍ بالشواهد والعتبة نفسيهما، ولا يُعكس
+    #: إلا ما اجتازها وحده. مطفأ افتراضياً حتى يُقاس أثره على مدوناتك.
+    rescue_mixed_lines: bool = False
+
     #: عتبات مخصّصة تُدمج فوق `DEFAULT_THRESHOLDS`.
     thresholds: dict = field(default_factory=dict)
 
@@ -212,6 +220,70 @@ def harvest_document_lexicon(texts: Iterable[str]) -> set[str]:
             if not _is_lam_alef_suspect_word(w):
                 vocab.add(w)
     return vocab
+
+
+def _line_reversal_score(line: str) -> tuple[float, list]:
+    """درجة الاتجاه لسطرٍ واحد بطبقتَي الفحص نفسِهما (مطابقٌ لعقلية diagnose)."""
+    return detect_visual_order(fold_simple_forms(line), shaped_source=line)
+
+
+def _rescue_mixed_direction_lines(
+    text: str,
+    shaped_source: str,
+    th: dict[str, float],
+) -> tuple[str, int, float, list[EvidenceItem]] | None:
+    """
+    إنقاذ الانعكاس الجزئي — يعالج ما يغارقه التصويت الصفحي.
+
+    صفحةٌ سليمة إجمالاً قد تخفي سطراً معكوساً واحداً (ترويسة، عنوان،
+    اقتباساً لاتينياً مُعكَس عربيُّه). الشواهد تُجمَع على مستوى النص كله،
+    فتُغرق الأقلية المعكوسة تحت العتبة فيمرّ السطرُ بلا علاج. هنا يُفحص
+    كل سطرٍ وحده بالشواهد والعتبة نفسيهما، ولا يُعكس إلا من اجتازها.
+
+    البوابات الثلاث:
+      * الصفحة كلها لم تجتز العتبة (وإلا لانعكست كاملةً قبل الوصول هنا).
+      * السطر ذاته يجتاز العتبة نفسها فوقها.
+      * كفاية العيّنة: بلا برهانِ وصلٍ لا يُحكم على سطرٍ أقلّ من
+        ``min_arabic_chars`` — البرهانُ وحده يستغني عن العيّنة.
+
+    :returns: (النص الجديد، عدد الأسطر المُنقَذة، أدنى درجةٍ بينها، شواهد)
+              أو None إن لم يوجد ما يُنقذ.
+    """
+    lines = text.split("\n")
+    if len(lines) < 2:
+        return None  # سطرٌ واحد: قرار الصفحة هو قراره بديهياً
+
+    src_lines = shaped_source.split("\n")
+    aligned = len(src_lines) == len(lines)
+
+    out = list(lines)
+    fixed_count = 0
+    weakest_score = 1.0
+    evidence_items: list[EvidenceItem] = []
+    for i, line in enumerate(lines):
+        if not line.strip():
+            continue
+        shaped_line = src_lines[i] if aligned else line
+        score, evs = detect_visual_order(fold_simple_forms(shaped_line), shaped_source=shaped_line)
+        if score <= th["visual_order"]:
+            continue
+        proof = any(e.name == "joining_forms" and e.value > 0 for e in evs)
+        arabic_chars = sum(1 for c in line if is_arabic(c) or is_presentation_form(c))
+        if not proof and arabic_chars < th["min_arabic_chars"]:
+            continue
+        before_line = line
+        out[i] = fix_order(line)
+        if out[i] == before_line:
+            continue  # لا شيء تغيّر فعلاً — لا نشاهد إنقاذاً وهمياً
+        fixed_count += 1
+        weakest_score = min(weakest_score, abs(score))
+        evidence_items.append(
+            EvidenceItem(f"line-{i + 1}-order-score", score, detail=evs[0].detail if evs else "")
+        )
+
+    if not fixed_count:
+        return None
+    return "\n".join(out), fixed_count, round(min(1.0, weakest_score), 3), evidence_items
 
 
 def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult:
@@ -393,7 +465,34 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                 else "أُصلح الاتجاه قسراً بأمر المستعمل — بلا شاهد"
             )
         else:
-            if audit.enabled and 0.20 <= abs(score) < th["visual_order"]:
+            # إنقاذ الانعكاس الجزئي: الصفحة لم تجتز العتبة إجمالاً، لكن
+            # قد تخفي سطراً معكوساً يغارقه التصويت الصفحي.
+            rescued: tuple[str, int, float, list[EvidenceItem]] | None = None
+            if cfg.rescue_mixed_lines and "\n" in current:
+                rescued = _rescue_mixed_direction_lines(current, shaped_source, th)
+            if rescued is not None:
+                before = current
+                current, n_rescued, rescue_conf, rescue_evidence = rescued
+                stages.append(Stage.REORDER)
+                order_conf = rescue_conf
+                audit.record(
+                    before,
+                    current,
+                    stage=Stage.REORDER.value,
+                    rule="MIXED_LINE_RESCUE",
+                    confidence=order_conf,
+                    evidence=(
+                        EvidenceItem("rescued-lines", n_rescued),
+                        EvidenceItem("page-score-below-threshold", round(score, 3)),
+                        *rescue_evidence,
+                    ),
+                    metadata={"threshold": th["visual_order"]},
+                )
+                notes.append(
+                    f"أُصلح الاتجاه في {n_rescued} سطرٍ معكوس داخل صفحةٍ "
+                    "سالمة إجمالاً (إنقاذ مختلط)"
+                )
+            if audit.enabled and 0.20 <= abs(score) < th["visual_order"] and rescued is None:
                 audit.abstain(
                     stage=Stage.REORDER.value,
                     rule="VISUAL_ORDER_BELOW_THRESHOLD",
@@ -409,7 +508,8 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                     ),
                     metadata={"threshold": th["visual_order"]},
                 )
-            notes.append(f"لم يُمسّ الاتجاه (درجة {score:+.2f} دون العتبة)")
+            if rescued is None:
+                notes.append(f"لم يُمسّ الاتجاه (درجة {score:+.2f} دون العتبة)")
 
     # --- الدرجة ١ب: الآن استقرّ الترتيب، فليُفكَّ الرباط بأمان ----------
     if cfg.enable_normalize and cfg.normalize.expand_ligatures:

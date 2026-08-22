@@ -22,6 +22,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass, field
 
 from .normalize import NormalizeConfig, normalize_text
@@ -316,7 +317,9 @@ def evaluate_pdf(
     """يستخرج ملفاً ويقيسه مقابل حقيقةٍ مرجعية نصّية."""
     from .pipeline import PipelineConfig, extract_pdf
 
-    with open(truth_path, encoding="utf-8") as fh:
+    # utf-8-sig: ملفات الحقيقة المحفوظة بترميز Notepad القديم تحمل BOMاً
+    # يُحسب وإلا خطأً في الحرف الأول ويضخّم CER بلا سبب.
+    with open(truth_path, encoding="utf-8-sig") as fh:
         truth = fh.read()
     doc = extract_pdf(pdf_path, PipelineConfig(extractor=extractor))
     return evaluate_text(truth, doc.text, label=extractor, config=config)
@@ -353,6 +356,7 @@ def compare_extractors(
         try:
             reports.append(evaluate_pdf(pdf_path, truth_path, name, config))
         except Exception as exc:  # pragma: no cover - دفاعيّ
-            print(f"تعذّر قياس {name}: {exc}")
+            # stderr لا stdout: تقارير القياس تُحلَّل آلياً من المخرج القياسي.
+            print(f"تعذّر قياس {name}: {exc}", file=sys.stderr)
     reports.sort(key=lambda r: r.cer.rate)
     return reports

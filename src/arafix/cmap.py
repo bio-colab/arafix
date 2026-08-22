@@ -44,6 +44,18 @@ _U_NAME = re.compile(r"^u([0-9A-Fa-f]{4,6})$")
 _CID_NAME = re.compile(r"^(?:cid|g|glyph|index)(\d+)$", re.IGNORECASE)
 
 
+def _safe_cp(value: int) -> str | None:
+    """يرفض النقاط المستحيلة قبل تحويلها إلى محرف.
+
+    البدائل المعزولة (U+D800–U+DFFF) وما بعد سقف يونيكود (U+10FFFF) تكسر
+    ترميز UTF-8 لاحقاً (`UnicodeEncodeError: surrogates not allowed`) —
+    نرجع None فتُسقَط المدخلة بدل أن تُخرِّب المخرَج كله.
+    """
+    if 0xD800 <= value <= 0xDFFF or value > 0x10FFFF:
+        return None
+    return chr(value)
+
+
 def decode_glyph_name(name: str) -> str | None:
     """
     يحاول فكّ اسم جليف إلى نصّه اليونيكودي. يُرجع None إن عجز.
@@ -71,11 +83,12 @@ def decode_glyph_name(name: str) -> str | None:
     m = _UNI_NAME.match(stem)
     if m:
         hexes = [m.group(1)] + re.findall(r"[0-9A-Fa-f]{4}", m.group(2) or "")
-        return "".join(chr(int(h, 16)) for h in hexes)
+        chars = [c for h in hexes if (c := _safe_cp(int(h, 16)))]
+        return "".join(chars) or None
 
     m = _U_NAME.match(stem)
     if m:
-        return chr(int(m.group(1), 16))
+        return _safe_cp(int(m.group(1), 16))
 
     if _CID_NAME.match(stem):
         return None  # لا معنى فيه — لا تخترع
@@ -119,7 +132,11 @@ def reverse_font_cmap(font_bytes: bytes) -> dict[str, str]:
         for cp, gname in best.items():
             ch = chr(cp)
             # نفضّل الحرف الاسمي على شكله الرسومي إن تعارضا على جليف واحد.
-            if gname in mapping and is_arabic(mapping[gname]):
+            # PF_TO_BASE قد يعيد سلسلةً من محرفين (رابط لا-ألف «لا»)؛ فحص
+            # الطول يمنع TypeError من ord() داخل is_arabic الذي كان يُجهَض
+            # عنده بقية جدول الخط كاملةً عبر except الصامت.
+            existing = mapping.get(gname)
+            if existing is not None and len(existing) == 1 and is_arabic(existing):
                 continue
             mapping[gname] = PF_TO_BASE.get(ch, ch)
     except Exception:

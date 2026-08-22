@@ -998,8 +998,11 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
                         name: build_glyph_map(data, name)
                         for name, data in extractor.font_bytes(path).items()
                     }
-                except Exception:
+                except Exception as exc:
                     glyph_maps = {}
+                    # الفشل الصامت يُخفي سبب ضياع استرجاع الدرجة ٣؛ نسجّله
+                    # كي يفحصه المستخدم في diagnose بدل التخمين.
+                    doc.metadata["cmap_build_failed"] = str(exc)
             raw, count = _recover_broken_cmap_page(raw, glyph_maps)
             cmap_recovered += count
         page = _extract_one_page(raw, page_cfg)

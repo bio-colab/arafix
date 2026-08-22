@@ -42,11 +42,16 @@ __all__ = [
 #:   * ≥2 Arabic letters of stem after optional marks, or
 #:   * the short but frequent ``املاء`` → handled in WHOLE_FORM_CONFUSIONS.
 #: ``شامل`` / ``كاملة`` stay safe: no 2+ letter stem after the ``امل`` span.
-_MARK = r"\u064B-\u0652\u0670"
+#: الحركات: التشكيل القياسي (U+064B–U+0652) مع همزات التركيب
+#: (U+0653–U+0655، كتفكيك NFD لأ) والألف الخنجرية — موافقةً لفئة
+#: ``scientific._TASHKEEL`` وفئة العُلَم في hygiene.
+_MARK = r"\u064B-\u0655\u0670"
 _AR = r"\u0621-\u064A"
+_CLITIC = "وفبكل"
 AL_MEEM_ARTICLE_RE = re.compile(
     rf"امل(?=[{_MARK}]*(?:[{_AR}][{_MARK}]*){{2,}})"
 )
+_AL_MEEM_GLUE_RE = re.compile(rf"(?<![{_AR}])(امل[{_MARK}]*)\s+")
 
 #: Whole-form / multi-char confusions (longest first). From Safahat books,
 #: especially *بصمة الإبهام الحمراء* letter-alignment against manual gold.
@@ -109,6 +114,27 @@ THUMB_RED_CONFUSIONS: tuple[tuple[str, str], ...] = (
 )
 
 
+def _short_token_re(broken: str) -> re.Pattern[str]:
+    prefix = r"(?<!ال)" if broken == "غري" else ""
+    return re.compile(
+        rf"{prefix}(?:(?<![{_AR}])|(?<=[{_CLITIC}])){re.escape(broken)}"
+    )
+
+
+# أنماط الرموز القصيرة تُجمَع مرةً واحدة عند الاستيراد بدل كل نداء.
+_SHORT_TOKEN_RES: dict[str, re.Pattern[str]] = {
+    broken: _short_token_re(broken)
+    for broken, _ in (*YE_REH_CONFUSIONS, *THUMB_RED_CONFUSIONS)
+    if len(broken) < 4
+}
+
+# حين stored as حني (ي/ن). Allow clitic و/ف/ب/ك/ل (وحنينادى).
+# Bare حنين (name) kept unless followed by ا (حيننا / حيننادى).
+_HINI_BASE = rf"(?:(?<![{_AR}])|(?<=[{_CLITIC}]))حني"
+_HINI_NA_RE = re.compile(_HINI_BASE + r"(?=نا)")
+_HINI_RE = re.compile(_HINI_BASE + r"(?!ن)")
+
+
 @dataclass
 class PdfConfusionReport:
     """How many substitutions of each class were applied."""
@@ -148,7 +174,7 @@ def repair_pdf_confusions(text: str) -> PdfConfusionReport:
     # (املع ضلة، املُ شرفي). Collapse spaces right after امل[+harakat].
     # Only collapse after a token boundary.  ``كامل السراج`` contains the
     # letters ``امل`` but is not a broken definite article.
-    out, n_sp = re.subn(rf"(?<![{_AR}])(امل[{_MARK}]*)\s+", r"\1", out)
+    out, n_sp = _AL_MEEM_GLUE_RE.subn(r"\1", out)
     ye_n += n_sp
 
     # Whole-form first (may include امل… that generic regex also covers).
@@ -169,8 +195,6 @@ def repair_pdf_confusions(text: str) -> PdfConfusionReport:
     # Short tokens (≤3 letters, e.g. غري): require start/non-letter/clitic
     # so مغري is safe. Longer tokens (كثري، كبري…): global replace — books
     # glue hard (الاستمتاعكثريًا) and false friends are rare at length ≥4.
-    _B = r"\u0621-\u064A"
-    _CLITIC = "وفبكل"
     for broken, fixed in YE_REH_CONFUSIONS + THUMB_RED_CONFUSIONS:
         if broken not in out:
             continue
@@ -179,19 +203,13 @@ def repair_pdf_confusions(text: str) -> PdfConfusionReport:
             out = out.replace(broken, fixed)
             ye_n += n
             continue
-        prefix = r"(?<!ال)" if broken == "غري" else ""
-        pat = re.compile(
-            rf"{prefix}(?:(?<![{_B}])|(?<=[{_CLITIC}])){re.escape(broken)}"
-        )
+        pat = _SHORT_TOKEN_RES[broken]
         out, n = pat.subn(fixed, out)
         ye_n += n
 
-    # حين stored as حني (ي/ن). Allow clitic و/ف/ب/ك/ل (وحنينادى).
-    # Bare حنين (name) kept unless followed by ا (حيننا / حيننادى).
-    _hini = rf"(?:(?<![{_B}])|(?<=[{_CLITIC}]))حني"
-    out, n_h = re.subn(_hini + r"(?=نا)", "حين", out)
+    out, n_h = _HINI_NA_RE.subn("حين", out)
     ye_n += n_h
-    out, n_h2 = re.subn(_hini + r"(?!ن)", "حين", out)
+    out, n_h2 = _HINI_RE.subn("حين", out)
     ye_n += n_h2
 
     return PdfConfusionReport(text=out, al_meem_fixes=al_n, ye_reh_fixes=ye_n)

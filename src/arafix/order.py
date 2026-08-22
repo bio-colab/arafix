@@ -63,10 +63,14 @@ _LTR_CONT = (
 _LTR_EDGE = r"[%#$€£+]"
 #: Island: optional edge marks + LTR tokens separated by spaces
 #: (``M/V Ever Lovely``, ``13-7``, ``GDP_2024``, ``3.5%``).
+# Edge repetition is bounded: an unbounded greedy EDGE* that fails to find an
+# atom backtracks mark-by-mark at every scan position (quadratic on long runs
+# of %/$/+). Real currency/percent stacks never exceed a few marks.
+_EDGE_REPS = r"{0,8}"
 _LTR_RUN = re.compile(
-    rf"{_LTR_EDGE}*{_LTR_ATOM}{_LTR_CONT}*"
-    rf"(?:[ \t]+{_LTR_EDGE}*{_LTR_ATOM}{_LTR_CONT}*)*"
-    rf"{_LTR_EDGE}*"
+    rf"{_LTR_EDGE}{_EDGE_REPS}{_LTR_ATOM}{_LTR_CONT}*"
+    rf"(?:[ \t]+{_LTR_EDGE}{_EDGE_REPS}{_LTR_ATOM}{_LTR_CONT}*)*"
+    rf"{_LTR_EDGE}{_EDGE_REPS}"
 )
 
 #: فرق الدرجة الذي يبرّر الإبقاء على الجزيرة بدل إعادة عكسها التقليدية.
@@ -266,9 +270,21 @@ def grapheme_clusters(text: str) -> list[str]:
         أولاً  →  [code-point reverse]  →  أوًلا
 
     Unicode logical order puts marks *after* their base. Visual-order PDF
-    streams often emit the mark *before* the base (or after a space). Naïvely
-    gluing Mn onto whatever precedes it attaches harakat to spaces/punctuation;
-    after reverse they become leading marks (``َحرب`` instead of ``حربَ``).
+    streams emit marks under two competing conventions:
+
+    * **Cluster-preserving** (committed here): each base+mark pair stays
+      adjacent, so a word-internal mark is always *preceded by its own
+      base* and backward-glues correctly.
+    * **Pure code-point reverse**: the mark precedes its base; a
+      word-internal mark then sits *between two bases* and backward-gluing
+      lands it on the wrong one (``بَل`` reversed reads back as ``بلَ``).
+
+    An Mn strictly between two letter bases is genuinely ambiguous — both
+    conventions produce that shape from different logical texts — so this
+    function keeps the conservative cluster-preserving binding rather than
+    gambling on stream provenance. Marks preceded by non-letters
+    (space/punct/line start) are unambiguous pure-reverse fingerprints and
+    still forward-bind via ``pending``.
 
     **Grapheme Cluster Protection (P0):**
 

@@ -910,12 +910,15 @@ class TestFastClassificationMatchesReference:
     """
 
     def test_agrees_on_every_codepoint_in_unicode(self):
+        # U+FEFF استثناءٌ موثَّق في الوحدة نفسها: تقع في نطاق الأشكال صدفةً
+        # تاريخية، والجداول المرجعية تحذفها صراحةً («لا تُعامَل معاملة
+        # الحروف») — فالمجموعة السريعة تستبعدها كذلك، وإلا أبلغت diagnose
+        # عيباً زائفاً عن نصٍّ ليس إلا BOM مكرراً.
         for cp in range(0x110000):
             ch = chr(cp)
             assert is_arabic(ch) == in_ranges(cp, ARABIC_RANGES), hex(cp)
-            assert is_presentation_form(ch) == in_ranges(cp, PRESENTATION_RANGES), hex(
-                cp
-            )
+            expected = in_ranges(cp, PRESENTATION_RANGES) and cp != 0xFEFF
+            assert is_presentation_form(ch) == expected, hex(cp)
 
     def test_memory_price_is_bounded(self):
         """

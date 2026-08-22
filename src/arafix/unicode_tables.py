@@ -119,7 +119,11 @@ def _cps(ranges: Iterable[tuple[int, int]]) -> frozenset:
 # نطاقاتٍ يمسحها المرجعيّ في ثلاث مقارنات.
 
 _ARABIC_CPS = _cps(ARABIC_RANGES)
-_PRESENTATION_CPS = _cps(PRESENTATION_RANGES)
+# U+FEFF (BOM/ZWNBSP) يقع في نطاق أشكال العرض صدفةً تاريخية، والمكتبة
+# تحذفه صراحةً من جداول التطبيع أدناه؛ نستبعده من المجموعة السريعة كذلك
+# وإلا عدّه is_presentation_form شكلَ رسوميٍّ عربياً وأبلغت diagnose عيباً
+# زائفاً عن نصٍّ ليس إلا BOM مكرراً.
+_PRESENTATION_CPS = _cps(PRESENTATION_RANGES) - {0xFEFF}
 
 
 def is_arabic(ch: str) -> bool:

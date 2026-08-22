@@ -245,6 +245,27 @@ _PARTICLE_SPACE_AFTER: tuple[str, ...] = (
 #: ``صلَّى الله`` → ``صلَّىالله``).
 _NO_COLLAPSE_SINGLE = frozenset("اأإآةىوويف")
 
+#: Combining marks treated as part of the neighbouring Arabic letter. Spans
+#: standard tashkeel (U+064B–U+0652), maddah/hamza marks (U+0653–U+0655, as in
+#: NFD-decomposed hamza), and superscript alef — matching
+#: ``scientific._TASHKEEL``.
+_MARKS_CLASS = r"[\u064B-\u0655\u0670]"
+_LETTER_WITH_MARKS = rf"[\u0621-\u064A]{_MARKS_CLASS}*"
+
+# Precompiled once: these three substitutions run on every repair call and
+# were previously recompiled per invocation.
+_SPACE_BEFORE_MARK_RE = re.compile(rf"\s+(?={_MARKS_CLASS})")
+_TA_MARBUTA_SPLIT_RE = re.compile(
+    rf"(?<![\u0621-\u064A])((?:{_LETTER_WITH_MARKS}){{3,}})\s+"
+    rf"(?=ة(?:{_MARKS_CLASS})*(?![\u0621-\u064A]))"
+)
+_FRAGMENT_RE = re.compile(
+    rf"(?<![\u0621-\u064A])((?:{_LETTER_WITH_MARKS}){{1,3}})\s+(?=[\u0621-\u064A])"
+)
+_STRIP_MARKS_RE = re.compile(_MARKS_CLASS)
+_ARTICLE_PREFIX_RE = re.compile(rf"{_MARKS_CLASS}*ال")
+_RIGHT_CLUSTER_RE = re.compile(rf"(?:{_LETTER_WITH_MARKS}){{1,6}}")
+
 
 def collapse_midword_spaces(text: str) -> str:
     """
@@ -261,28 +282,25 @@ def collapse_midword_spaces(text: str) -> str:
 
     # A haraka is part of the neighbouring Arabic letter, not a boundary.
     # Count base letters through optional marks on both sides.
-    letter_with_marks = r"[\u0621-\u064A][\u064B-\u0652\u0670]*"
 
     # Space immediately before a combining mark → always glue
-    out = re.sub(r"\s+(?=[\u064B-\u0652\u0670])", "", text)
+    out = _SPACE_BEFORE_MARK_RE.sub("", text)
 
     # Reversed visual streams can leave the final ta-marbuta as ``مقدم ة``.
     # It cannot be a standalone word after a 3+ letter Arabic stem.
-    out = re.sub(
-        rf"((?:{letter_with_marks}){{3,}})\s+(?=ة(?:[\u064B-\u0652\u0670])*(?![\u0621-\u064A]))",
-        r"\1",
-        out,
-    )
+    # The lookbehind anchors matching at an Arabic run boundary; without it,
+    # re.sub restarts inside long runs hunting for ة and degrades quadratically.
+    out = _TA_MARBUTA_SPLIT_RE.sub(r"\1", out)
 
     # ``حين شنّت`` is misread as a 3+2 split and glued to ``حينشنّت``.
 
     def _repl(m: re.Match[str]) -> str:
         left_cluster = m.group(1)
-        left = re.sub(r"[\u064B-\u0652\u0670]", "", left_cluster)
+        left = _STRIP_MARKS_RE.sub("", left_cluster)
         rest = m.string[m.end() :]
-        mright = re.match(rf"(?:{letter_with_marks}){{1,6}}", rest)
+        mright = _RIGHT_CLUSTER_RE.match(rest)
         right_cluster = mright.group(0) if mright else ""
-        right = re.sub(r"[\u064B-\u0652\u0670]", "", right_cluster)
+        right = _STRIP_MARKS_RE.sub("", right_cluster)
         if left in _KEEP_SPACE_AFTER or right in _KEEP_SPACE_AFTER:
             return m.group(0)
         if len(left) == 1 and left in _NO_COLLAPSE_SINGLE:
@@ -294,7 +312,7 @@ def collapse_midword_spaces(text: str) -> str:
         if len(left) <= 2 and len(right) > 2:
             return m.group(0)
         # Keep space before definite article ال…
-        if re.match(r"[\u064B-\u0652\u0670]*ال", rest):
+        if _ARTICLE_PREFIX_RE.match(rest):
             return m.group(0)
         # Article-like prefixes always glue (الع صور → العصور)
         if left in ("الع", "الم", "وال", "بال", "كال", "فال", "لل"):
@@ -306,11 +324,7 @@ def collapse_midword_spaces(text: str) -> str:
         return left_cluster
 
     # 1–3 letter fragments, allowing harakat within each fragment.
-    out = re.sub(
-        rf"(?<![\u0621-\u064A])((?:{letter_with_marks}){{1,3}})\s+(?=[\u0621-\u064A])",
-        _repl,
-        out,
-    )
+    out = _FRAGMENT_RE.sub(_repl, out)
     return out
 
 

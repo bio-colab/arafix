@@ -174,7 +174,11 @@ class NegativeEvidence:
 class NegativeEvidenceModel:
     """Conservative preserve-because checks for code and protected islands."""
 
-    _URL_OR_EMAIL = re.compile(r"(?:https?://|www\.|[\w.+-]+@[\w.-]+\.)", re.I)
+    # حدود {1,64} على الجزأين: بلاها يتراجع البحث تربيعياً على رموزٍ طويلة
+    # من نقاط وكلمات بلا @ (سلوك مُقاس)، ولا بريدٌ حقيقيّ يطول هذا.
+    _URL_OR_EMAIL = re.compile(
+        r"(?:https?://|www\.|[\w.+-]{1,64}@[\w.-]{1,64}\.)", re.I
+    )
     _ASCII_IDENTIFIER = re.compile(r"[A-Za-z0-9_]")
     _QUOTES = "\"'`«»“”‘’"
 

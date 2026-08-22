@@ -14,14 +14,48 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import sys
+from pathlib import Path
 from typing import Any
 
 from . import __version__
 from .diagnose import diagnose
 from .pipeline import PipelineConfig, extract_pdf, repair_text
 from .unicode_tables import unicode_version
+
+
+def _nonneg_int(value: str) -> int:
+    """argparse type: أعداد الصفحات يجب أن تكون صحيحة غير سالبة."""
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"رقم غير صالح: {value!r}") from None
+    if n < 0:
+        raise argparse.ArgumentTypeError(
+            f"عدد الصفحات لا يقبل قيماً سالبة: {n}"
+        )
+    return n
+
+
+def _ensure_utf8_stdio() -> None:
+    """ثبّت ترميز UTF-8 للمداخل والمخارج القياسية.
+
+    عند التحويل بأنبوب (pipe) على Windows يستخدم stdin/stdout ترميز صفحة
+    الأكواد ANSI (cp1252/cp1256) وليس UTF-8، فانهار قراءة عربية أو — أسوأ —
+    تُفكّ ترميزياً بصمت ثم «تُصلَّح» كنصٍّ معطوب. انظر PEP 540/597.
+    """
+    for stream, errors in (
+        (sys.stdin, "strict"),
+        (sys.stdout, "replace"),
+        (sys.stderr, "replace"),
+    ):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        with contextlib.suppress(OSError, ValueError):  # pragma: no cover
+            reconfigure(encoding="utf-8", errors=errors)
 
 
 def _cmd_diagnose(args: argparse.Namespace) -> int:
@@ -84,6 +118,11 @@ def _cmd_extract(args: argparse.Namespace) -> int:
 
     out = doc.text
     if args.output:
+        if Path(args.output).resolve() == Path(args.path).resolve():
+            raise RuntimeError(
+                f"المخرج يطابق الملف المصدر ({args.output}) — الرفض يمنع "
+                "محو الأصل؛ اختر اسماً مختلفاً لـ -o"
+            )
         with open(args.output, "w", encoding="utf-8") as fh:
             fh.write(out)
         print(f"كُتب {len(out)} حرفاً في {args.output}", file=sys.stderr)
@@ -164,6 +203,10 @@ def _cmd_eval(args: argparse.Namespace) -> int:
         if args.compare
         else [evaluate_pdf(args.path, args.truth, args.extractor, cfg)]
     )
+    if not reports:
+        raise RuntimeError(
+            "لم ينتج أي مستخرج تقريراً — راجع رسائل الخطأ أعلاه"
+        )
 
     print("─" * 68)
     for r in reports:
@@ -179,8 +222,6 @@ def _cmd_eval(args: argparse.Namespace) -> int:
             print(f"    الناتج : {hyp[:70]!r}")
 
     if getattr(args, "scientific", False):
-        from pathlib import Path
-
         from .pipeline import extract_pdf
         from .scientific import scientific_audit
 
@@ -231,7 +272,7 @@ def build_parser() -> argparse.ArgumentParser:
     d.add_argument("path")
     d.add_argument("-v", "--verbose", action="store_true", help="اعرض الشواهد")
     d.add_argument("--json", action="store_true")
-    d.add_argument("-n", "--pages", type=int, default=0, help="حدّ الصفحات")
+    d.add_argument("-n", "--pages", type=_nonneg_int, default=0, help="حدّ الصفحات")
     d.set_defaults(func=_cmd_diagnose)
 
     x = sub.add_parser("extract", help="استخرج وأصلح")
@@ -293,6 +334,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _ensure_utf8_stdio()
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)

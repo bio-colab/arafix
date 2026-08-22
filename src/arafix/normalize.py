@@ -284,6 +284,6 @@ def normalize_result(text: str, config: NormalizeConfig | None = None) -> Repair
         original=text,
         diagnosis=diagnose(text),
         stages_applied=[Stage.NORMALIZE],
-        confidence=1.0 if out != text else 1.0,
+        confidence=1.0,
         notes=["تطبيع موجَّه لنطاق الأشكال العربية وحده (لا NFKC عام)"],
     )

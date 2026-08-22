@@ -20,7 +20,7 @@
 | **Layout** | Multi-column RTL, headers/footers, simple tables (`layout=auto`) |
 | **1.0.1** | Glyph word-spacing + closed PDF confusions from **published Arabic books** (not AI fixtures) |
 | **1.0** | Core lexicon, smart BiDi/LTR, hybrid mojibake, stress-gated (FPR=0, RAR=100%) |
-| **Quality** | Cluster-aware diacritics, PDF homoglyph fold, scientific metrics (MCS/DBR/BFE/SHDR) |
+| **Quality** | Cluster-aware diacritics, PDF homoglyph fold, scientific metrics (MCS/DBR/BFE/SHDR) — [metrics reference](docs/metrics.md) |
 | **Hardening** | Conservative embedded-font CMap fallback, geometric-noise filtering, and solid-block Latin/Bidi protection |
 | **Spacing** | Explicit PDF-space preservation and context-aware Arabic punctuation spacing |
 | **Eval** | Independent Safahat book samples + manual gold, plus a 1,000-case adversarial Bidi corpus (`benchmarks/`) |
@@ -249,7 +249,7 @@ repair_text(broken, cfg)
 
 **Philosophy:** never invent characters; never “fix just in case”; every decision carries evidence and confidence. Release gated by **FPR = 0** and **RAR ≥ 98%** on the 50-pack stress corpus.
 
-Further reading: [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md) · [CITATION.cff](CITATION.cff) · [PR #3](https://github.com/bio-colab/arafix/pull/3) · [PR #5](https://github.com/bio-colab/arafix/pull/5) · [PR #7](https://github.com/bio-colab/arafix/pull/7)
+Further reading: [docs/metrics.md](docs/metrics.md) (all 10 quality metrics: definitions, gates, measured values, reproduction commands) · [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md) · [CITATION.cff](CITATION.cff) · [PR #3](https://github.com/bio-colab/arafix/pull/3) · [PR #5](https://github.com/bio-colab/arafix/pull/5) · [PR #7](https://github.com/bio-colab/arafix/pull/7)
 
 
 
@@ -614,16 +614,35 @@ result = repair_text(broken_text, config)
 
 ## القياس والنتائج المنشورة في المشروع
 
-الاختبارات لا تكتفي بأن «النص يبدو جيداً». يستخدم المشروع CER وWER، ومقاييس للتشكيل والاتجاه، واختبارات no-op للنصوص السليمة، وقياساً لمعدل الإصلاحات الكاذبة. وتوجد corpus حقيقية وملفات stress وbenchmark للـBidi داخل المستودع.
+الاختبارات لا تكتفي بأن «النص يبدو جيداً». يستخدم المشروع عشرة مقاييس موثقة في
+[`docs/metrics.md`](docs/metrics.md) — المرجع الكامل بالتعريفات والصيغ والبوابات
+وقيم اليوم وأوامر إعادة الإنتاج. خلاصتها:
+
+| الطبقة | المقاييس |
+|---|---|
+| الخطأ النصي | **CER** و**WER** (والـ**LE** — مسافة ليفنشتاين المُطبَّعة، وهي ≡ CER بالبناء؛ الدقة `accuracy = 1 − CER`) |
+| العلمية | **MCS** استمرارية الهيكل الحرفي · **DBR** مخزون التشكيل ودقة التصاقه (= «دقة التشكيل») · **BFE** إنتروبيا تدفّق الاتجاه مقابل المرجع · **SHDR** انجراف هجائن PDF |
+| السلامة | **FPR** إصلاح كاذب على النصوص السليمة (بوابة صارمة = 0) · **RAR** استرجاع تام ≥ 98% |
+| الاتجاه | BFE Δref ≤ 0.02 + corpus خصمي 1000/1000 + fuzzing |
+
+البوابات المثبتة (لا تُخفَّض بلا قرار موثّق): MCS ≥ 0.99 · DBR ≥ 0.99 (attach ≥ 0.99)
+· SHDR = 0 · BFE Δref ≤ 0.02 — انظر `tests/test_scientific_floors.py`.
+
+وتوجد corpus حقيقية وملفات stress وbenchmark للـBidi داخل المستودع.
 
 | المجال | النتيجة الموثقة |
 |---|---:|
 | constitution mutation benchmark | 61/61 exact، وCER/WER = 0% |
 | narrative mutation benchmark | 57/57 exact، وCER/WER = 0% |
-| safe corpus | 0/18 false repairs، وFPR = 0% |
+| safe corpus | 0/18 false repairs في التشغيلة الكاملة¹، وFPR = 0% |
 | Latin/Bidi adversarial corpus | 1000/1000 حالة ناجحة |
 | PDF الدستور الحقيقي | تحسن CER/WER الموثق من 3.486% / 20.939% إلى 3.092% / 17.208% بعد إصلاحات المسافات والبنية |
 | المسار الافتراضي | لا يتلقى كلفة Context أو RAG أو audit إلا عند تفعيلها |
+
+¹ **سياق العدّاد:** corpus الإجهاد يحتوي 18 حالة must-not-change بينها حالة
+`perf_safe` واحدة (A6-04). عند التشغيل بـ`--skip-perf` أو عبر `audit_corpus.py`
+يصبح العداد 17 لأن تلك الحالة تُستبعد مع كتل الأداء. الرقمان صحيحان لوضعيهما؛
+التفصيل في [`docs/metrics.md`](docs/metrics.md) §3.2.
 
 هذه الأرقام مرتبطة بالـfixtures والنسخة وإعدادات القياس الموجودة في المستودع. لا ينبغي تعميمها على كل ملفات PDF من دون تشغيل `arafix eval` على ملفاتك مع نص مرجعي.
 

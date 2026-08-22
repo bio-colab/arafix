@@ -103,7 +103,7 @@ def render_pdf(out_path: Path, text: str, mode: str) -> int:
             flush_page()
 
     c.save()
-    return pages  # noqa: F841 — العدد للاستعمال التشخيصي عند الحاجة
+    return pages
 
 
 def main() -> int:
@@ -126,7 +126,7 @@ def main() -> int:
         text = gold_path.read_text(encoding="utf-8")
         for mode in modes:
             out = PDFS_DIR / f"{slug}.{mode}.pdf"
-            pages = render_pdf(out, text, mode)
+            render_pdf(out, text, mode)
             total += 1
         print(f"  OK   {slug:14s} ×{len(modes)} أنماط")
 

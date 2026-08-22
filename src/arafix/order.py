@@ -229,6 +229,17 @@ def _is_markable_base(ch: str) -> bool:
     return bool(ch) and unicodedata.category(ch).startswith("L")
 
 
+#: حروفٌ صغيرةٌ علوية في الرسم العثماني (ۥ ۦ): فئتها Lm «حرفٌ مُعدِّل»
+#: لا Mn، لكن سلوكها في التخزين المعكوس علاميّ محض — تسبق قاعدتها
+#: وتلزمها، فتُعامَل معاملة العلامات في العناقيد وإلا انقلبت وحيدةً.
+ATTACHABLE_SMALL_LETTERS = frozenset("\u06e5\u06e6")
+
+
+def _is_attachable(ch: str) -> bool:
+    """هل يلزم هذا المحرف قاعدته في العناقيد (علامة أو حرف صغير علوي)؟"""
+    return unicodedata.category(ch) == "Mn" or ch in ATTACHABLE_SMALL_LETTERS
+
+
 def order_combining_marks(marks: str) -> str:
     """
     Canonical mark order on one base: **shadda, then vowels/other Mn**.
@@ -259,7 +270,9 @@ def _with_ordered_marks(cluster: str) -> str:
     return base + order_combining_marks(marks)
 
 
-def grapheme_clusters(text: str) -> list[str]:
+def grapheme_clusters(
+    text: str, *, forward_flank_marks: bool = False
+) -> list[str]:
     """
     Split *text* into grapheme clusters: base letter + its combining marks.
 
@@ -272,19 +285,20 @@ def grapheme_clusters(text: str) -> list[str]:
     Unicode logical order puts marks *after* their base. Visual-order PDF
     streams emit marks under two competing conventions:
 
-    * **Cluster-preserving** (committed here): each base+mark pair stays
-      adjacent, so a word-internal mark is always *preceded by its own
-      base* and backward-glues correctly.
-    * **Pure code-point reverse**: the mark precedes its base; a
-      word-internal mark then sits *between two bases* and backward-gluing
-      lands it on the wrong one (``بَل`` reversed reads back as ``بلَ``).
+    * **Cluster-preserving**: each base+mark pair stays adjacent, so a
+      word-internal mark is always *preceded by its own base* and
+      backward-glues correctly.
+    * **Pure code-point reverse** (MuPDF على النص المُشكَّل مثلاً): the
+      mark precedes its base; a word-internal mark then sits *between two
+      bases*.
 
-    An Mn strictly between two letter bases is genuinely ambiguous — both
-    conventions produce that shape from different logical texts — so this
-    function keeps the conservative cluster-preserving binding rather than
-    gambling on stream provenance. Marks preceded by non-letters
-    (space/punct/line start) are unambiguous pure-reverse fingerprints and
-    still forward-bind via ``pending``.
+    An Mn strictly between two letter bases is genuinely ambiguous under
+    the two conventions — unless the stream itself is already *proven*
+    reversed (بوابة الدرجة ٢ أو إنقاذ السطر). عندئذٍ يقلب البرهانُ العملة:
+    ``forward_flank_marks=True`` يجعل جريان العلامات المحصور بين قاعدتين
+    يلزم القاعدة **التالية** بدل السابقة، فتعود الحركات إلى حروفها
+    («إسلاميَّة» لا «إسلاميةَّ»). خارجهما يظل الربط الخلفي كما هو: علامة
+    نهاية الكلمة لا يليها أساس تبقى على قاعدتها.
 
     **Grapheme Cluster Protection (P0):**
 
@@ -293,32 +307,53 @@ def grapheme_clusters(text: str) -> list[str]:
     * Never glue Mn onto whitespace or punctuation.
     * Orphan marks at end of line attach to the last letter base if any.
     * Marks on a base are ordered: shadda before vowels (P1).
+    * Mark runs are decided as ONE unit, never split across bases.
 
     Within each cluster, marks stay in logical order (base then marks). Only
     the sequence of clusters is reversed by :func:`reverse_visual_line`.
 
-    >>> grapheme_clusters("\u062b\u0627\u0646\u064a\u0627\u064b.")
+    >>> grapheme_clusters("\\u062b\\u0627\\u0646\\u064a\\u0627\\u064b.")
     ['ث', 'ا', 'ن', 'ي', 'اً', '.']
-    >>> grapheme_clusters("\u064e\u0628")  # visual: fatha before beh
+    >>> grapheme_clusters("\\u064e\\u0628")  # visual: fatha before beh
     ['بَ']
-    >>> grapheme_clusters(" \u064e\u0628")  # mark after space, before letter
+    >>> grapheme_clusters(" \\u064e\\u0628")  # mark after space, before letter
     [' ', 'بَ']
     """
     out: list[str] = []
     pending: list[str] = []
+    n = len(text)
+    i = 0
 
-    for ch in text:
-        if unicodedata.category(ch) == "Mn":
-            if out and _is_markable_base(out[-1][0]):
-                out[-1] = _with_ordered_marks(out[-1] + ch)
+    while i < n:
+        ch = text[i]
+        if _is_attachable(ch):
+            # جريانُ العلامات المتتالية وحدةُ قرارٍ واحدة — لا تُشطر بين قاعدتين.
+            j = i
+            while j < n and _is_attachable(text[j]):
+                j += 1
+            run = text[i:j]
+            if forward_flank_marks:
+                # الانعكاس الخام قلب تسلسل العلامات هو أيضاً؛ نعيده
+                # أينما ذهب هذا الجريان — للقاعدة السابقة أو التالية.
+                run = run[::-1]
+            prev_base = bool(out) and _is_markable_base(out[-1][0])
+            next_base = j < n and _is_markable_base(text[j])
+            if forward_flank_marks and prev_base and next_base:
+                # برهان الانعكاس قائم: العلامات تعود للقاعدة التالية،
+                # وبترتيبها الأصلي — فالانعكاس الخام قلب تسلسلها هو أيضاً.
+                pending.extend(run[::-1])
+            elif prev_base:
+                out[-1] = _with_ordered_marks(out[-1] + run)
             else:
-                pending.append(ch)
+                pending.extend(run)
+            i = j
             continue
         if _is_markable_base(ch):
             out.append(_with_ordered_marks(ch + "".join(pending)))
             pending.clear()
         else:
             out.append(ch)
+        i += 1
 
     if pending:
         marks = "".join(pending)
@@ -356,6 +391,12 @@ class ReorderConfig:
 
     #: انقل نقطة الجملة الملتصقة بسنة/رقم إلى طرف الجزيرة الصحيح.
     relocate_sentence_punct: bool = True
+
+    #: حين يكون الانعكاس **مثبتاً** (بوابة الدرجة ٢/إنقاذ السطر): جريان
+    #: العلامات المحصور بين قاعدتين يلزم القاعدة التالية — اتفاقية
+    #: الانعكاس الخام التي ينتجها MuPDF على النص المُشكَّل. افتراضه False
+    #: يحافظ على العقد العنقودية لمن يستدعي reverse_visual_line مباشرة.
+    forward_flank_marks: bool = False
 
 
 def _mirror(ch: str) -> str:
@@ -576,7 +617,11 @@ def reverse_visual_line(line: str, config: ReorderConfig | None = None) -> str:
     """
     cfg = config or ReorderConfig()
 
-    units = grapheme_clusters(line) if cfg.cluster_aware else list(line)
+    units = (
+        grapheme_clusters(line, forward_flank_marks=cfg.forward_flank_marks)
+        if cfg.cluster_aware
+        else list(line)
+    )
     out = "".join(reversed(units))
 
     if cfg.protect_ltr_runs:

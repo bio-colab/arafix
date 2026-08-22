@@ -164,6 +164,15 @@ class PipelineConfig:
     #: زوراً على مشتبهاتها القليلة، والقصيرة لا تفلت بعشراتها.
     confidence_mode: str = "classic"
 
+    #: ربطُ الحركات العالقة بين قاعدتين بالقاعدة **التالية** عند العكس —
+    #: لِمَ تُفعِّله؟ لأن مولِّدَ استخراجك ينتج انعكاساً خاماً للمحارف
+    #: على النص المُشكَّل (MuPDF مثلاً: «ةَّيم» حيث كانت «ميَّة»). ولِمَ
+    #: لا يُستنتَج تلقائياً؟ لأن ثبوت الانعكاس لا يثبت الاتفاقية: الملفات
+    #: الحديثة تحافظ على العناقيد ويُفسدها الربط الأمامي. جرِّبهما على
+    #: عينة من ملفاتك وثبّت الأفضل (قياساً: ‎11.6% ← ‎2% على ملفٍ رقمي،
+    #: و‎12.5% ← ‎<3% على ملفٍّ مُشكَّل معكوس).
+    forward_flank_marks: bool = False
+
     #: عتبات مخصّصة تُدمج فوق `DEFAULT_THRESHOLDS`.
     thresholds: dict = field(default_factory=dict)
 
@@ -498,7 +507,9 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
         )
         if cfg.force_reorder or score > th["visual_order"]:
             before = current
-            current = fix_order(current, cfg.reorder)
+            # اتفاقية العلامات تمرَّر كما ضبطها المستعمل (انظر أعلاه).
+            rcfg = replace(cfg.reorder, forward_flank_marks=cfg.forward_flank_marks)
+            current = fix_order(current, rcfg)
             stages.append(Stage.REORDER)
             audit.record(
                 before,

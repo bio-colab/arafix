@@ -214,6 +214,23 @@ def _build_pf_tables() -> tuple[dict[str, str], dict[str, JoiningForm]]:
         if len(base) > 1 and base[0] in (TATWEEL, " ", "\u00a0"):
             to_base[ch] = base[1:]
 
+    # --- الصيغ الشرعية: توسيعٌ موثَّق فقط، وإلا فالتحفظ -------------------
+    # دستور المكتبة: لا يُصلَح إلا ما يمكن تبريره. جدول التفكيك العام في
+    # يونيكود يحوي مدخلاتٍ لصيغٍ شرعيةٍ صحيحة، وأخرى ينتج منها عربياً
+    # فاسداً («صلے» من U+FDF0). فنثبّت الصحيحة يدوياً، ونُسقط الفاسدة
+    # كي تبقى محارفها كما هي — التحفُّظ أمانٌ لا قصور.
+    _HONORIFIC_VERIFIED = {
+        "\ufdfa": "صلى الله عليه وسلم",  # ﷺ
+        "\ufdf2": "الله",                # ﷲ
+        "\ufdfb": "جل جلاله",            # ﷻ
+    }
+    for ch, expansion in _HONORIFIC_VERIFIED.items():
+        to_base[ch] = expansion
+
+    for bad in ("\ufdf0", "\ufdf1"):
+        to_base.pop(bad, None)   # «صلے»/«قلى» — تفكيكٌ غير عربي سليم
+        to_form.pop(bad, None)
+
     return to_base, to_form
 
 

@@ -157,6 +157,13 @@ class PipelineConfig:
     #: إلا ما اجتازها وحده. مطفأ افتراضياً حتى يُقاس أثره على مدوناتك.
     rescue_mixed_lines: bool = False
 
+    #: نمط ثقة لام-ألف: ``classic`` يعاقب كل مشتبهٍ متبقٍّ ‎0.1 مطلقاً —
+    #: ولا يُفعَّل العقاب إلا إن وقع إصلاح في النداء نفسه. ``density``
+    #: ينسّب العقوبة لكثافة المشتبهات لكل مئة كلمة (‎0.02 لكل ١٪) بحدٍّ
+    #: أدنى 0.35، ويطبّقها ولو بلا إصلاح — الصفحات الطويلة لا تُعاقَب
+    #: زوراً على مشتبهاتها القليلة، والقصيرة لا تفلت بعشراتها.
+    confidence_mode: str = "classic"
+
     #: عتبات مخصّصة تُدمج فوق `DEFAULT_THRESHOLDS`.
     thresholds: dict = field(default_factory=dict)
 
@@ -227,6 +234,57 @@ def _line_reversal_score(line: str) -> tuple[float, list]:
     return detect_visual_order(fold_simple_forms(line), shaped_source=line)
 
 
+#: علامات نهاية الجملة — في النص المنطقي تختم السطر لا تبدأه.
+_LINE_TERMINATORS = ".؟!؛"
+
+
+def _punctuation_position_hint(text: str) -> dict[str, int] | None:
+    """
+    ملاحظة تشخيصية (لا تدخل التصويت): نقاطُ الجملة في رؤوس الأسطر.
+
+    في التخزين المعكوس بصرياً تقع نقطةُ نهاية الجملة العربية عند **بداية**
+    السطر بدل خاتمته. تُستعمل كسجل امتناعٍ إضافي في التقرير فقط —
+    شاهدٌ رابع محتمل لم يُوزَن بعد، ونعرضه بدل إخفائه.
+    """
+    starts = ends = 0
+    for ln in text.splitlines():
+        s = ln.strip()
+        if len(s) < 12:
+            continue  # الأسطر القصيرة (عناوين، أرقام) بلا شهادة
+        if s[0] in _LINE_TERMINATORS:
+            starts += 1
+        if s[-1] in _LINE_TERMINATORS:
+            ends += 1
+    if starts + ends == 0:
+        return None
+    return {
+        "lines_starting_with_terminator": starts,
+        "lines_ending_with_terminator": ends,
+    }
+
+
+def _lam_alef_confidence(
+    rep, text: str, cfg: PipelineConfig
+) -> float:
+    """
+    ثقة مرحلة لام-ألف بحسب ``cfg.confidence_mode``.
+
+    * ``classic``: سلوك ١.٠ التاريخي حرفياً — العقاب (‎0.1 لكل مشتبه،
+      حد أدنى 0.35) لا يُفعَّل إلا إن وقع إصلاحٌ في النداء نفسه.
+    * ``density``: العقوبة كثافية (‎0.02 لكل ١٪ مشتبهات من الكلمات،
+      حد أدنى 0.35) وتطبَّق ولو بلا إصلاح.
+    """
+    if cfg.confidence_mode == "classic":
+        return rep.confidence
+    if cfg.confidence_mode != "density":
+        raise ValueError(
+            f"confidence_mode غير معروف: {cfg.confidence_mode!r} — classic|density"
+        )
+    n_words = max(1, len(_ARABIC_WORD.findall(text)))
+    density_pct = 100.0 * rep.suspects_left / n_words
+    return round(max(0.35, 1.0 - 0.02 * density_pct), 3)
+
+
 def _rescue_mixed_direction_lines(
     text: str,
     shaped_source: str,
@@ -264,7 +322,7 @@ def _rescue_mixed_direction_lines(
         if not line.strip():
             continue
         shaped_line = src_lines[i] if aligned else line
-        score, evs = detect_visual_order(fold_simple_forms(shaped_line), shaped_source=shaped_line)
+        score, evs = _line_reversal_score(shaped_line)
         if score <= th["visual_order"]:
             continue
         proof = any(e.name == "joining_forms" and e.value > 0 for e in evs)
@@ -493,6 +551,12 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                     "سالمة إجمالاً (إنقاذ مختلط)"
                 )
             if audit.enabled and 0.20 <= abs(score) < th["visual_order"] and rescued is None:
+                hint = _punctuation_position_hint(current)
+                abstain_metadata: dict = {"threshold": th["visual_order"]}
+                if hint is not None and hint["lines_starting_with_terminator"] > hint[
+                    "lines_ending_with_terminator"
+                ]:
+                    abstain_metadata["punctuation_position_hint"] = hint
                 audit.abstain(
                     stage=Stage.REORDER.value,
                     rule="VISUAL_ORDER_BELOW_THRESHOLD",
@@ -506,7 +570,7 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                         ),
                         *order_audit_evidence,
                     ),
-                    metadata={"threshold": th["visual_order"]},
+                    metadata=abstain_metadata,
                 )
             if rescued is None:
                 notes.append(f"لم يُمسّ الاتجاه (درجة {score:+.2f} دون العتبة)")
@@ -532,6 +596,10 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     # (مضمَّناً و/أو lexicon=). نوحّد البوابة مع repair_blocks: لا نشترط
     # Defect.LAM_ALEF_TRANSPOSED وحده — فالمُبهَم لا يُسجَّل قاطعاً.
     lam_conf = 1.0
+    if cfg.confidence_mode not in ("classic", "density"):
+        raise ValueError(
+            f"confidence_mode غير معروف: {cfg.confidence_mode!r} — classic|density"
+        )
     if cfg.enable_lam_alef_repair:
         vocab = _effective_lexicon(cfg)
         has_decisive = dg.has(Defect.LAM_ALEF_TRANSPOSED)
@@ -542,13 +610,13 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                 before = current
                 current = rep.text
                 stages.append(Stage.REPAIR_LAM_ALEF)
-                lam_conf = rep.confidence
+                lam_conf = _lam_alef_confidence(rep, current, cfg)
                 audit.record(
                     before,
                     current,
                     stage=Stage.REPAIR_LAM_ALEF.value,
                     rule="LAM_ALEF_TRANSPOSITION",
-                    confidence=rep.confidence,
+                    confidence=lam_conf,
                     evidence=(
                         EvidenceItem("decisive-fixes", rep.fixed_decisive),
                         EvidenceItem("lexicon-fixes", rep.fixed_by_lexicon),
@@ -564,6 +632,10 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
                         f"وحُسم {rep.fixed_by_lexicon} موضعاً مُبهَماً بالمعجم"
                     )
             elif rep.suspects_left:
+                if cfg.confidence_mode == "density":
+                    # الكثافة تعاقب المشتبهات حتى بلا إصلاح: بقاءُ عشرات
+                    # المُبهَمات في صفحةٍ شهادةٌ على فسادها لا على سلامتنا.
+                    lam_conf = _lam_alef_confidence(rep, current, cfg)
                 audit.abstain(
                     stage=Stage.REPAIR_LAM_ALEF.value,
                     rule="LAM_ALEF_AMBIGUOUS",
@@ -1224,6 +1296,32 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
                     page.repair.stages_applied.append(Stage.REPAIR_LAM_ALEF)
         doc.metadata["document_lexicon_size"] = len(vocab)
         doc.metadata["document_lexicon_pages_touched"] = fixed_pages
+
+    # --- بطاقة فساد المستند: أرقامٌ خام لمن يريد بوّابَه في أنبوبه ------
+    # لا قرار هنا — قراءة فقط. RAG والمهام الدفعية يستفيدون من معرفة
+    # «كم صفحةً لامسها أي سلك إصلاح» قبل أن يثقوا بالنص.
+    _CONTENT_STAGES = {
+        Stage.NORMALIZE,
+        Stage.REORDER,
+        Stage.EXPAND_LIGATURES,
+        Stage.REPAIR_LAM_ALEF,
+        Stage.REPAIR_SPACING,
+        Stage.REPAIR_PDF_CONFUSIONS,
+        Stage.CONTEXT,
+    }
+    stage_page_counts: dict[str, int] = {}
+    pages_content_repaired = 0
+    for page in doc.pages:
+        page_stages = set(page.repair.stages_applied)
+        for s in page_stages:
+            stage_page_counts[s.value] = stage_page_counts.get(s.value, 0) + 1
+        if page_stages & _CONTENT_STAGES:
+            pages_content_repaired += 1
+    doc.metadata["document_corruption_profile"] = {
+        "pages_total": len(doc.pages),
+        "pages_content_repaired": pages_content_repaired,
+        "stage_page_counts": stage_page_counts,
+    }
 
     doc.metadata["max_columns"] = max((p.n_columns for p in doc.pages), default=1)
     doc.metadata["table_count"] = sum(len(p.tables) for p in doc.pages)

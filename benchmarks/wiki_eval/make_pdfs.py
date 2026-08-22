@@ -103,7 +103,7 @@ def render_pdf(out_path: Path, text: str, mode: str) -> int:
             flush_page()
 
     c.save()
-    return pages
+    return pages  # noqa: F841 — العدد للاستعمال التشخيصي عند الحاجة
 
 
 def main() -> int:

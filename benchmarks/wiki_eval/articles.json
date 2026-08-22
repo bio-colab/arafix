@@ -1,0 +1,79 @@
+{
+  "schema": "arafix.wiki-eval.v1",
+  "description": "معيار مستقل: مقالات ويكيبيديا العربية تُنظَّف ذهباً ثم تُحوَّل PDF بثلاثة أنماط إتلاف",
+  "source_api": "https://ar.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&format=json&titles={title}&redirects=1&formatversion=2",
+  "gold_policy": "النص المنظف قبل تحويله PDF هو الحقيقة الأرضية — يُحفظ مرة ولا يُعاد توليده بصمت",
+  "max_chars": 6000,
+  "articles": [
+    {
+      "slug": "aljabr",
+      "title": "الجبر",
+      "domain": "رياضيات"
+    },
+    {
+      "slug": "relativity",
+      "title": "النسبية العامة",
+      "domain": "فيزياء"
+    },
+    {
+      "slug": "periodic-table",
+      "title": "الجدول الدوري",
+      "domain": "كيمياء"
+    },
+    {
+      "slug": "solar-system",
+      "title": "المجموعة الشمسية",
+      "domain": "فلك"
+    },
+    {
+      "slug": "algorithm",
+      "title": "خوارزمية",
+      "domain": "حاسوب"
+    },
+    {
+      "slug": "heart",
+      "title": "قلب",
+      "domain": "طب"
+    },
+    {
+      "slug": "photosynthesis",
+      "title": "التمثيل الضوئي",
+      "domain": "أحياء"
+    },
+    {
+      "slug": "andalus",
+      "title": "الأندلس",
+      "domain": "تاريخ"
+    },
+    {
+      "slug": "salahaddin",
+      "title": "صلاح الدين الأيوبي",
+      "domain": "تاريخ"
+    },
+    {
+      "slug": "mahfouz",
+      "title": "نجيب محفوظ",
+      "domain": "أدب"
+    },
+    {
+      "slug": "1001-nights",
+      "title": "ألف ليلة وليلة",
+      "domain": "سرد شعبي"
+    },
+    {
+      "slug": "nile",
+      "title": "نهر النيل",
+      "domain": "جغرافيا"
+    },
+    {
+      "slug": "ibn-sina",
+      "title": "ابن سينا",
+      "domain": "فلسفة وطب"
+    },
+    {
+      "slug": "human-rights",
+      "title": "حقوق الإنسان",
+      "domain": "قانون"
+    }
+  ]
+}

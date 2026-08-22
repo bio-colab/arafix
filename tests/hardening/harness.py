@@ -181,6 +181,50 @@ def letter_skeleton(t: str) -> str:
     )
 
 
+# ---------------------------------------------------------------------------
+# مقاييس الحركات (H11) — أدق من CER: الالتصاق والنوع والموضع
+# ---------------------------------------------------------------------------
+
+
+def mark_attachment_metrics(gold: str, out: str) -> dict[str, float] | None:
+    """
+    يقارن الذهب بالمخرَج على مستوى (قاعدة ← مجموعتها).
+    يفترض تطابق تسلسل القواعد (الإصلاح لم يفقد حروفاً).
+
+    يعيد None إن اختلفت القواعد (لا معنى لقياس الالتصاق).
+    """
+    gu = split_marks(gold)
+    ou = split_marks(out)
+    gb = [b for b, _ in gu]
+    ob = [b for b, _ in ou]
+    if gb != ob:
+        return None
+    total = len(gu)
+    exact = sum(1 for (_, gm), (_, om) in zip(gu, ou) if gm == om)
+    # دقة على العناقيد التي تحمل علاماتٍ في أيّ طرف (تجاهل غير المُشكَّل)
+    marked_pairs = [
+        ((gb, gm), (ob_, om_))
+        for (gb, gm), (ob_, om_) in zip(gu, ou)
+        if gm or om_
+    ]
+    marked_exact = sum(1 for (_, gm), (_, om) in marked_pairs if gm == om)
+    marked_total = len(marked_pairs)
+    return {
+        "cluster_accuracy": round(exact / total, 5) if total else 1.0,
+        "marked_cluster_accuracy": (
+            round(marked_exact / marked_total, 5) if marked_total else 1.0
+        ),
+        "marked_total": marked_total,
+    }
+
+
+def _pair_marked(gu, ou):
+    """يُقرن الوحدات المتطابقة القاعدة التي تحمل علاماتٍ في أيّ طرف."""
+    for (gb, gm), (ob, om) in zip(gu, ou):
+        if gm or om:
+            yield (gb, gm), (ob, om)
+
+
 def unexpected_mutations(
     gold_logical: str, repaired_visual_order_input: str, out: str
 ) -> list[str]:

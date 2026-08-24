@@ -69,8 +69,21 @@ class PyMuPDFExtractor(Extractor):
             ) from exc
         return fitz.open(path)
 
+    def metadata(self, path: str) -> dict[str, str]:
+        """يقرأ Producer/Creator من PDF دون أن يجعلها قراراً علاجياً."""
+        doc = self._open(path)
+        try:
+            raw = doc.metadata or {}
+            return {
+                field: str(raw.get(field) or "")
+                for field in ("producer", "creator")
+            }
+        finally:
+            doc.close()
+
     @staticmethod
     def _is_markable_base(text: str) -> bool:
+
         """Letter base that may carry tashkeel — not space, punct, or digits."""
         if not text:
             return False

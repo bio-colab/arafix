@@ -1170,7 +1170,21 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
     doc.metadata["extractor"] = extractor.name
     doc.metadata["layout"] = cfg.layout
 
+    # Optional source metadata is descriptive only.  It must never influence
+    # diagnosis or repair decisions, and older/custom extractors remain valid
+    # through the non-abstract Extractor.metadata() hook.
+    try:
+        source_metadata = extractor.metadata(path)
+    except Exception as exc:  # pragma: no cover - defensive extractor boundary
+        source_metadata = {}
+        doc.metadata["extractor_metadata_error"] = str(exc)
+    if isinstance(source_metadata, Mapping):
+        for field_name in ("producer", "creator"):
+            if field_name in source_metadata:
+                doc.metadata[field_name] = str(source_metadata[field_name] or "")
+
     glyph_maps: dict[str, GlyphMap] | None = None
+
     cmap_recovered = 0
     noise_removed = 0
     noise_reasons: dict[str, int] = {}

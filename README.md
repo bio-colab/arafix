@@ -56,6 +56,8 @@ print(repair_text("Ø§Ù„Ù…ÙCustomer Report (Status: 200 OK)").text)
 doc = extract_pdf("thesis.pdf")
 print(doc.text)
 print(doc.confidence, doc.pages[0].n_columns)
+print(doc.metadata.get("producer"), doc.metadata.get("creator"))
+
 ```
 
 ```python
@@ -349,6 +351,8 @@ document = extract_pdf("thesis.pdf")
 print(document.text)
 print(document.confidence)
 print(len(document.pages))
+print(document.metadata.get("producer"), document.metadata.get("creator"))
+
 ```
 
 للتشخيص قبل الاستخراج أو الإصلاح:
@@ -451,6 +455,8 @@ for page in document.pages:
 ```
 
 يدعم مسار التخطيط الأعمدة العربية من اليمين إلى اليسار، والترويسات والتذييلات، وبعض الجداول. يبقى الكشف إحصائياً؛ فإذا كانت الصفحة تحتوي على أعمدة متداخلة جداً أو جدولاً بلا فواصل هندسية واضحة، قد تحتاج إلى ضبط `LayoutConfig` أو مراجعة النتيجة يدوياً.
+
+عند استخدام محرك PyMuPDF، تحفظ `DocumentResult.metadata` حقلي `producer` و`creator` إذا سجلهما ملف PDF. هذه البيانات وصفية للفرز والتحليل فقط؛ لا تغيّر التشخيص ولا تفعّل أو تعطل أي إصلاح تلقائياً. قد تكون الحقول فارغة أو غير موثوقة، ولذلك لا تُعامل كهوية قاطعة لبرنامج الإنتاج.
 
 ### التشخيص وحده
 

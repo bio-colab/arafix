@@ -1,14 +1,14 @@
-"""H14 — ميدان Glyph Evidence المُعنون: الإشارة والدمج والتحفظ.
+"""H14 — ميدان Glyph Evidence المُعنون (v2): أربع حالات مُعنونة.
 
-يثبّت أدلة benchmarks/glyph_fixtures/ (الـfixture المولَّد بفساد ToUnicode
-مُصنَّع، والذهب gold_manifest.json):
+يثبّت أدلة benchmarks/glyph_fixtures/ لكل حالة من حالات الذهب
+(arafix.glyph-fixture.v2):
 
-* كشف حتمي دقيق: كل جليفٍ مرسومٍ حقيقتُه «ه» يتناقض مع طبقة النص،
-  وصفر تناقض خارج الذهب.
+* كشف حتمي دقيق: كل جليفٍ مرسومٍ حقيقتُه حرفُ الحقيقة يتناقض مع طبقة
+  النص، وصفر تناقض خارج الذهب.
 * التحفظ الحالي: extract_pdf لا يصلح كذبات المحارف العادية تلقائياً —
-  الكذبة تبقى في المخرج (تثبيتٌ يُحدَّث بقرار موثق عند تفعيل الطبقة).
-* سلسلة الدمج عبر الواجهة العامة فقط تسترجع الذهب حرفياً 100% بصفر
-  إصلاح كاذب.
+  كلمةٌ مفسودةٌ محددة تبقى في المخرج (تثبيتٌ يُحدَّث بقرار موثق).
+* سلسلة الدمج عبر الواجهة العامة فقط تسترجع كل هدفٍ حرفياً بصفر إصلاح
+  كاذب وامتناعٍ على البروب الخارجي للمعجم.
 """
 from __future__ import annotations
 
@@ -36,26 +36,57 @@ REPO = Path(__file__).resolve().parents[2]
 FIXTURES = REPO / "benchmarks" / "glyph_fixtures" / "assets"
 _WORD = re.compile(r"[\u0621-\u064A\u0671-\u06D3]{3,}")
 
-
-def _manifest() -> dict:
-    return json.loads((FIXTURES / "gold_manifest.json").read_text(encoding="utf-8"))
+#: بروب FPR لكل زوج: كلمة سليمة غريبة عن معجم الحالة.
+FPR_PROBE_WORD = {
+    "ة": "مكتبة",
+    "ى": "سلامى",
+    "ذ": "مذكرة",
+    "ز": "منزلة",
+    "ت": "متواتر",
+    "ح": "محبرة",
+    "ص": "مصباح",
+    "ط": "مطرقة",
+    "س": "مسبحة",
+    "ع": "معجون",
+    "و": "موسوعة",
+    "ي": "مياه",
+    "ا": "مالحة",
+}
 
 
 def _normalize(ch: str) -> str:
     return PF_TO_BASE.get(ch, ch)
 
 
-@pytest.fixture(scope="module")
-def manifest() -> dict:
-    return _manifest()
+def _manifest() -> dict:
+    return json.loads((FIXTURES / "gold_manifest.json").read_text(encoding="utf-8"))
 
 
-def test_gold_conflicts_are_exactly_the_painted_truth_glyphs(manifest) -> None:
+_CASES = _manifest()["cases"]
+_CASE_IDS = [c["key"] for c in _CASES]
+
+pytestmark = pytest.mark.parametrize("case", _CASES, ids=_CASE_IDS)
+
+
+def _word_pairs(truth_lines: list[str], extracted_text: str) -> dict[str, str]:
+    pairs: dict[str, str] = {}
+    for tline, gline in zip(truth_lines, extracted_text.split("\n")):
+        tw, gw = tline.split(), gline.split()
+        if len(tw) != len(gw):
+            continue
+        for t, c in zip(tw, gw):
+            if t == c or len(t) != len(c) or c in pairs:
+                continue
+            diffs = [i for i, (a, b) in enumerate(zip(t, c)) if a != b]
+            if len(diffs) == 1:
+                pairs[c] = t
+    return pairs
+
+
+def test_gold_conflicts_are_exactly_the_painted_truth_glyphs(case) -> None:
     import fitz
 
-    pdf = FIXTURES / (
-        f"glyph_{manifest['pair']['true']}_to_{manifest['pair']['lie']}.pdf")
-    doc = fitz.open(pdf)
+    doc = fitz.open(FIXTURES / case["pdf"])
     page = doc[0]
     font_xref = doc.get_page_fonts(0)[0][0]
     name, _ext, _t, data = doc.extract_font(font_xref)
@@ -68,66 +99,53 @@ def test_gold_conflicts_are_exactly_the_painted_truth_glyphs(manifest) -> None:
         for uni, gid, _origin, _bbox in span["chars"]:
             reported.setdefault(gid, set()).add(chr(uni))
 
-    true_ch = manifest["pair"]["true"]
-    conflicts, painted_truth_gids = set(), set()
+    true_ch = case["pair"]["true"]
+    conflicts: set[int] = set()
+    painted_truth_gids: set[int] = set()
     for gid, chars in reported.items():
         truth = gm.lookup_id(gid)
         if truth is None or len(truth) != 1:
             continue
-        is_truth_glyph = _normalize(truth) == true_ch
-        if is_truth_glyph:
+        if _normalize(truth) == true_ch:
             painted_truth_gids.add(gid)
         if any(_normalize(ch) != _normalize(truth) for ch in chars):
-            assert is_truth_glyph, f"تناقض خارج الذهب على gid={gid}"
+            assert _normalize(truth) == true_ch, f"تناقض خارج الذهب gid={gid}"
             conflicts.add(gid)
 
     assert conflicts == painted_truth_gids, "الكشف ليس حتمياً بالضبط"
-    assert conflicts, "لا تناقضات مكتشفة — الـfixture تغيّر؟"
+    assert conflicts, f"لا تناقضات في {case['key']} — الـfixture تغيّر؟"
 
 
-def test_pipeline_abstains_on_normal_character_lies(manifest) -> None:
-    """التثبيت المحافظ: الأنبوب اليوم لا يخترع إصلاحاً من شكل الجليف.
-
-    كلمةٌ مفسودةٌ محددة («الةلال» من «الهلال») تبقى في المخرج كما هي.
-    عند تفعيل طبقة Glyph Evidence داخل الأنبوب مستقبلاً، يُحدَّث هذا
-    التثبيت بقرار موثق في CHANGELOG.
-    """
-    lie_ch = manifest["pair"]["lie"]
-    pdf = FIXTURES / f"glyph_{manifest['pair']['true']}_to_{lie_ch}.pdf"
-    doc = extract_pdf(str(pdf), PipelineConfig(extractor="pymupdf"))
+def test_pipeline_abstains_on_normal_character_lies(case) -> None:
+    """التثبيت المحافظ: كلمةٌ مفسودةٌ محددة تبقى في مخرج الأنبوب كما هي."""
+    true_ch, lie_ch = case["pair"]["true"], case["pair"]["lie"]
+    doc = extract_pdf(str(FIXTURES / case["pdf"]),
+                      PipelineConfig(extractor="pymupdf"))
     text = doc.pages[0].text
 
-    truth_text = "\n".join(manifest["truth_lines"])
-    assert text != truth_text, "المخرج مطابق للحقيقة رغم الفساد؟"
-    # كذبةٌ محددة بالاسم لا مجرد عدّاد — أي إصلاحٍ جزئيٍّ يكسر التثبيت
-    # فيستحق مراجعة قرار.
-    corrupted_word = manifest["truth_lines"][1].split()[0].replace(
-        manifest["pair"]["true"], lie_ch)
+    truth_text = "\n".join(case["truth_lines"])
+    assert text != truth_text, f"[{case['key']}] المخرج مطابق للحقيقة رغم الفساد؟"
+
+    target_word = next(
+        w for ln in case["truth_lines"] for w in ln.split() if true_ch in w
+    )
+    corrupted_word = target_word.replace(true_ch, lie_ch)
     assert corrupted_word in text, (
-        f"الكذبة «{corrupted_word}» لم تعد تظهر — سلوك الأنبوب تغيّر")
+        f"[{case['key']}] الكذبة «{corrupted_word}» لم تعد تظهر — "
+        "سلوك الأنبوب تغيّر؛ حدّث التثبيت بقرار موثق")
 
 
-def test_public_api_fusion_restores_gold_exactly_with_zero_fpr(manifest) -> None:
-    true_ch, lie_ch = manifest["pair"]["true"], manifest["pair"]["lie"]
-    pdf = FIXTURES / f"glyph_{true_ch}_to_{lie_ch}.pdf"
-    corrupted_text = extract_pdf(
-        str(pdf), PipelineConfig(extractor="pymupdf")).pages[0].text
-
-    pairs: dict[str, str] = {}
-    for tline, gline in zip(manifest["truth_lines"], corrupted_text.split("\n")):
-        tw, gw = tline.split(), gline.split()
-        if len(tw) != len(gw):
-            continue
-        for t, c in zip(tw, gw):
-            if t != c and len(t) == len(c):
-                diffs = [i for i, (a, b) in enumerate(zip(t, c)) if a != b]
-                if len(diffs) == 1 and c not in pairs:
-                    pairs[c] = t
-    assert pairs, "لا أهداف محاذاة"
+def test_public_api_fusion_restores_gold_exactly_with_zero_fpr(case) -> None:
+    true_ch, lie_ch = case["pair"]["true"], case["pair"]["lie"]
+    doc = extract_pdf(str(FIXTURES / case["pdf"]),
+                      PipelineConfig(extractor="pymupdf"))
+    corrupted_text = doc.pages[0].text
+    pairs = _word_pairs(case["truth_lines"], corrupted_text)
+    assert pairs, f"[{case['key']}] لا أهداف محاذاة"
 
     gen = CandidateGenerator(confusion_model=CharacterConfusionModel(
-        [Confusion(lie_ch, true_ch, source="labeled-fixture", cost=0.30)]))
-    ctx = DocumentContext.from_texts(manifest["context_lines"] * 6,
+        [Confusion(lie_ch, true_ch, source="labeled-fixture", cost=0.50)]))
+    ctx = DocumentContext.from_texts(case["context_lines"] * 6,
                                      candidate_generator=gen)
     fusion = EvidenceFusion()
     neg = NegativeEvidenceModel()
@@ -142,12 +160,12 @@ def test_public_api_fusion_restores_gold_exactly_with_zero_fpr(manifest) -> None
         evs = ()
         if tok in pairs:
             evs = (GlyphEvidence(observed=tok, candidate=pairs[tok], score=0.95,
-                                 font=manifest["font"].split()[0],
+                                 font="Amiri-Regular",
                                  source="embedded-font-cmap"),)
         cands = gen.generate(tok, document_context=ctx, left=left, right=right,
                              glyph_evidence=evs)
-        dec = fusion.decide(tok, cands,
-                            negative_evidence=neg.inspect(corrupted_text, 0, len(tok)))
+        dec = fusion.decide(tok, cands, negative_evidence=neg.inspect(
+            corrupted_text, 0, len(tok)))
         if tok in pairs:
             if dec.decision.value == "safe":
                 if dec.replacement == pairs[tok]:
@@ -164,11 +182,13 @@ def test_public_api_fusion_restores_gold_exactly_with_zero_fpr(manifest) -> None
         restored = re.sub(rf"(?<![\u0621-\u064A]){old}(?![\u0621-\u064A])",
                           new, restored)
 
-    assert restored == "\n".join(manifest["truth_lines"]), \
-        f"الاسترجاع ليس حرفياً: {restored!r}"
-    assert not misses and not wrong_safe, "RAR<100% أو إصلاح كاذب"
+    assert restored == "\n".join(case["truth_lines"]), \
+        f"[{case['key']}] الاسترجاع ليس حرفياً: {restored!r}"
+    assert not misses and not wrong_safe, \
+        f"[{case['key']}] RAR<100% أو إصلاح كاذب"
 
-    # FPR: كلمة ة حقيقية غريبة عن المعجم بلا دليل جليف تبقى كما هي.
-    probe = fusion.decide("مكتبة", gen.generate(
-        "مكتبة", document_context=ctx, left="الكبيرة", right="الآن"))
-    assert probe.replacement is None, "إصلاح كاذب على كلمة سليمة"
+    probe_word = FPR_PROBE_WORD[lie_ch]
+    probe = fusion.decide(probe_word, gen.generate(
+        probe_word, document_context=ctx, left="الكبيرة", right="الآن"))
+    assert probe.replacement is None, \
+        f"[{case['key']}] إصلاح كاذب على «{probe_word}»"

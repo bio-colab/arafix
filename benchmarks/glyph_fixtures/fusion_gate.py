@@ -1,13 +1,13 @@
-"""بوابة الدمج — الاسترجاع الكامل عبر الواجهة العامة فقط.
+"""بوابة الدمج (v2، كل الحالات) — الاسترجاع الكامل عبر الواجهة العامة فقط.
 
-السلسلة: fixture PDF → استخراج arafix (يمتنع اليوم كما هو موثق) → محاذاة
-آلية للكلمات بين الحقيقة والنص المستخرج → GlyphEvidence لكل كلمة مفسودة
-→ DocumentContext + CharacterConfusionModel(mعاير cost=0.30)
-→ EvidenceFusion → SAFE فقط بالإجماع المستقل.
+لكل حالة: استخراج arafix (امتناع متوقع) ← محاذاة آلية للحقيقة ←
+GlyphEvidence لكل كلمة مفسودة ← DocumentContext +
+CharacterConfusionModel(معايرة cost=0.50) ← EvidenceFusion.
 
-البوابات الصارمة (خروج 1 عند خرقها):
-  * RAR: استرجاع حرفي 100% لكلمات الذهب.
-  * FPR = 0: صفر تغيير على أي كلمة ة حقيقية (داخل المعجم أو خارجه).
+البوابات الصارمة لكل حالة (خروج 1 عند خرق أيٍّ منها):
+  * RAR: استرجاع حرفي 100% — النص المستعاد يطابق الحقيقة تماماً.
+  * FPR = 0: لا إصلاح كاذب على ضوابط حرف الكذبة الحقيقية ولا على كلمات
+    غريبة عن المعجم.
 
     python benchmarks/glyph_fixtures/fusion_gate.py
 """
@@ -36,54 +36,56 @@ ROOT = Path(__file__).resolve().parent
 ASSETS = ROOT / "assets"
 _WORD = re.compile(r"[\u0621-\u064A\u0671-\u06D3]{3,}")
 
+#: بروب FPR لكل حالة: كلمة سليمة غريبة عن المعجم (حرف الكذبة فيها أصلاً).
+FPR_PROBE_WORD = {
+    "ة": "مكتبة",
+    "ى": "سلامى",
+    "ذ": "مذكرة",
+    "ز": "منزلة",
+    "ت": "متواتر",
+    "ح": "محبرة",
+    "ص": "مصباح",
+    "ط": "مطرقة",
+    "س": "مسبحة",
+    "ع": "معجون",
+    "و": "موسوعة",
+    "ي": "مياه",
+    "ا": "مالحة",
+}
 
-def _load_manifest() -> dict:
-    return json.loads((ASSETS / "gold_manifest.json").read_text(encoding="utf-8"))
 
+def word_pairs(truth_lines: list[str], extracted_text: str) -> dict[str, str]:
+    """محاذاة آلية: كلمة-بكلمة بين الحقيقة والمستخرَج، اختلافٌ واحد = هدف.
 
-def word_pairs(manifest: dict, extracted_text: str) -> tuple[dict[str, str], list[str]]:
-    """محاذاة آلية: كلمة-بكلمة بين الحقيقة والمستخرَج، أول اختلاف هو الهدف."""
-    truth_lines = manifest["truth_lines"]
-    got_lines = extracted_text.split("\n")
+    حدٌّ موثَّق: الكلمة ذات تبديلَين لنفس الزوج («جديد»←«جذيذ») خارج نطاق
+    الدمج العام — معجم السياق يقصر على مسافة تحرير 1 ونموذج الالتباس
+    يستبدل موضعاً واحداً، فلا يصل المرشح إلا بدليل جليفٍ منفرد ويمتنع.
+    """
     pairs: dict[str, str] = {}
-    skipped: list[str] = []
-    for tline, gline in zip(truth_lines, got_lines):
+    for tline, gline in zip(truth_lines, extracted_text.split("\n")):
         tw, gw = tline.split(), gline.split()
         if len(tw) != len(gw):
-            skipped.append(tline)
             continue
         for t, c in zip(tw, gw):
-            if t == c or len(t) != len(c):
+            if t == c or len(t) != len(c) or c in pairs:
                 continue
             diffs = [i for i, (a, b) in enumerate(zip(t, c)) if a != b]
-            if len(diffs) == 1 and c not in pairs:
+            if len(diffs) == 1:
                 pairs[c] = t
-    return pairs, skipped
+    return pairs
 
 
-def main() -> int:
-    manifest = _load_manifest()
-    true_ch, lie_ch = manifest["pair"]["true"], manifest["pair"]["lie"]
-    pdf_path = ASSETS / f"glyph_{true_ch}_to_{lie_ch}.pdf"
-
-    # 1) الأنبوب الحالي: امتناع متوقع على كذبات المحارف العادية
-    doc = extract_pdf(str(pdf_path), PipelineConfig(extractor="pymupdf"))
+def fuse_case(case: dict) -> tuple[bool, str]:
+    true_ch, lie_ch = case["pair"]["true"], case["pair"]["lie"]
+    doc = extract_pdf(str(ASSETS / case["pdf"]),
+                      PipelineConfig(extractor="pymupdf"))
     corrupted_text = doc.pages[0].text
-    if corrupted_text.count(lie_ch) == 0:
-        print(f"FAIL: المتوقع كذبة «{lie_ch}» في المخرج — سلوك الأنبوب تغيّر")
-        return 1
-    print(f"extracted (امتناع متوقع): {corrupted_text.splitlines()[0][:48]}…")
 
-    pairs, skipped = word_pairs(manifest, corrupted_text)
-    if skipped:
-        print(f"WARN: أسطر لم تُحاذاة (عدد كلمات مختلف): {skipped}")
-    print(f"word pairs من المحاذاة الآلية: {len(pairs)}")
-
-    # 2) النموذج: سياق نظيف + التباس مُعاير + دليل الجليف الكلمي
-    context_lines = manifest["context_lines"] * 6
+    pairs = word_pairs(case["truth_lines"], corrupted_text)
     gen = CandidateGenerator(confusion_model=CharacterConfusionModel(
-        [Confusion(lie_ch, true_ch, source="labeled-fixture", cost=0.30)]))
-    ctx = DocumentContext.from_texts(context_lines, candidate_generator=gen)
+        [Confusion(lie_ch, true_ch, source="labeled-fixture", cost=0.50)]))
+    ctx = DocumentContext.from_texts(case["context_lines"] * 6,
+                                     candidate_generator=gen)
     fusion = EvidenceFusion()
     neg = NegativeEvidenceModel()
 
@@ -92,7 +94,7 @@ def main() -> int:
         if t is None:
             return ()
         return (GlyphEvidence(observed=word, candidate=t, score=0.95,
-                              font="Amiri-Regular", glyph_id=None,
+                              font="Amiri-Regular",
                               source="embedded-font-cmap"),)
 
     tokens = _WORD.findall(corrupted_text)
@@ -104,14 +106,14 @@ def main() -> int:
         right = tokens[i + 1] if i + 1 < len(tokens) else None
         cands = gen.generate(tok, document_context=ctx, left=left, right=right,
                              glyph_evidence=glyph_ev(tok))
-        dec = fusion.decide(tok, cands,
-                            negative_evidence=neg.inspect(corrupted_text, 0, len(tok)))
+        dec = fusion.decide(tok, cands, negative_evidence=neg.inspect(
+            corrupted_text, 0, len(tok)))
         if tok in pairs:
             if dec.decision.value == "safe":
-                if dec.replacement != pairs[tok]:
-                    wrong_safe.append((tok, dec.replacement or ""))
-                else:
+                if dec.replacement == pairs[tok]:
                     replacements[tok] = dec.replacement
+                else:
+                    wrong_safe.append((tok, dec.replacement or ""))
             else:
                 misses.append(tok)
         elif dec.replacement is not None:
@@ -122,24 +124,34 @@ def main() -> int:
         restored = re.sub(rf"(?<![\u0621-\u064A]){old}(?![\u0621-\u064A])",
                           new, restored)
 
-    rar_ok = all(restored.count(t) >= 1 for t in (
-        "الشهادة", "الهلال", "الفهري")) and not misses and not wrong_safe
-    exact = restored == "\n".join(manifest["truth_lines"])
-    fpr_probe = fusion.decide(
-        "مكتبة",
-        gen.generate("مكتبة", document_context=ctx, left="الكبيرة", right="الآن"),
-    )
-    fpr_ok = fpr_probe.replacement is None
+    exact = restored == "\n".join(case["truth_lines"])
+    probe_word = FPR_PROBE_WORD[lie_ch]
+    probe = fusion.decide(probe_word, gen.generate(
+        probe_word, document_context=ctx, left="الكبيرة", right="الآن"))
+    fpr_ok = probe.replacement is None and not wrong_safe
+    ok = exact and not misses and fpr_ok
 
-    print(f"\nrestored : {restored.replace(chr(10), ' | ')}")
-    print(f"targets={len(pairs)} restored={len(replacements)} "
-          f"wrong_safe={len(wrong_safe)} missed={len(misses)}")
-    print(f"FPR probe 'مكتبة': {fpr_probe.decision.value}")
+    detail = (f"targets={len(pairs)} restored={len(replacements)} "
+              f"missed={len(misses)} wrong_safe={len(wrong_safe)} "
+              f"probe({probe_word})={probe.decision.value}")
+    print(f"[{case['key']}] {true_ch}->{lie_ch}: "
+          f"{'OK' if ok else 'FAIL'} | {detail}")
+    return ok, restored.replace("\n", " | ")
 
-    if rar_ok and exact and fpr_ok:
-        print("PASS: RAR=100% حرفياً، FPR=0، عبر الواجهة العامة فقط")
+
+def main() -> int:
+    manifest = json.loads((ASSETS / "gold_manifest.json").read_text(encoding="utf-8"))
+    print(f"schema={manifest['schema']} | cases={len(manifest['cases'])}\n")
+    all_ok = True
+    for case in manifest["cases"]:
+        ok, _preview = fuse_case(case)
+        all_ok = all_ok and ok
+
+    print()
+    if all_ok:
+        print("PASS: RAR=100% حرفياً وFPR=0 في كل الحالات — عبر الواجهة العامة فقط")
         return 0
-    print(f"FAIL: exact={exact} rar_ok={rar_ok} fpr_ok={fpr_ok}")
+    print("FAIL: راجع الحالات أعلاه")
     return 1
 
 

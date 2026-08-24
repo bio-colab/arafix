@@ -37,6 +37,7 @@ multi.pdf
 *.pdf
 !tests/**/*.pdf
 !examples/**/*.pdf
+!benchmarks/glyph_fixtures/assets/*.pdf
 
 # --- Independent eval: keep gold/metrics; do not ship full books/extracts ---
 # PDFs: covered by *.pdf above (user re-downloads from safahat.org)

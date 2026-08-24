@@ -249,7 +249,7 @@ repair_text(broken, cfg)
 
 **Philosophy:** never invent characters; never “fix just in case”; every decision carries evidence and confidence. Release gated by **FPR = 0** and **RAR ≥ 98%** on the 50-pack stress corpus.
 
-Further reading: [docs/metrics.md](docs/metrics.md) (all 10 quality metrics: definitions, gates, measured values, reproduction commands) · [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md) · [CITATION.cff](CITATION.cff) · [PR #3](https://github.com/bio-colab/arafix/pull/3) · [PR #5](https://github.com/bio-colab/arafix/pull/5) · [PR #7](https://github.com/bio-colab/arafix/pull/7)
+Further reading: [docs/metrics.md](docs/metrics.md) (all 10 quality metrics: definitions, gates, measured values, reproduction commands) · [benchmarks/optin_field](benchmarks/optin_field/) (measured evidence for the opt-in `rescue_mixed_lines` / `confidence_mode` features and the documented default decision) · [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md) · [CITATION.cff](CITATION.cff) · [PR #3](https://github.com/bio-colab/arafix/pull/3) · [PR #5](https://github.com/bio-colab/arafix/pull/5) · [PR #7](https://github.com/bio-colab/arafix/pull/7)
 
 
 

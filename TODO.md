@@ -61,11 +61,17 @@ Adobe InDesign · Microsoft Word · LaTeX/XeLaTeX · LibreOffice · ماسح
 
 ### المراحل
 
+> **الحالة**: ‏✅ P0 وP1 منفذان (2026-08-24) —
+> `scripts/harvest_producer_metadata.py` + اختباراته
+> `tests/test_producer_harvest.py` · معاينة على عيناتنا الأربع في
+> `reports/producer_corpus_preview.json`
+
 * **P0 — أداة الحصاد**: `scripts/harvest_producer_metadata.py` تفرغ كل
-  الحقول أعلاه آلياً لأي PDF إلى JSON (نصف يوم؛ كل القراءات متاحة).
+  الحقول أعلاه آلياً لأي PDF إلى JSON. ✅
 * **P1 — مصنّف المصادر**: قواعد على producer/creator strings →
   `source_software_class` (قابل للتحديث؛ المجهول يبقى unknown ولا
-  يُخمَّن).
+  يُخمَّن) + بصمات بنائية مستقلة عن النصوص: نمط تسمية القصاصات
+  (تسلسلي-سعري/ذهني/كامل) وأسلوب كتل ToUnicode. ✅
 * **P2 — بناء المدونة**: استقبال مساهمات الجمهور (#12)
   + توليد داخلية لكل فئة نقدر نحاكيها (Word/LibreOffice/LaTeX متاحة
   محلياً للتوليد).

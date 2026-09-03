@@ -116,6 +116,7 @@ from .normalize import (
     fold_presentation_forms,
     fold_simple_forms,
     normalize_text,
+    separate_fused_presentation_forms,
 )
 from .order import (
     MIRROR_PAIRS,
@@ -313,6 +314,7 @@ __all__ = [
     "normalize_text",
     "fold_presentation_forms",
     "fold_simple_forms",
+    "separate_fused_presentation_forms",
     "fold_pdf_homoglyphs",
     "expand_deferred_forms",
     "expand_ligatures",

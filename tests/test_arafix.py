@@ -1005,3 +1005,23 @@ class TestCMapGlyphRecovery:
             for value in glyph_map.by_id.values()
             for char in value
         )
+
+    def test_separate_fused_presentation_forms(self):
+        from arafix import repair_text
+        from arafix.normalize import separate_fused_presentation_forms
+
+        # 1. Dual-joining final form followed by initial form without space:
+        # و + ﺑﺎﻟﺤﻖ (ends with \ufed6 final qaf) + ﻧﺰل (\ufee7 initial nun)
+        raw = "\u0648\ufe91\ufe8e\ufedf\ufea4\ufed6\ufee7\ufeb0\u0644"
+        separated = separate_fused_presentation_forms(raw)
+        assert " " in separated
+        assert repair_text(raw).text == "وبالحق نزل"
+
+        # 2. Presentation form Ta Marbuta (\ufe94) followed by letter:
+        raw_tm = "\ufee7\u0650\ufed8\ufee4\ufe94\ufecb\ufee0\ufef4\ufeea"
+        repaired = repair_text(raw_tm).text
+        assert "نِقمة عليه" in repaired
+
+        # 3. Clean standard Arabic text with no presentation forms is untouched:
+        clean = "مدرسة"
+        assert separate_fused_presentation_forms(clean) == clean

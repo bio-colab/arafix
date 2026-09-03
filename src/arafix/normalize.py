@@ -20,16 +20,20 @@ NFKC يحلّ المشكلة، نعم — ويحلّ معها عشرين مشك�
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from dataclasses import dataclass
 
 from .types import RepairResult, Stage
 from .unicode_tables import (
     DEFERRED_PF_TO_BASE,
+    PF_JOINING_FORM,
+    PF_TO_BASE,
     SIMPLE_PF_TO_BASE,
     TATWEEL,
     ZWJ,
     ZWNJ,
+    JoiningForm,
     is_arabic_diacritic,
     is_presentation_form,
 )
@@ -43,6 +47,7 @@ __all__ = [
     "expand_deferred_forms",
     "expand_ligatures",
     "strip_tatweel_among_presentation_forms",
+    "separate_fused_presentation_forms",
     "normalize_text",
 ]
 
@@ -79,6 +84,9 @@ class NormalizeConfig:
     #: يمنع تشويه سلاسل مثل ``ـﻪـﻠـﻟا`` → «الله» بدل «لله».
     #: لا يمسّ كشيدةً وسط حروف اسمية عادية (تبقى لـ ``strip_tatweel``).
     strip_tatweel_in_pf_runs: bool = True
+
+    #: فصل الكلمات الملتصقة الناتجة عن أشكال العرض الختامية المفتقرة لمسافة (0x20).
+    separate_fused_forms: bool = True
 
     #: تطبيع NFC ختامي لضمّ المحارف المركّبة.
     apply_nfc: bool = True
@@ -173,7 +181,92 @@ def strip_tatweel_among_presentation_forms(text: str) -> str:
     return "".join(out)
 
 
-def fold_simple_forms(text: str, *, strip_pf_tatweel: bool = True) -> str:
+_DUAL_JOINING_BASES = frozenset("بتثجحخسشصضطظعغفقكلمنهي")
+_PF_TA_MARBUTA = frozenset({"\ufe93", "\ufe94"})
+
+
+def separate_fused_presentation_forms(text: str) -> str:
+    """
+    يفصل حدود الكلمات الملتصقة الناتجة عن أشكال العرض الختامية في ملفات PDF.
+
+    كثير من مصدّرات PDF تعتمد على الفراغ البصري للجليف الختامي وتسقط مسافة
+    الفصل (0x20). في العربية، الحروف ثنائية الاتصال إذا وردت في شكلها
+    الختامي (JoiningForm.FINAL)، أو التاء المربوطة، يستحيل صرفياً ولغوياً
+    أن يتلوها حرف في نفس الكلمة.
+    """
+    if not text:
+        return text
+
+    tokens = re.split(r"(\s+)", text)
+    out_tokens: list[str] = []
+
+    for token in tokens:
+        if not token or token.isspace():
+            out_tokens.append(token)
+            continue
+
+        chars = list(token)
+        n = len(chars)
+
+        # ابحث عن أول حرف عربي حقيقي في الكتلة متجاوزاً علامات الترقيم والأقواس
+        first_ar_char = next(
+            (c for c in chars if unicodedata.category(c).startswith("L")), None
+        )
+
+        if first_ar_char is not None:
+            first_form = PF_JOINING_FORM.get(first_ar_char, JoiningForm.UNKNOWN)
+            # إن بدأت الكتلة بشكل ختامي أو تاء مربوطة فهي مقلوبة بصرياً؛ لا نلمسها
+            if (
+                first_form == JoiningForm.FINAL
+                or first_ar_char in _PF_TA_MARBUTA
+                or first_ar_char == "ة"
+            ):
+                out_tokens.append(token)
+                continue
+
+        w_out: list[str] = []
+        i = 0
+        while i < n:
+            c = chars[i]
+            w_out.append(c)
+            base_c = PF_TO_BASE.get(c, c)
+            form = PF_JOINING_FORM.get(c, JoiningForm.UNKNOWN)
+
+            is_final_boundary = (
+                c in _PF_TA_MARBUTA
+                or (form == JoiningForm.FINAL and base_c in _DUAL_JOINING_BASES)
+            )
+
+            if is_final_boundary and i + 1 < n:
+                j = i + 1
+                while j < n and unicodedata.category(chars[j]) == "Mn":
+                    w_out.append(chars[j])
+                    j += 1
+                if j < n:
+                    next_c = chars[j]
+                    next_base = PF_TO_BASE.get(next_c, next_c)
+                    next_form = PF_JOINING_FORM.get(next_c, JoiningForm.UNKNOWN)
+                    # في أشكال العرض، لا تبدأ كلمة تالية بغير شكل ابتدائي أو مفرد:
+                    if (
+                        next_form in (JoiningForm.INITIAL, JoiningForm.ISOLATED)
+                        and next_base
+                        and unicodedata.category(next_base[0]).startswith("L")
+                        and next_c not in ' \t\r\n،.؛:!?()[]"«»'
+                    ):
+                        w_out.append(" ")
+                i = j - 1
+            i += 1
+        out_tokens.append("".join(w_out))
+
+    return "".join(out_tokens)
+
+
+def fold_simple_forms(
+    text: str,
+    *,
+    strip_pf_tatweel: bool = True,
+    separate_fused_forms: bool = True,
+) -> str:
     """
     يطبّع الأشكال **المفردة** وحدها، ويترك الرباطات ذرّاتٍ لا تُشقّ.
 
@@ -192,6 +285,8 @@ def fold_simple_forms(text: str, *, strip_pf_tatweel: bool = True) -> str:
         return text
     if strip_pf_tatweel:
         text = strip_tatweel_among_presentation_forms(text)
+    if separate_fused_forms:
+        text = separate_fused_presentation_forms(text)
     return text.translate(_SIMPLE_TABLE)
 
 
@@ -216,7 +311,12 @@ def expand_deferred_forms(text: str) -> str:
 expand_ligatures = expand_deferred_forms
 
 
-def fold_presentation_forms(text: str, *, strip_pf_tatweel: bool = True) -> str:
+def fold_presentation_forms(
+    text: str,
+    *,
+    strip_pf_tatweel: bool = True,
+    separate_fused_forms: bool = True,
+) -> str:
     """
     يطبّع كل الأشكال — المفردة والرباطات معاً.
 
@@ -233,6 +333,8 @@ def fold_presentation_forms(text: str, *, strip_pf_tatweel: bool = True) -> str:
         return text
     if strip_pf_tatweel:
         text = strip_tatweel_among_presentation_forms(text)
+    if separate_fused_forms:
+        text = separate_fused_presentation_forms(text)
     return text.translate(_ALL_TABLE)
 
 
@@ -242,7 +344,11 @@ def normalize_text(text: str, config: NormalizeConfig | None = None) -> str:
     out = text
 
     if cfg.fold_presentation_forms:
-        out = fold_simple_forms(out, strip_pf_tatweel=cfg.strip_tatweel_in_pf_runs)
+        out = fold_simple_forms(
+            out,
+            strip_pf_tatweel=cfg.strip_tatweel_in_pf_runs,
+            separate_fused_forms=cfg.separate_fused_forms,
+        )
         out = fold_presentation_punctuation(out)
         if cfg.expand_ligatures:
             out = expand_deferred_forms(out)

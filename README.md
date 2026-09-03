@@ -111,17 +111,21 @@ print(reverse_visual_line(")00.052,1 DSU-( يفاصلا"))
 # → الصافي (-USD 1,250.00)
 ```
 
-### 🏆 SOTA Multi-Engine Benchmark (Objective & Reproducible)
+### 🏆 SOTA Multi-Engine & Competitor Pipeline Benchmark (Objective & Reproducible)
 
-Measured on official real-world publication ([`iraq_constitution.pdf`](tests/fixtures/real_pdf_narrative/iraq_constitution.pdf)) against human-verified gold ground-truth:
+Measured on official real-world publication ([`iraq_constitution.pdf`](tests/fixtures/real_pdf_narrative/iraq_constitution.pdf)) against human-verified gold ground-truth, comparing `arafix` against raw extractors as well as popular heuristic pipelines (`arabic_reshaper + python-bidi`) and specialized repair packages (`arabic-repair`):
 
-| Engine | CER (Full) | CER (Letters Only) | WER (Word Error Rate) | Word Accuracy | Speed (ms) |
+| Engine / Pipeline | CER (Full) | CER (Letters Only) | WER (Word Error Rate) | Word Accuracy | Speed (ms) |
 |---|---:|---:|---:|---:|---:|
-| **Raw PyMuPDF (no repair)** | 66.06% | 64.89% | 99.40% | 0.60% | 115.5 ms |
-| **pdfplumber** | 101.91% | 79.50% | 100.48% | 0.00% | 383.3 ms |
-| **pdfminer.six** | 103.74% | 79.55% | 116.49% | 0.00% | 484.3 ms |
-| **arafix (default)** | **2.13%** | **0.82%** | **13.24%** | **86.76%** | 313.8 ms |
-| **arafix (layout-aware)** | **2.13%** | **0.82%** | **13.24%** | **86.76%** | 260.1 ms |
+| **Raw PyMuPDF (no repair)** | 66.06% | 64.89% | 99.40% | 0.60% | 112.3 ms |
+| **Raw pdfplumber (no repair)** | 101.91% | 79.50% | 100.48% | 0.00% | 357.4 ms |
+| **pdfplumber + arabic_reshaper + python-bidi** | 99.15% | 99.97% | 98.92% | 1.08% | 389.9 ms |
+| **PyMuPDF + arabic_reshaper + python-bidi** | 97.70% | 99.97% | 101.68% | 0.00% | 143.7 ms |
+| **pdfplumber + arabic-repair** | 79.04% | 71.73% | 93.50% | 6.50% | 363.9 ms |
+| **PyMuPDF + arabic-repair** | 65.83% | 64.33% | 91.22% | 8.78% | 120.0 ms |
+| **pdfminer.six** | 103.74% | 79.55% | 116.49% | 0.00% | 470.4 ms |
+| **arafix (default)** | **2.15%** | **0.82%** | **13.48%** | **86.52%** | 315.7 ms |
+| **arafix (layout-aware)** | **2.15%** | **0.82%** | **13.48%** | **86.52%** | 285.8 ms |
 
 > **Reproduce locally:**
 > ```bash

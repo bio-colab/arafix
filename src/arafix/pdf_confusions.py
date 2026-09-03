@@ -53,19 +53,13 @@ AL_MEEM_ARTICLE_RE = re.compile(
 )
 _AL_MEEM_GLUE_RE = re.compile(rf"(?<![{_AR}])(امل[{_MARK}]*)\s+")
 
-#: Whole-form / multi-char confusions (longest first). From Safahat books,
-#: especially *بصمة الإبهام الحمراء* letter-alignment against manual gold.
+#: Whole-form / multi-char confusions (longest first).
 YE_REH_CONFUSIONS: tuple[tuple[str, str], ...] = (
-    # names / book-specific tokens (thumb_red)
-    ("روبني", "روبن"),
     # plurals: ين stored as ني (common visual-order residue)
-    ("العاديني", "العاديين"),
     ("المسلمني", "المسلمين"),
-    ("املُحلَّفني", "المُحلَّفين"),  # diacritic form before generic امل
     ("المُحلَّفني", "المُحلَّفين"),
     ("محلفني", "محلفين"),
-    ("حلَّفني", "حلَّفين"),
-    # yeh/reh
+    # yeh/reh common confusions in legacy OCR/PDF
     ("كثريًا", "كثيرًا"),
     ("كبريًا", "كبيرًا"),
     ("غريها", "غيرها"),
@@ -80,38 +74,17 @@ YE_REH_CONFUSIONS: tuple[tuple[str, str], ...] = (
     ("أخري", "أخير"),
     ("الاخري", "الاخير"),
     ("ملاذا", "لماذا"),
-    ("فريفعه", "فيرفعه"),
-    ("أسري", "أسير"),  # أن أسري → أن أسير (thumb_red)
 )
 
 #: Residual article / ligature residues after PF fold (not yeh/reh).
-#: Evidence: letter-alignment of thumb_red (بصمة الإبهام الحمراء) gold pages.
 WHOLE_FORM_CONFUSIONS: tuple[tuple[str, str], ...] = (
     ("هذالا", "هذاال"),  # هذا + ال with لا residue
     ("املاء", "الماء"),  # امل + اء short stem
     ("الإى", "إلى"),  # إلى mis-ordered (hamza form)
 )
 
-#: Extra multi-char confusions from thumb_red alignment (after امل pass).
-THUMB_RED_CONFUSIONS: tuple[tuple[str, str], ...] = (
-    ("المُغيرات", "المُغريات"),
-    ("مُغيرات", "مُغريات"),
-    ("غيرات", "غريات"),
-    ("صديقَني", "صديقَين"),
-    ("صديقني", "صديقين"),
-    ("مستحيًلا", "مستحيلًا"),
-    ("أُعالم", "أُعامل"),
-    ("كبيرائي", "كبريائي"),
-    ("الختمال", "الخاتمال"),  # keep article; not bare الخاتم
-    ("ختمال", "خاتمال"),
-    ("طنيالتشكيل", "طينالتشكيل"),
-    ("طني التشكيل", "طين التشكيل"),
-    ("الجيلاتني", "الجيلاتين"),
-    ("جيلاتني", "جيلاتين"),
-    ("قليًلا", "قليلًا"),
-    ("العاديني", "العاديين"),
-    ("هذهامل", "هذهالم"),  # هذه + امل before generic امل
-)
+#: Overfitted book-specific confusions removed. Empty for safety.
+THUMB_RED_CONFUSIONS: tuple[tuple[str, str], ...] = ()
 
 
 def _short_token_re(broken: str) -> re.Pattern[str]:

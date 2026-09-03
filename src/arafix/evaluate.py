@@ -34,6 +34,7 @@ __all__ = [
     "EvalReport",
     "levenshtein",
     "cer",
+    "cer_letters_only",
     "wer",
     "evaluate_text",
     "evaluate_pdf",
@@ -242,6 +243,23 @@ def cer(reference: str, hypothesis: str, config: EvalConfig | None = None) -> Ed
     return EditDistance(levenshtein(list(ref), list(hyp)), len(ref))
 
 
+def cer_letters_only(reference: str, hypothesis: str) -> EditDistance:
+    """معدل خطأ الحروف وحدها دون مسافات أو ترقيم أو أرقام."""
+    import unicodedata
+
+    clean_ref = "".join(
+        c
+        for c in reference
+        if "\u0600" <= c <= "\u06FF" and unicodedata.category(c).startswith("L")
+    )
+    clean_hyp = "".join(
+        c
+        for c in hypothesis
+        if "\u0600" <= c <= "\u06FF" and unicodedata.category(c).startswith("L")
+    )
+    return EditDistance(levenshtein(list(clean_ref), list(clean_hyp)), len(clean_ref))
+
+
 def wer(reference: str, hypothesis: str, config: EvalConfig | None = None) -> EditDistance:
     """
     معدّل خطأ الكلمات.
@@ -263,14 +281,19 @@ class EvalReport:
     label: str
     cer: EditDistance
     wer: EditDistance
+    cer_letters: EditDistance = field(default_factory=lambda: EditDistance(0, 0))
     ref_chars: int = 0
     hyp_chars: int = 0
     worst_lines: list[tuple[int, str, str]] = field(default_factory=list)
 
+    @property
+    def word_accuracy(self) -> float:
+        return self.wer.accuracy
+
     def __str__(self) -> str:  # pragma: no cover - عرض
         return (
-            f"{self.label:22s} CER {self.cer.rate:6.2%}  WER {self.wer.rate:6.2%}  "
-            f"(دقّةُ محارف {self.cer.accuracy:.2%})"
+            f"{self.label:22s} CER {self.cer.rate:6.2%}  (حروف {self.cer_letters.rate:6.2%})  "
+            f"WER {self.wer.rate:6.2%}  (دقة كلمات {self.word_accuracy:6.2%})"
         )
 
 
@@ -292,6 +315,7 @@ def evaluate_text(
         label=label,
         cer=cer(reference, hypothesis, cfg),
         wer=wer(reference, hypothesis, cfg),
+        cer_letters=cer_letters_only(reference, hypothesis),
         ref_chars=len(reference),
         hyp_chars=len(hypothesis),
     )

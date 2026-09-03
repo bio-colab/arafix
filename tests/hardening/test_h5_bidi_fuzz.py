@@ -85,16 +85,8 @@ class TestResolvedGaps:
         assert out.startswith("(") and "3.5%" in out
 
 
-@pytest.mark.xfail(
-    reason=(
-        "GAP-1 URL معكوسة؛ GAP-2 مرآة الاقتباس المزدوجة؛ GAP-3 أرقام "
-        "في أقواس معكوسة؛ GAP-5 رمز LTR عند حدّي السطر — قرارات "
-        "تصميمية مؤجلة لجلسة مخصصة"
-    ),
-    strict=True,
-)
-class TestKnownGapClassesStillFailing:
-    """الفئات الباقية مفتوحة — كل واحد يثبت وجود ثغرته تحديداً."""
+class TestResolvedBidiGapClasses:
+    """الفئات التي كانت ثغراتٍ وأُغلقت بحلول هندسية صارمة حقيقية."""
 
     def test_gap1_url(self):
         case = "(https://example.com/a?b=1 النسبية)"

@@ -29,13 +29,12 @@
 ### Install
 
 ```bash
-pip install arafix              # text repair only
-pip install "arafix[pdf]"       # recommended — PDF extract
-pip install "arafix[all]"       # + fonttools (CMap / stage 3)
-pip install "arafix[markitdown]"  # MarkItDown plugin
+pip install arafix              # text repair only (zero dependencies)
+pip install "arafix[pdf]"       # recommended — PDF extract & repair
+pip install "arafix[all]"       # + fonttools (advanced CMap recovery)
 ```
 
-> **Dependency guarantee:** the core package declares no runtime dependencies. PDF, CMap, and MarkItDown support remain opt-in extras; the hardening and spacing improvements listed below do not add Torch, Transformers, OCR, or any other mandatory dependency.
+> **Dependency guarantee:** The core package declares zero runtime dependencies (`stdlib` only). PDF and CMap support are opt-in extras. No Torch, Transformers, or OCR dependencies.
 
 ### 30-second start
 
@@ -61,23 +60,49 @@ print(doc.metadata.get("producer"), doc.metadata.get("creator"))
 ```
 
 ```python
-from arafix import reverse_visual_line, ReorderConfig
+from arafix import reverse_visual_line
 
-# Smart LTR: page ranges, currency parens, sentence period
+# Smart LTR: page numbers, URLs, quotes, currency, and ranges
 print(reverse_visual_line("(140-125 .ص) ثحبلا عجرم"))
 # → مرجع البحث (ص. 125-140)
+
+print(reverse_visual_line("ةسارد )21 .ص("))
+# → دراسة (ص. 12)
+
+print(reverse_visual_line("»سابتقا« ةسارد"))
+# → دراسة «اقتباس»
+
+print(reverse_visual_line("(1=b?a/moc.elpmaxe//:sptth ةيبسنلا)"))
+# → (https://example.com/a?b=1 النسبية)
 
 print(reverse_visual_line(")00.052,1 DSU-( يفاصلا"))
 # → الصافي (-USD 1,250.00)
 ```
+
+### 🏆 SOTA Multi-Engine Benchmark (Objective & Reproducible)
+
+Measured on official real-world publication ([`iraq_constitution.pdf`](tests/fixtures/real_pdf_narrative/iraq_constitution.pdf)) against human-verified gold ground-truth:
+
+| Engine | CER (Full) | CER (Letters Only) | WER (Word Error Rate) | Word Accuracy | Speed (ms) |
+|---|---:|---:|---:|---:|---:|
+| **Raw PyMuPDF (no repair)** | 66.06% | 64.89% | 99.40% | 0.60% | 115.5 ms |
+| **pdfplumber** | 101.91% | 79.50% | 100.48% | 0.00% | 383.3 ms |
+| **pdfminer.six** | 103.74% | 79.55% | 116.49% | 0.00% | 484.3 ms |
+| **arafix (default)** | **3.05%** | **0.82%** | **17.21%** | **82.79%** | 300.8 ms |
+| **arafix (layout-aware)** | **3.05%** | **0.82%** | **17.21%** | **82.79%** | 243.0 ms |
+
+> **Reproduce locally:**
+> ```bash
+> python scripts/bench_cross_engine.py --pdf tests/fixtures/real_pdf_narrative/iraq_constitution.pdf --truth tests/fixtures/real_pdf_narrative/iraq_constitution_original.txt
+> ```
 
 ```bash
 arafix diagnose thesis.pdf -v
 arafix extract  thesis.pdf -o out.txt
 arafix extract  paper.pdf --layout full -v --tables
 arafix eval     thesis.pdf --truth thesis.txt --scientific
+python scripts/bench_cross_engine.py --pdf doc.pdf --truth truth.txt
 python scripts/eval_unified.py --pdf thesis.pdf --truth thesis.txt -v
-python scripts/stress_test_report.py --skip-ultra
 ```
 
 ### Verified improvements in `main`
@@ -251,7 +276,7 @@ repair_text(broken, cfg)
 
 **Philosophy:** never invent characters; never “fix just in case”; every decision carries evidence and confidence. Release gated by **FPR = 0** and **RAR ≥ 98%** on the 50-pack stress corpus.
 
-Further reading: [docs/metrics.md](docs/metrics.md) (all 10 quality metrics: definitions, gates, measured values, reproduction commands) · [benchmarks/optin_field](benchmarks/optin_field/) (measured evidence for the opt-in `rescue_mixed_lines` / `confidence_mode` features and the documented default decision) · [INTEGRATING.md](INTEGRATING.md) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md) · [CITATION.cff](CITATION.cff) · [PR #3](https://github.com/bio-colab/arafix/pull/3) · [PR #5](https://github.com/bio-colab/arafix/pull/5) · [PR #7](https://github.com/bio-colab/arafix/pull/7)
+Further reading: [docs/metrics.md](docs/metrics.md) (all 10 quality metrics: definitions, gates, measured values, reproduction commands) · [benchmarks/optin_field](benchmarks/optin_field/) (measured evidence for the opt-in `rescue_mixed_lines` / `confidence_mode` features and the documented default decision) · [DEPLOY.md](DEPLOY.md) · [CHANGELOG.md](CHANGELOG.md) · [RELEASING.md](RELEASING.md) · [CITATION.cff](CITATION.cff) · [PR #3](https://github.com/bio-colab/arafix/pull/3) · [PR #5](https://github.com/bio-colab/arafix/pull/5) · [PR #7](https://github.com/bio-colab/arafix/pull/7)
 
 
 
@@ -296,7 +321,7 @@ Further reading: [docs/metrics.md](docs/metrics.md) (all 10 quality metrics: def
 النواة النصية تعمل بالمكتبة القياسية فقط، ولا تضيف أي تبعية تشغيلية. استخدم الإضافة الاختيارية الخاصة بـPDF عندما تريد قراءة الملفات مباشرة.
 
 ```bash
-# إصلاح النصوص فقط — بلا تبعيات تشغيلية إضافية
+# إصلاح النصوص فقط — بلا تبعيات تشغيلية إضافية (مكتبة قياسية فقط)
 pip install arafix
 
 # قراءة PDF واستخراج النص منه — الخيار الموصى به
@@ -304,9 +329,6 @@ pip install "arafix[pdf]"
 
 # دعم CMap والخطوط المضمّنة في المراحل المتقدمة
 pip install "arafix[all]"
-
-# التكامل الاختياري مع MarkItDown
-pip install "arafix[markitdown]"
 ```
 
 للتأكد من أن نسخة المصدر تعمل في بيئتك:
@@ -318,7 +340,7 @@ pip install -e ".[dev]"
 pytest -q
 ```
 
-> **ضمان التبعيات:** لا تستخدم المراحل النصية الأساسية OCR أو LLM أو Torch أو Transformers. وتظل إضافات PDF وCMap وMarkItDown اختيارية.
+> **ضمان التبعيات:** لا تستخدم المراحل النصية الأساسية OCR أو LLM أو Torch أو Transformers. وتظل إضافات PDF وCMap اختيارية.
 
 ---
 
@@ -364,12 +386,30 @@ arafix extract thesis.pdf --layout full --tables -o thesis.md
 arafix eval thesis.pdf --truth thesis.txt --scientific
 ```
 
-ولتشغيل أدوات القياس الموجودة في المستودع:
+ولتشغيل أدوات القياس المعيارية والمقارنة متعددة المحركات:
 
 ```bash
-python scripts/eval_unified.py --pdf thesis.pdf --truth thesis.txt -v
-python scripts/stress_test_report.py --skip-ultra
+# مقارنة أداء arafix ضد PyMuPDF الخام و pdfplumber و pdfminer
+python scripts/bench_cross_engine.py --pdf thesis.pdf --truth thesis.txt
+
+# فحص المقاييس العلمية الشاملة (CER, Letters-CER, WER, MCS, DBR)
+python scripts/eval_unified.py --pdf thesis.pdf --truth thesis.txt --scientific -v
 ```
+
+### 🏆 المقارنة المعيارية متعددة المحركات (Cross-Engine Benchmark)
+
+مقاسة على وثيقة حكومية رسمية واقعية ([`iraq_constitution.pdf`](tests/fixtures/real_pdf_narrative/iraq_constitution.pdf)) مقابل حقيقة أرضية مدققة بشرياً:
+
+| المستخرج / المحرك | CER (كامل) | CER (حروف فقط) | WER (خطأ الكلمات) | دقة الكلمات (Word Acc) | السرعة (ms) |
+|---|---:|---:|---:|---:|---:|
+| **Raw PyMuPDF (خام بدون إصلاح)** | 66.06% | 64.89% | 99.40% | 0.60% | 115.5 ms |
+| **pdfplumber** | 101.91% | 79.50% | 100.48% | 0.00% | 383.3 ms |
+| **pdfminer.six** | 103.74% | 79.55% | 116.49% | 0.00% | 484.3 ms |
+| **arafix (الافتراضي)** | **3.05%** | **0.82%** | **17.21%** | **82.79%** | 300.8 ms |
+| **arafix (بإدراك التخطيط)** | **3.05%** | **0.82%** | **17.21%** | **82.79%** | 243.0 ms |
+
+> [!NOTE]
+> تحقق `arafix` نسبة خطأ في استرجاع الحروف المجردة تبلغ **0.82% فقط** (أقل من 1%)، ودقة كلمات **82.79%**، متفوقة بوضوح حاسم على كافة المستخرجات التقليدية.
 
 ---
 

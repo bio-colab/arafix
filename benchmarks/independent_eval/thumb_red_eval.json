@@ -12,18 +12,18 @@
   ],
   "aggregate": {
     "mean_cer_raw": 0.797038,
-    "mean_cer_arafix": 0.130403,
-    "mean_cer_letters_only": 0.030475,
+    "mean_cer_arafix": 0.130502,
+    "mean_cer_letters_only": 0.030596,
     "mean_wer_arafix": 0.803452
   },
   "pages": [
     {
       "page": 47,
       "arafix": {
-        "cer": 0.114681,
-        "cer_letters_only": 0.015069,
+        "cer": 0.115175,
+        "cer_letters_only": 0.015672,
         "wer": 0.762195,
-        "space_gap_proxy": 0.099612,
+        "space_gap_proxy": 0.099503,
         "hyp_spaces": 301,
         "ref_spaces": 344
       },

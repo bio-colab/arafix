@@ -23,7 +23,6 @@ keywords = [
     "bidi",
     "nlp",
     "ocr-alternative",
-    "markitdown",
     "presentation-forms",
     "lam-alef",
     "mojibake",
@@ -55,8 +54,6 @@ dependencies = []
 [project.optional-dependencies]
 pdf = ["pymupdf>=1.23"]
 cmap = ["fonttools>=4.40"]
-# Enables the MarkItDown plugin entry point; not imported by the core.
-markitdown = ["markitdown>=0.1.0a1", "pymupdf>=1.23"]
 # No fake ``ocr`` extra: stage 4 is not implemented.
 all = ["pymupdf>=1.23", "fonttools>=4.40"]
 dev = [
@@ -71,9 +68,6 @@ dev = [
 
 [project.scripts]
 arafix = "arafix.cli:main"
-
-[project.entry-points."markitdown.plugin"]
-arafix = "arafix.integrations.markitdown_plugin"
 
 [project.urls]
 Homepage = "https://github.com/bio-colab/arafix"
@@ -92,7 +86,6 @@ include = [
     "README.md",
     "CHANGELOG.md",
     "RELEASING.md",
-    "INTEGRATING.md",
     "DEPLOY.md",
     "CONTRIBUTING.md",
     "CITATION.cff",

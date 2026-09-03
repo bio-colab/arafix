@@ -47,16 +47,13 @@ MIRROR_PAIRS = {
     "[": "]", "]": "[",
     "{": "}", "}": "{",
     "<": ">", ">": "<",
-    "\u00ab": "\u00bb", "\u00bb": "\u00ab",   # « »
-    "\u2039": "\u203a", "\u203a": "\u2039",   # ‹ ›
-    "\u201c": "\u201d", "\u201d": "\u201c",   # “ ”
 }
 
-#: LTR atom + continuers (digits, Latin, hyphen/slash inside dates & codes).
+#: LTR atom + continuers (digits, Latin, hyphen/slash inside dates & codes, URL params).
 _LTR_ATOM = r"[0-9\u0660-\u0669\u06F0-\u06F9A-Za-z\u00C0-\u024F]"
 _LTR_CONT = (
     r"[0-9\u0660-\u0669\u06F0-\u06F9A-Za-z\u00C0-\u024F"
-    r".,:/\\\\\-+%@°'\u2019_\u2013\u2014]"
+    r".,:/\\\\\-+%@°'\u2019_\u2013\u2014?=&~#]"
 )
 #: Currency/percent/signs often sit on the edge of a number; after reverse they
 #: land on the wrong side unless the island includes them (``3.5%`` ↔ ``%5.3``).
@@ -106,6 +103,11 @@ _SOLID_HYBRID = re.compile(
     r"|^(?=.*[A-Za-z])(?=.*[0-9])[0-9A-Za-z][0-9A-Za-z._/@+%-]*$"
     r"|^(?=.*[A-Za-z])(?=.*[/_@+-])[0-9A-Za-z][0-9A-Za-z._/@+%-]*$"
 )
+_SOLID_URL = re.compile(
+    r"^(?:https?|ftp)://[^\s()<>]+(?:\([^\s()<>]+\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’])?$"
+    r"|^www\.[A-Za-z0-9.-]+\.[A-Za-z]{2,}[^\s()<>]*$",
+    re.IGNORECASE,
+)
 
 
 def _solid_ltr_candidate(run: str) -> str:
@@ -116,13 +118,16 @@ def _solid_ltr_candidate(run: str) -> str:
 def _is_solid_ltr_block(run: str) -> bool:
     """Return whether *run* is an atomic mixed-direction token sequence.
 
-    Dates, page ranges, phone numbers, versions, and Latin/number hybrids are
+    Dates, page ranges, phone numbers, versions, URLs, and Latin/number hybrids are
     semantic units. Once the surrounding grapheme sequence is reversed,
     flipping such a run again corrupts digits, separators, or Latin word order.
     """
     candidate = _solid_ltr_candidate(run)
     if not candidate:
         return False
+    parts = candidate.split()
+    if len(parts) > 1 and all(_is_solid_ltr_block(p) for p in parts):
+        return True
     return any(
         pattern.fullmatch(candidate)
         for pattern in (
@@ -134,6 +139,7 @@ def _is_solid_ltr_block(run: str) -> bool:
             _SOLID_TIME,
             _SOLID_PERCENT,
             _SOLID_HYBRID,
+            _SOLID_URL,
         )
     )
 
@@ -143,7 +149,27 @@ def _solid_ltr_quality(run: str) -> float:
     candidate = _solid_ltr_candidate(run)
     if not candidate:
         return -100.0
+    if _SOLID_HYBRID.fullmatch(candidate):
+        score = 0.0
+        tokens = candidate.split()
+        if tokens and tokens[0][:1].isalpha():
+            score += 2.0
+        for token in tokens:
+            letters = "".join(ch for ch in token if ch.isalpha())
+            if len(letters) >= 2:
+                if token[0].isupper() and token[-1].islower():
+                    score += 2.0
+                if token[0].islower() and token[-1].isupper():
+                    score -= 2.0
+        return score
+    parts = candidate.split()
+    if len(parts) > 1:
+        return sum(_solid_ltr_quality(p) for p in parts)
     score = 0.0
+    if _SOLID_URL.fullmatch(candidate):
+        score += 35.0
+    if re.search(r"//:sptth\b|//:ptth\b|\.www\b", candidate, re.I):
+        score -= 35.0
     date = _SOLID_DATE.fullmatch(candidate)
     if date:
         parts = re.split(r"[-–—]", candidate)
@@ -185,17 +211,6 @@ def _solid_ltr_quality(run: str) -> float:
         score += 6.0
     if _SOLID_EMAIL.fullmatch(candidate):
         score += 10.0
-    if _SOLID_HYBRID.fullmatch(candidate):
-        tokens = candidate.split()
-        if tokens and tokens[0][:1].isalpha():
-            score += 2.0
-        for token in tokens:
-            letters = "".join(ch for ch in token if ch.isalpha())
-            if len(letters) >= 2:
-                if token[0].isupper() and token[-1].islower():
-                    score += 2.0
-                if token[0].islower() and token[-1].isupper():
-                    score -= 2.0
     return score
 
 
@@ -498,11 +513,12 @@ def _restore_ltr_runs(text: str, *, smart: bool) -> str:
         run = match.group(0)
         candidate = _solid_ltr_candidate(run)
         before = text[: match.start()]
-        if _SOLID_RANGE.fullmatch(candidate) and _PAGE_RANGE_CONTEXT.search(before):
-            # The range is adjacent to an explicit page marker.  It is a
-            # page-range token, not a DD-MM date; reverse its visual digits
-            # and let normalize_page_ranges order its endpoints afterwards.
-            return run[::-1]
+        if _PAGE_RANGE_CONTEXT.search(before):
+            # The range or page number is adjacent to an explicit page marker.
+            if _SOLID_RANGE.fullmatch(candidate):
+                return run[::-1]
+            if re.fullmatch(r"\d+", candidate):
+                return run
         return _restore_one_ltr_run(run, smart=smart)
 
     return _LTR_RUN.sub(repl, text)
@@ -616,6 +632,7 @@ def reverse_visual_line(line: str, config: ReorderConfig | None = None) -> str:
     'ثانياً.'
     """
     cfg = config or ReorderConfig()
+    line = line.rstrip(" \t")
 
     units = (
         grapheme_clusters(line, forward_flank_marks=cfg.forward_flank_marks)
@@ -630,6 +647,8 @@ def reverse_visual_line(line: str, config: ReorderConfig | None = None) -> str:
 
     if cfg.mirror_brackets:
         out = "".join(_mirror(c) for c in out)
+        # Inverted quotation marks from visual reversal: »نص« -> «نص»
+        out = re.sub(r"»([^«»\n]+)«", r"«\1»", out)
 
     if cfg.repair_ltr_parens:
         out = repair_inverted_ltr_parens(out)

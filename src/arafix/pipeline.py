@@ -203,10 +203,9 @@ class PipelineConfig:
     #: ملتصقة). مرحلة مستقلة محافظة؛ أطفئها لقياس نص المستخرج كما هو.
     enable_spacing_repair: bool = True
 
-    #: Closed-list confusions from **published Arabic book PDFs** (Safahat
-    #: independent-eval books: امل→الم، كثري→كثير، …). Not AI-generated.
-    #: See ``arafix.pdf_confusions``. Off = leave raw after PF/order only.
-    enable_pdf_confusion_repair: bool = True
+    #: Closed-list confusions from published Arabic book PDFs (امل→الم، كثري→كثير، …).
+    #: Disabled by default to ensure strict zero false-positive safety.
+    enable_pdf_confusion_repair: bool = False
 
     #: فلترة spans PDF ذات دليل هندسي قوي (watermark رمادي مائل/تكرار موضعي).
     #: None يعطلها؛ الافتراضي المحافظ مفعّل في مسار PyMuPDF الهندسي فقط.
@@ -855,7 +854,7 @@ def repair_blocks(
     """
     يصلح كتلاً **مستقلة** — كلٌّ تُشخَّص وحدها فلا تُلوَّث جارتها.
 
-    هذا مدخل الجداول والأعمدة وmarkitdown: الخلية المعكوسة تُصلَح،
+    هذا مدخل الجداول والأعمدة ومخرجات المستخرجات: الخلية المعكوسة تُصلَح،
     والسليمة لا تُمسّ، حتى لو جاورتْها في الصفحة نفسها.
 
     يقبل أشكالاً مرنة::

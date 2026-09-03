@@ -74,6 +74,24 @@ SPECS = (
         "Reverse the closed-list امل→الم PDF confusion on a long stem.",
         "supported",
     ),
+    MutationSpec(
+        "midword_kerning_split",
+        "spacing",
+        "Split an Arabic word at a non-connecting letter like PDF advance artifacts.",
+        "supported",
+    ),
+    MutationSpec(
+        "inverted_parentheses",
+        "punctuation",
+        "Invert parentheses around Arabic text as seen in visual streams.",
+        "supported",
+    ),
+    MutationSpec(
+        "reversed_visual_run",
+        "direction",
+        "Reverse an Arabic line into visual stream.",
+        "supported",
+    ),
 )
 
 
@@ -99,6 +117,22 @@ def apply_mutation(text: str, spec_name: str) -> str | None:
     if spec_name == "pdf_al_meem_confusion":
         mutated = re.sub(rf"الم(?=[{_ARABIC}][{_ARABIC}])", "امل", text, count=1)
         return mutated if mutated != text else None
+    if spec_name == "midword_kerning_split":
+        m = re.search(rf"(?<=[{_ARABIC}])([دوذرز])(?=[{_ARABIC}]{{2,}})", text)
+        if m:
+            idx = m.end()
+            return text[:idx] + " " + text[idx:]
+        return None
+    if spec_name == "inverted_parentheses":
+        m = re.search(rf"\(([{_ARABIC}\s]+)\)", text)
+        if m:
+            return text[: m.start()] + ")" + m.group(1) + "(" + text[m.end() :]
+        return None
+    if spec_name == "reversed_visual_run":
+        words = text.split()
+        if len(words) >= 2 and all(re.search(rf"[{_ARABIC}]", w) for w in words):
+            return text[::-1]
+        return None
     raise ValueError(f"unknown mutation: {spec_name}")
 
 

@@ -73,7 +73,8 @@ def _cmd_text_pair(args: argparse.Namespace) -> int:
     report = evaluate_text(truth, hyp, config=ecfg, label=args.label or "text")
     print("── metrics ──")
     print(f"  {report}")
-    print(f"  CER={_pct(report.cer.rate)}  WER={_pct(report.wer.rate)}")
+    print(f"  CER={_pct(report.cer.rate)} (letters-only: {_pct(report.cer_letters.rate)})")
+    print(f"  WER={_pct(report.wer.rate)} (word-accuracy: {_pct(report.word_accuracy)})")
     print(f"  chars ref={report.cer.length}  hyp_len={len(hyp)}  truth_len={len(truth)}")
 
     if args.scientific:
@@ -84,7 +85,9 @@ def _cmd_text_pair(args: argparse.Namespace) -> int:
         payload = {
             "label": report.label,
             "cer": report.cer.rate,
+            "cer_letters_only": report.cer_letters.rate,
             "wer": report.wer.rate,
+            "word_accuracy": report.word_accuracy,
             "hyp_len": len(hyp),
             "truth_len": len(truth),
         }
@@ -158,7 +161,8 @@ def _cmd_pdf(args: argparse.Namespace) -> int:
 
     print("── metrics vs truth ──")
     print(f"  {report}")
-    print(f"  CER={_pct(report.cer.rate)}  WER={_pct(report.wer.rate)}")
+    print(f"  CER={_pct(report.cer.rate)} (letters-only: {_pct(report.cer_letters.rate)})")
+    print(f"  WER={_pct(report.wer.rate)} (word-accuracy: {_pct(report.word_accuracy)})")
 
     if args.scientific:
         print("── scientific ──")
@@ -173,7 +177,9 @@ def _cmd_pdf(args: argparse.Namespace) -> int:
                     "min_confidence": min_c,
                     "mean_confidence": avg_c,
                     "cer": report.cer.rate,
+                    "cer_letters_only": report.cer_letters.rate,
                     "wer": report.wer.rate,
+                    "word_accuracy": report.word_accuracy,
                     "page_confidences": confidences,
                     "metadata": doc.metadata,
                 },

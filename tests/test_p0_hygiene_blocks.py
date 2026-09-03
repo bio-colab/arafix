@@ -18,7 +18,7 @@ from arafix import (
     repair_text,
     sanitize_extraction,
 )
-from arafix.integrations import repair_extracted, wrap_callable
+from arafix.adapters import repair_extracted, wrap_callable
 
 
 class TestHygiene:
@@ -175,13 +175,7 @@ class TestAdapters:
     def test_fix_any(self):
         assert fix_any("\ufee3\ufeae\ufea3\ufe92\ufe8e").text == "مرحبا"
 
-    def test_fix_markitdown_duck_type(self):
-        class Fake:
-            text_content = "دراسة\u00a0مقارنة"
 
-        from arafix import fix_markitdown
-
-        assert fix_markitdown(Fake()).text == "دراسة مقارنة"
 
     def test_wrap_callable(self):
         def extractor(path: str) -> str:
@@ -192,35 +186,3 @@ class TestAdapters:
 
     def test_repair_extracted(self):
         assert repair_extracted("مرحبا\u00a0بكم").text == "مرحبا بكم"
-
-
-class TestPluginModule:
-    def test_plugin_exports_register(self):
-        from arafix.integrations import markitdown_plugin as plug
-
-        assert plug.__plugin_interface_version__ == 1
-        assert callable(plug.register_converters)
-
-    def test_plugin_accepts_pdf_when_pymupdf_present(self):
-        from arafix.extractors import PyMuPDFExtractor
-        from arafix.integrations.markitdown_plugin import ArafixPostProcessorConverter
-
-        if not PyMuPDFExtractor.available():
-            pytest.skip("no pymupdf")
-
-        class SI:
-            extension = ".pdf"
-            mimetype = "application/pdf"
-            local_path = None
-
-        conv = ArafixPostProcessorConverter()
-        assert conv.accepts(None, SI()) is True  # type: ignore[arg-type]
-
-    def test_plugin_rejects_docx(self):
-        from arafix.integrations.markitdown_plugin import ArafixPostProcessorConverter
-
-        class SI:
-            extension = ".docx"
-            mimetype = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-        assert ArafixPostProcessorConverter().accepts(None, SI()) is False  # type: ignore[arg-type]

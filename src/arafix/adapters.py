@@ -1,40 +1,45 @@
 """
 مهايئات خفيفة — مسارٌ واحد من «نصٍّ مستخرج بأيّ أداة» إلى عربيّ سليم.
 
-    from arafix.adapters import fix_markitdown, fix_any
-
-    md = MarkItDown().convert("f.pdf")
-    print(fix_markitdown(md).text)
+    from arafix.adapters import fix_any, fix_table, wrap_callable
 """
 
-from __future__ import annotations
-
+from collections.abc import Callable
 from typing import Any
 
 from .pipeline import PipelineConfig, repair_blocks, repair_text
 from .types import BlocksResult, RepairResult, TextBlock
 
-__all__ = ["fix_any", "fix_markitdown", "fix_table", "as_blocks"]
+__all__ = ["fix_any", "fix_table", "as_blocks", "wrap_callable", "repair_extracted"]
+
+
+def repair_extracted(
+    text: str,
+    config: PipelineConfig | None = None,
+) -> RepairResult:
+    """مدخل موحَّد لما بعد أيّ مستخرج (pdfminer، نسخ من المتصفح…)."""
+    return repair_text(text, config)
+
+
+def wrap_callable(
+    extract_fn: Callable[..., str],
+    config: PipelineConfig | None = None,
+) -> Callable[..., RepairResult]:
+    """يغلّف دالة استخراج لتعيد RepairResult بدل نصٍّ عارٍ."""
+
+    def _wrapped(*args: Any, **kwargs: Any) -> RepairResult:
+        return repair_text(extract_fn(*args, **kwargs), config)
+
+    _wrapped.__name__ = getattr(extract_fn, "__name__", "wrapped") + "_arafix"
+    _wrapped.__doc__ = (
+        f"arafix-wrapped {getattr(extract_fn, '__name__', extract_fn)!r}: "
+        "extract then repair_text."
+    )
+    return _wrapped
 
 
 def fix_any(text: str, config: PipelineConfig | None = None) -> RepairResult:
     """أيّ نصٍّ — من pdfminer أو المتصفح أو الحافظة."""
-    return repair_text(text, config)
-
-
-def fix_markitdown(
-    result: Any,
-    config: PipelineConfig | None = None,
-) -> RepairResult:
-    """
-    يقبل ``DocumentConverterResult`` من MarkItDown (أو أيّ كائن فيه
-    ``text_content`` / ``markdown``).
-    """
-    text = (
-        getattr(result, "text_content", None)
-        or getattr(result, "markdown", None)
-        or str(result)
-    )
     return repair_text(text, config)
 
 

@@ -140,14 +140,14 @@ class TestIraqMeasuredCeilings:
 
 class TestIraqLettersAndWords:
     def test_key_sections_and_phrases_survive(self, truth, hyp):
-        stripped_hyp = "".join(c for c in hyp if c not in " \n\t")
+        # Test authentic phrases with real word boundaries and spacing
         for phrase in (
-            "حقوقالإنسانفيالدستورالعراقي",
-            "أنواعالحقوق",
-            "الحقوقالاقتصاديةوالاجتماعيةوالثقافية",
-            "الحرياتالعامة",
+            "حقوق الإنسان في الدستور العراقي",
+            "أنواع الحقوق",
+            "الحقوق الاقتصادية والاجتماعية والثقافية",
+            "الحريات العامة",
         ):
-            assert phrase in stripped_hyp, f"missing key phrase: {phrase!r}"
+            assert phrase in hyp, f"missing key phrase with spaces: {phrase!r}"
 
     def test_constitutional_years_survive(self, hyp):
         # Iraqi constitution year 2005 (in Eastern Arabic numerals: ٢٠٠٥)

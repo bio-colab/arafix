@@ -62,6 +62,8 @@ def test_subset_style_structural_signature() -> None:
 @pytest.fixture(scope="module")
 def harvested() -> dict:
     pdf = REPO / "benchmarks/wiki_eval/pdfs/human-rights.pf.pdf"
+    if not pdf.exists():
+        pytest.skip(f"Benchmark PDF not found: {pdf}")
     return harvest_mod.harvest(pdf)
 
 

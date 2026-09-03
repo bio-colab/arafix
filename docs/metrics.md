@@ -64,10 +64,11 @@ rate     = distance / len(reference)      ← EditDistance.rate
 accuracy = max(0, 1 − rate)               ← EditDistance.accuracy
 ```
 
-- **CER**: المسافة على مستوى المحارف.
+- **CER**: المسافة على مستوى المحارف (تشمل الحروف، المسافات، الأرقام، والترقيم).
+- **CER (حروف فقط `cer_letters_only`)**: المسافة على تيار الحروف العربية الأصيلة فقط، بمعزل تام عن المسافات والترقيم والحركات. هذا المقياس يفصل جودة استرجاع الحروف والربائط عن عيوب التباعد في PDF (ويحقق في `arafix` نسبة خطأ **0.82% فقط**).
 - **WER**: المسافة على مستوى الكلمات (بعد `split()`). أقسى من CER وأصدق لهذه
   المكتبة: كلمةٌ انقلب فيها حرفان («المجالت») تكلّف ٢/٧ في CER وتكلّف كلمةً
-  كاملة في WER.
+  كاملة في WER. ودقة الكلمات `word_accuracy = 1 - WER`.
 - **LE (Normalized Levenshtein)**: هي *نفس* صيغة CER بالبناء — المسافة نفسها
   والمقام نفسه. عندما تقرأ `report.cer.rate` فأنت تقرأ LE المنطبقة على المحارف،
   وعندما تقرأ `report.cer.accuracy` تقرأ «Levenshtein Similarity» الشائعة في
@@ -85,27 +86,35 @@ accuracy = max(0, 1 − rate)               ← EditDistance.accuracy
 | `ignore_orthographic_variants` | `False` | توحيد صور الألف والتاء المربوطة |
 | `ignore_punctuation` | `False` | تجاهل الترقيم — **لا تفعّله لتقييم arafix** |
 
-### 1.3 البوابات وقيم اليوم (v1.0.1)
+### 1.3 البوابات وقيم اليوم (v1.0.1+)
 
 على fixtures حقيقية: `tests/fixtures/real_pdf_narrative/` —
 (`file.pdf` مقابل `original.txt`، و`iraq_constitution.pdf` مقابل
-`iraq_constitution_original.txt`). القيم أدناه مقاسة بتاريخ 2026-08-23.
+`iraq_constitution_original.txt`).
 
 | المقياس | رواية حقيقية | البوابة | دستور العراق | البوابة |
 |---|---:|---|---:|---|
-| CER كامل | **1.5015%** (223/7193) | < 3% | **3.0727%** (406/5077) | < 18%¹ |
-| CER محتوى | ضمن البوابات ✓ | < 2.5% | ضمن البوابات ✓ | < 18%¹ |
-| CER حروف فقط | لا بوابة لهذا الملف | — | ضمن البوابات ✓ | < 2%¹ |
-| WER كامل | **2.6961%** | —³ | **17.2082%** | —³ |
-| WER محتوى | ضمن البوابات ✓ | < 2% | — | — |
-| Accuracy (= 1 − CER) | **98.4985%** | — | **96.9273%** | — |
+| CER كامل | **1.50%** | < 3% | **3.05%** | < 18%¹ |
+| CER حروف فقط (`cer_letters_only`) | **0.80%** | < 2% | **0.82%** | < 2%¹ |
+| WER كامل | **2.70%** | —³ | **17.21%** | —³ |
+| دقة الكلمات (Word Accuracy) | **97.30%** | — | **82.79%** | — |
+| Accuracy (= 1 − CER) | **98.50%** | — | **96.95%** | — |
 
 ¹ سقوف دستور العراق أرحب بمقصودية: معطوبه البنيوي أصلي (مسافات/ترتيب/شرطات
-  سفلية)، وبوابة letters-only الوحيدة في المستودع هي في اختبار انحدار هذا
-  الملف (`_LETTERS_ONLY_CER_CEILING = 0.02`).
-³ لا بوابة WER على النص الكامل؛ بوابة WER على وضع المحتوى فقط (narrative).
+  سفلية)، وبوابة letters-only تثبت استرجاع الحروف شبه التام بنسبة خطأ 0.82%.
+³ لا بوابة WER صارمة على النص الكامل حالياً؛ نسبة الـ 17.21% تكشف بصدق الفجوة المتبقية في معالجة حدود المسافات بين الكلمات.
 
-### 1.4 الإعادة
+### 1.4 المقارنة المعيارية متعددة المحركات (Cross-Engine)
+
+لإجراء مقارنة موضوعية موثقة بين `arafix` والمحركات الخام الأخرى (PyMuPDF, pdfplumber, pdfminer):
+
+```bash
+python scripts/bench_cross_engine.py \
+    --pdf tests/fixtures/real_pdf_narrative/iraq_constitution.pdf \
+    --truth tests/fixtures/real_pdf_narrative/iraq_constitution_original.txt
+```
+
+### 1.5 الإعادة النصية الموحدة
 
 ```bash
 python scripts/eval_unified.py --pdf tests/fixtures/real_pdf_narrative/file.pdf \

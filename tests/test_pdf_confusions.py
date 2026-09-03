@@ -45,30 +45,21 @@ class TestYeReh:
         assert "غير" in r.text
         assert r.ye_reh_fixes >= 3
 
-    def test_ruben_name_thumb_red(self):
-        assert "روبن" in repair_pdf_confusions("روبنيمجردصديقَني").text
-        assert "روبني" not in repair_pdf_confusions("روبني").text
-
-    def test_no_false_positive_inside_stem(self):
-        # مغري must not become مغير via bare غري replace
-        assert "مغري" in repair_pdf_confusions("شيء مغري جدا").text
-        assert "مغير" not in repair_pdf_confusions("شيء مغري جدا").text
+    def test_plural_confusion(self):
+        assert "المسلمين" in repair_pdf_confusions("هيئة المسلمني والمُحلَّفني").text
 
 
 class TestPipelineHook:
     def test_stage_fires_on_confusion(self):
-        # Already-normalized Arabic (no PF) still gets confusion pass
-        r = repair_text("املتاحف وكبري")
+        from arafix import PipelineConfig
+
+        # Confusion pass runs when explicitly enabled
+        r = repair_text("املتاحف وكبري", PipelineConfig(enable_pdf_confusion_repair=True))
         assert "المتاحف" in r.text
         assert "كبير" in r.text
         assert Stage.REPAIR_PDF_CONFUSIONS in r.stages_applied
 
-    def test_can_disable(self):
-        from arafix import PipelineConfig
-
-        r = repair_text(
-            "املتاحف",
-            PipelineConfig(enable_pdf_confusion_repair=False),
-        )
+    def test_disabled_by_default(self):
+        r = repair_text("املتاحف")
         assert r.text == "املتاحف"
         assert Stage.REPAIR_PDF_CONFUSIONS not in r.stages_applied

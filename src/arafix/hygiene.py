@@ -317,9 +317,11 @@ def collapse_midword_spaces(text: str) -> str:
         # Article-like prefixes always glue (الع صور → العصور)
         if left in ("الع", "الم", "وال", "بال", "كال", "فال", "لل"):
             return left
-        # 3-letter left: only collapse when right is short (1–2) mid-word junk
-        # (``عاد ي``) — not ``بكم في`` (right is a function word, already kept)
-        if len(left) == 3 and len(right) > 2:
+        # 3-letter left: do NOT collapse if right is 2+ letters (e.g. ذهب به, كتب له, قلت له)
+        # Only collapse if right is a genuine single-letter tail fragment (e.g. عاد ي -> عادي)
+        if len(left) >= 3 and len(right) >= 2:
+            return m.group(0)
+        if len(left) == 3 and len(right) == 1 and right not in "يىة":
             return m.group(0)
         return left_cluster
 
@@ -349,6 +351,10 @@ _SAFE_GLUED_FUNCTION_BOUNDARIES: tuple[tuple[str, str], ...] = (
     ("الى", "أن"),
     ("إن", "كان"),
     ("غير", "أن"),
+    ("كما", "أن"),
+    ("كما", "ان"),
+    ("لذا", "اعتدنا"),
+    ("من", "العصور"),
 )
 
 
@@ -448,7 +454,6 @@ def insert_particle_spaces(text: str) -> str:
     if not text:
         return text
     out = _PUNCT_BEFORE_ARABIC_RE.sub(r"\1 ", text)
-    out = _PARTICLE_ARTICLE_RE.sub(r"\1 ", out)
     out = _FUNCTION_BOUNDARY_RE.sub(r"\1 ", out)
 
     # A first restored boundary exposes the next one in long name chains
@@ -462,7 +467,6 @@ def insert_particle_spaces(text: str) -> str:
         out = _NAME_BOUNDARY_RE.sub(r"\1 ", out)
         out = _NAME_BOUNDARY_RE.sub(r"\1 ", out)
 
-    out = _SAFE_PARTICLE_RE.sub(r"\1 ", out)
     # Do not normalize arbitrary ASCII spacing: code, regexes, tables, and
     # aligned Latin text are valid inputs. Collapse only a run whose two
     # immediate non-space neighbours are Arabic letters, where it is a PDF

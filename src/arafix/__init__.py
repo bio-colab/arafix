@@ -31,7 +31,13 @@ from __future__ import annotations
 __version__ = "1.0.1"
 __license__ = "MIT"
 
-from .adapters import as_blocks, fix_any, fix_markitdown, fix_table
+from .adapters import (
+    as_blocks,
+    fix_any,
+    fix_table,
+    repair_extracted,
+    wrap_callable,
+)
 from .audit import (
     AuditEvent,
     AuditMode,
@@ -57,6 +63,7 @@ from .evaluate import (
     EvalConfig,
     EvalReport,
     cer,
+    cer_letters_only,
     compare_extractors,
     evaluate_pdf,
     evaluate_text,
@@ -201,9 +208,10 @@ __all__ = [
     "NegativeEvidenceModel",
     # مهايئات
     "fix_any",
-    "fix_markitdown",
     "fix_table",
     "as_blocks",
+    "repair_extracted",
+    "wrap_callable",
     # نظافة الاستخراج
     "sanitize_extraction",
     "count_artifacts",
@@ -276,6 +284,7 @@ __all__ = [
     "evaluate_pdf",
     "compare_extractors",
     "cer",
+    "cer_letters_only",
     "wer",
     "levenshtein",
     "levenshtein_reference",

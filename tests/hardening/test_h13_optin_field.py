@@ -16,6 +16,8 @@ import hashlib
 import random
 from pathlib import Path
 
+import pytest
+
 from arafix import PipelineConfig, extract_pdf, repair_text, reverse_visual_line
 from arafix.pipeline import DEFAULT_THRESHOLDS, _line_reversal_score
 
@@ -43,6 +45,8 @@ def _gold_lines(name: str, want: int) -> list[str]:
 
 def test_optin_modes_leave_clean_corpus_byte_identical() -> None:
     for pdf in PDF_SUBSET:
+        if not pdf.exists():
+            pytest.skip(f"Benchmark PDF not found: {pdf}")
         shas = set()
         for extra in OPTIN_CFGS.values():
             doc = extract_pdf(str(pdf),

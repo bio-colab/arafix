@@ -109,6 +109,71 @@ class TestColumnsRTL:
         assert "LEFT" in lay.columns[0].text
         assert "RIGHT" in lay.columns[1].text
 
+    def test_two_columns_with_spanning_title_and_footnote(self):
+        """كشف الأعمدة بدقة ومنع تداخل السطور عند وجود عنوان عريض وحاشية ممتدة."""
+        glyphs: list[Glyph] = []
+        # عنوان ممتد في الأعلى (تحت نطاق الترويسة الهامشية)
+        for j, ch in enumerate("دراسة مقارنة في السياسة العامة في العالم العربي المعاصر"):
+            glyphs.append(Glyph(y=110, x=50 + j * 8, text=ch, size=13))
+
+        # عمود أيمن
+        for row in range(10):
+            y = 170 + row * 24
+            for j, ch in enumerate(f"عمود يمين سطر {row + 1}"):
+                glyphs.append(Glyph(y=y, x=360 + j * 8, text=ch, size=10))
+
+        # عمود أيسر
+        for row in range(10):
+            y = 170 + row * 24
+            for j, ch in enumerate(f"عمود يسار سطر {row + 1}"):
+                glyphs.append(Glyph(y=y, x=50 + j * 8, text=ch, size=10))
+
+        # حاشية ممتدة في الأسفل
+        for j, ch in enumerate("(1) المصدر: التقرير الإنمائي الصادر عن الأمم المتحدة"):
+            glyphs.append(Glyph(y=760, x=50 + j * 7, text=ch, size=9))
+
+        lay = analyze_layout(glyphs, page_width=595, page_height=842, mode="auto")
+        assert lay.n_columns == 2
+        assert lay.mode_used == "columns"
+        # عزل العنوان في الترويسات والحاشية في التذييلات
+        assert any("دراسة مقارنة" in h.text for h in lay.headers)
+        assert any("التقرير الإنمائي" in f.text for f in lay.footers)
+        # الترتيب RTL: الأيمن أولاً ثم الأيسر
+        assert "يمين" in lay.columns[0].text
+        assert "يسار" in lay.columns[1].text
+        # منع تداخل السطور: لا يوجد سطر يجمع بين يمين ويسار
+        for col in lay.columns:
+            for ln in col.lines:
+                assert not ("يمين" in ln.text and "يسار" in ln.text)
+        # تسلسل النص الكامل
+        plain = lay.plain_text
+        assert plain.index("دراسة مقارنة") < plain.index("عمود يمين سطر 1")
+        assert plain.index("عمود يمين سطر 1") < plain.index("عمود يسار سطر 1")
+        assert plain.index("عمود يسار سطر 10") < plain.index("التقرير الإنمائي")
+
+    def test_three_columns_with_spanning_title(self):
+        """كشف 3 أعمدة في وجود عنوان ممتد."""
+        glyphs: list[Glyph] = []
+        for j, ch in enumerate("عنوان عريض يمتد فوق ثلاثة أعمدة في مجلة علمية"):
+            glyphs.append(Glyph(y=110, x=50 + j * 9, text=ch, size=14))
+        for row in range(8):
+            y = 160 + row * 24
+            for j, ch in enumerate(f"يمين {row + 1}"):
+                glyphs.append(Glyph(y=y, x=420 + j * 8, text=ch, size=10))
+            for j, ch in enumerate(f"وسط {row + 1}"):
+                glyphs.append(Glyph(y=y, x=235 + j * 8, text=ch, size=10))
+            for j, ch in enumerate(f"يسار {row + 1}"):
+                glyphs.append(Glyph(y=y, x=50 + j * 8, text=ch, size=10))
+
+        lay = analyze_layout(glyphs, page_width=595, page_height=842, mode="auto")
+        assert lay.n_columns == 3
+        assert any("عنوان عريض" in h.text for h in lay.headers)
+        assert "يمين" in lay.columns[0].text
+        assert "وسط" in lay.columns[1].text
+        assert "يسار" in lay.columns[2].text
+        plain = lay.plain_text
+        assert plain.index("يمين 1") < plain.index("وسط 1") < plain.index("يسار 1")
+
 
 class TestHeaderFooter:
     def test_bands_isolated(self):

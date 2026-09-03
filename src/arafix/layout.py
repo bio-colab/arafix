@@ -601,6 +601,143 @@ def _find_gutters(
     return sorted(mid for _, mid in candidates)
 
 
+def _find_gutters_with_spanning_isolation(
+    glyphs: list[Glyph],
+    page_width: float,
+    cfg: LayoutConfig,
+) -> tuple[list[float], list[Glyph], list[Glyph]]:
+    """
+    كشف متقدم لميازيب الأعمدة في وجود عناوين أو حواشٍ ممتدة عبر الصفحة.
+
+    حين يمتد عنوانٌ (Banner / Spanning Heading) أو ملخص في أعلى الأعمدة أو
+    حاشية في أسفلها، فإن المحارف الممتدة تقطع الميزاب الرأسي وتمنع كشف الفجوة
+    الصفرية الصارمة.
+
+    تعتمد هذه الدالة تحليلاً إسقاطياً لكثافة الأسطر (Occupancy Profile Projection):
+      - الأعمدة تتميز بكثافة أسطر عالية تتقاطع مع المقطع الأفقي.
+      - الميازيب تكون ذات كثافة أسطر منخفضة جداً (سطر العنوان فقط، أي <= 15% من كثافة الأعمدة).
+      - عزل محارف السطور الممتدة التي تقطع الميزاب كترويسات علوية أو حواشٍ سفلية.
+      - إعادة فرز محارف الأعمدة المتبقية بميازيب خالية تماماً.
+    """
+    if len(glyphs) < 16 or page_width <= 0:
+        return [], [], []
+
+    # تقسيم العرض إلى شرائح (Bins) متقاربة
+    bin_w = 8.0
+    n_bins = int(page_width // bin_w) + 1
+    bins_y: list[set[int]] = [set() for _ in range(n_bins)]
+    for g in glyphs:
+        b = int(g.x // bin_w)
+        if 0 <= b < n_bins:
+            # دمج مستويات Y المتقاربة ضمن 12 نقطة (سطر تقريبي)
+            bins_y[b].add(round(g.y / 12.0))
+
+    line_counts = [len(s) for s in bins_y]
+    if not line_counts:
+        return [], [], []
+    max_lines = max(line_counts)
+    if max_lines < 4:
+        return [], [], []
+
+    # عتبة الميزاب: عدد أسطر لا يتجاوز 25% من ذروة العمود (أو سطرين على الأقل لاستيعاب عنوان وحاشية)
+    valley_max = max(2, int(round(max_lines * 0.25)))
+    min_gap_pts = max(page_width * cfg.gutter_ratio, cfg.min_gutter_pt)
+    min_gap_bins = max(2, int(min_gap_pts // bin_w))
+    peak_th = max(4, int(max_lines * 0.40))
+
+    # البحث عن فجوات كثافة متصلة تقع بين ذروتي عمودين حقيقيتين
+    in_valley = False
+    v_start = 0
+    valleys: list[tuple[float, float]] = []
+    for i, c in enumerate(line_counts):
+        if c <= valley_max:
+            if not in_valley:
+                in_valley = True
+                v_start = i
+        else:
+            if in_valley:
+                in_valley = False
+                if (i - v_start) >= min_gap_bins:
+                    left_peak = max(line_counts[:v_start], default=0)
+                    right_peak = max(line_counts[i:], default=0)
+                    if left_peak >= peak_th and right_peak >= peak_th:
+                        valleys.append((v_start * bin_w, i * bin_w))
+    if in_valley and (len(line_counts) - v_start) >= min_gap_bins:
+        left_peak = max(line_counts[:v_start], default=0)
+        right_peak = max(line_counts[v_start:], default=0)
+        if left_peak >= peak_th and right_peak >= peak_th:
+            valleys.append((v_start * bin_w, len(line_counts) * bin_w))
+
+    if not valleys:
+        return [], [], []
+
+    # فحص كفاية المحتوى على الجانبين (min_side_fraction)
+    candidates: list[tuple[float, float, float]] = []
+    total_g = len(glyphs)
+    for x_left, x_right in valleys:
+        mid = (x_left + x_right) / 2
+        left_count = sum(1 for g in glyphs if g.x < mid)
+        right_count = sum(1 for g in glyphs if g.x > mid)
+        if (
+            left_count / total_g >= cfg.min_side_fraction
+            and right_count / total_g >= cfg.min_side_fraction
+        ):
+            candidates.append((x_left, x_right, mid))
+
+    if not candidates:
+        return [], [], []
+
+    # تحديد مستويات Y للسطور التي تقطع ميازيب الأعمدة فعلياً (في الممر الداخلي)
+    crossing_y_levels: set[int] = set()
+    for x_left, x_right, _ in candidates:
+        w_gutter = x_right - x_left
+        margin = max(10.0, w_gutter * 0.15)
+        c_left = x_left + margin
+        c_right = x_right - margin
+        if c_left >= c_right:
+            c_left = (x_left + x_right) / 2 - 2.0
+            c_right = (x_left + x_right) / 2 + 2.0
+        for g in glyphs:
+            if c_left <= g.x <= c_right:
+                crossing_y_levels.add(round(g.y / 12.0))
+
+    if not crossing_y_levels:
+        return [c[2] for c in candidates], [], []
+
+    all_y = [g.y for g in glyphs]
+    min_y = min(all_y)
+    max_y = max(all_y)
+    y_span = max_y - min_y or 1.0
+
+    spanning_top: list[Glyph] = []
+    spanning_bot: list[Glyph] = []
+    col_glyphs: list[Glyph] = []
+
+    for g in glyphs:
+        y_level = round(g.y / 12.0)
+        if y_level in crossing_y_levels:
+            # الثلث العلوي كعنوان ممتد، والثلث السفلي كحاشية ممتدة
+            if (g.y - min_y) <= y_span * 0.40:
+                spanning_top.append(g)
+            elif (max_y - g.y) <= y_span * 0.40:
+                spanning_bot.append(g)
+            else:
+                spanning_top.append(g)
+        else:
+            col_glyphs.append(g)
+
+    # يجب أن تشكل الأعمدة كتلة المحتوى الرئيسية
+    if len(col_glyphs) < 0.35 * total_g:
+        return [], [], []
+
+    # إعادة التحقق الصارم من الميازيب على محارف الأعمدة المتبقية
+    verified_gutters = _find_gutters(col_glyphs, page_width, cfg)
+    if not verified_gutters:
+        verified_gutters = [c[2] for c in candidates]
+
+    return sorted(verified_gutters), spanning_top, spanning_bot
+
+
 def _split_glyphs_by_gutters(
     glyphs: list[Glyph], gutters: list[float]
 ) -> list[list[Glyph]]:
@@ -829,6 +966,25 @@ def analyze_layout(
     # 2) ميازب الأعمدة
     want_cols = mode in ("auto", "columns", "full")
     gutters = _find_gutters(body_glyphs, page_width, cfg) if want_cols else []
+    if want_cols and not gutters:
+        gutters, spanning_top, spanning_bot = _find_gutters_with_spanning_isolation(
+            body_glyphs, page_width, cfg
+        )
+        if gutters:
+            if spanning_top:
+                top_lines = cluster_to_lines(spanning_top, config=cfg)
+                for ln in top_lines:
+                    ln.role = "header"
+                layout.headers.extend(top_lines)
+            if spanning_bot:
+                bot_lines = cluster_to_lines(spanning_bot, config=cfg)
+                for ln in bot_lines:
+                    ln.role = "footer"
+                layout.footers = bot_lines + layout.footers
+            spanning_ids = {id(g) for g in spanning_top} | {id(g) for g in spanning_bot}
+            body_glyphs = [g for g in body_glyphs if id(g) not in spanning_ids]
+            layout.notes.append("عُزلت عناوين/حواشٍ ممتدة عبر الأعمدة")
+
     glyph_groups = _split_glyphs_by_gutters(body_glyphs, gutters)
 
     if len(glyph_groups) <= 1:

@@ -241,6 +241,8 @@ class PageResult:
         if self.layout is not None and getattr(self.layout, "columns", None):
             col_texts = [c.text.strip() for c in self.layout.columns if c.text.strip()]
             return "\n\n".join(col_texts)
+        return self.text
+
     @property
     def tables_rich(self) -> list[TableResult]:
         """قائمة كائنات الجداول ذات دوال التصدير الغنية."""

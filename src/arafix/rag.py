@@ -71,6 +71,8 @@ def _line_size(line: Any) -> float:
 
 
 def _is_heading(line: Any, page_median_size: float) -> bool:
+    if getattr(line, "is_heading", False):
+        return True
     text = " ".join(str(line.text).split())
     if not text or len(text) > 140:
         return False

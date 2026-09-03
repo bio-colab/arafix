@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import re
 import statistics
 from dataclasses import dataclass, field
 from typing import Literal
@@ -41,6 +42,16 @@ __all__ = [
 
 ReadingOrder = Literal["rtl", "ltr"]
 LayoutMode = Literal["auto", "linear", "columns", "full"]
+
+_HEADING_PREFIX = re.compile(
+    r"^(?:الفصل|الباب|القسم|المبحث|المطلب|المادة|الجزء|Chapter|Section|"
+    r"\d+[.)]|[١-٩]+[.)])\b",
+    re.IGNORECASE,
+)
+_LIST_PREFIX = re.compile(
+    r"^(?:[•*◦▪\-\–\—]|\d+[.)-]|[١-٩]+[.)-]|\([أ-ي\d]+\)|[أ-ي][.)-]|أولاً:|ثانياً:|ثالثاً:|رابعاً:|خامساً:)\s*"
+)
+_TERMINAL_PUNCT = set(".,;!?،؛؟.!؟")
 
 
 @dataclass
@@ -229,7 +240,8 @@ def join_glyphs_preserving_ltr(
 class LayoutLine:
     y: float
     glyphs: list[Glyph]
-    role: str = "body"  # body | header | footer
+    role: str = "body"  # body | header | footer | heading | list_item
+    heading_level: int = 0  # 0=none, 1=H1, 2=H2, 3=H3
     column_index: int | None = None
     #: Copied from LayoutConfig when clustering (word-space geometry).
     insert_spaces: bool = True
@@ -239,6 +251,19 @@ class LayoutLine:
     space_min_factor: float = 0.42
     space_max_factor: float = 1.05
     _text_cache: str | None = field(default=None, init=False, repr=False)
+
+    @property
+    def font_size(self) -> float:
+        sizes = [float(g.size) for g in self.glyphs if float(g.size) > 0]
+        return statistics.median(sizes) if sizes else 10.0
+
+    @property
+    def is_heading(self) -> bool:
+        return self.role == "heading" or self.heading_level > 0
+
+    @property
+    def is_list_item(self) -> bool:
+        return self.role == "list_item"
 
     @property
     def text(self) -> str:
@@ -401,19 +426,21 @@ class PageLayout:
                 TextBlock(
                     text=ln.text,
                     id=f"p{page_number}h{i}",
-                    role="header",
+                    role=ln.role,
                     bbox=ln.bbox,
+                    meta={"heading_level": ln.heading_level},
                 )
             )
         for col in self.columns:
             for i, ln in enumerate(col.lines):
+                role = ln.role if ln.role in ("heading", "list_item") else "line"
                 blocks.append(
                     TextBlock(
                         text=ln.text,
                         id=f"p{page_number}c{col.index}l{i}",
-                        role="line",
+                        role=role,
                         bbox=ln.bbox,
-                        meta={"column": col.index},
+                        meta={"column": col.index, "heading_level": ln.heading_level},
                     )
                 )
         for ti, table in enumerate(self.tables):
@@ -423,8 +450,9 @@ class PageLayout:
                 TextBlock(
                     text=ln.text,
                     id=f"p{page_number}f{i}",
-                    role="footer",
+                    role=ln.role,
                     bbox=ln.bbox,
+                    meta={"heading_level": ln.heading_level},
                 )
             )
         return blocks
@@ -889,6 +917,54 @@ def _detect_tables_in_lines(
     return remaining, tables
 
 
+def _classify_column_lines(
+    lines: list[LayoutLine],
+    page_median_size: float,
+) -> None:
+    """
+    تصنيف أسطر الأعمدة دلالياً: ترويسات/عناوين (H1, H2, H3) وقوائم ومتن.
+    يُحتسب حجم الخط النسبي والأنماط المعجمية العربية مع حفظ الأمان التام.
+    """
+    for ln in lines:
+        if ln.role in ("header", "footer"):
+            continue
+
+        clean = " ".join(ln.text.split())
+        if not clean:
+            ln.role = "body"
+            ln.heading_level = 0
+            continue
+
+        words = clean.split()
+        size = ln.font_size
+        ratio = size / page_median_size if page_median_size > 0 else 1.0
+
+        is_short = len(clean) <= 120 and len(words) <= 12
+        ends_with_terminal = clean[-1:] in _TERMINAL_PUNCT and not clean.endswith(":")
+
+        if is_short and not ends_with_terminal:
+            if ratio >= 1.35:
+                ln.role = "heading"
+                ln.heading_level = 1
+                continue
+            elif ratio >= 1.15:
+                ln.role = "heading"
+                ln.heading_level = 2
+                continue
+            elif _HEADING_PREFIX.match(clean) or (ratio >= 1.05 and len(words) <= 7):
+                ln.role = "heading"
+                ln.heading_level = 3
+                continue
+
+        if _LIST_PREFIX.match(clean):
+            ln.role = "list_item"
+            ln.heading_level = 0
+            continue
+
+        ln.role = "body"
+        ln.heading_level = 0
+
+
 def analyze_layout(
     glyphs: list[Glyph],
     *,
@@ -907,8 +983,12 @@ def analyze_layout(
         layout.notes.append("لا جليفات")
         return layout
 
+    body_sizes = [float(g.size) for g in glyphs if float(g.size) > 0]
+    page_med_size = statistics.median(body_sizes) if body_sizes else 10.0
+
     if mode == "linear":
         lines = cluster_to_lines(glyphs, config=cfg)
+        _classify_column_lines(lines, page_med_size)
         layout.lines = lines
         layout.mode_used = "linear"
         layout.n_columns = 1
@@ -937,6 +1017,10 @@ def analyze_layout(
         layout.headers = []
         layout.footers = []
 
+    body_sizes = [float(g.size) for g in body_glyphs if float(g.size) > 0]
+    if body_sizes:
+        page_med_size = statistics.median(body_sizes)
+
     # الوضع full يطلب الجداول صراحةً. افحص الشبكة قبل الميازيب، إذ إن
     # أعمدة الجدول المنتظمة تبدو هندسياً كفواصل أعمدة الصفحة. أمّا وضع
     # columns فيبقى صريحاً: يستعمله المستدعي حين يعرف أن الصفحة أعمدة.
@@ -945,9 +1029,9 @@ def analyze_layout(
         remaining, tables = _detect_tables_in_lines(table_lines, cfg)
         if tables:
             layout.tables = tables
+            _classify_column_lines(remaining, page_med_size)
             layout.lines = layout.headers + remaining + layout.footers
             for ln in remaining:
-                ln.role = "body"
                 ln.column_index = 0
             if remaining:
                 layout.columns = [
@@ -973,8 +1057,13 @@ def analyze_layout(
         if gutters:
             if spanning_top:
                 top_lines = cluster_to_lines(spanning_top, config=cfg)
+                top_band_y = page_height * cfg.header_band
                 for ln in top_lines:
-                    ln.role = "header"
+                    if ln.y <= top_band_y:
+                        ln.role = "header"
+                    else:
+                        ln.role = "heading"
+                        ln.heading_level = 1
                 layout.headers.extend(top_lines)
             if spanning_bot:
                 bot_lines = cluster_to_lines(spanning_bot, config=cfg)
@@ -1001,8 +1090,8 @@ def analyze_layout(
             if tables:
                 layout.notes.append(f"{len(tables)} جدول(اً)")
 
+        _classify_column_lines(lines, page_med_size)
         for ln in lines:
-            ln.role = "body"
             ln.column_index = 0
         if lines:
             layout.columns = [
@@ -1033,8 +1122,8 @@ def analyze_layout(
             lines, tables = _detect_tables_in_lines(lines, cfg)
             layout.tables.extend(tables)
 
+        _classify_column_lines(lines, page_med_size)
         for ln in lines:
-            ln.role = "body"
             ln.column_index = idx
         all_body_lines.extend(lines)
         cols.append(

@@ -1,5 +1,33 @@
 # سجلّ التغييرات
 
+## 1.2.0 — 2026-09-03: SOTA Output Engineering, Multi-Format Exporters & Tokenomics
+
+### إثراء البنية الهيكلية وتصنيف العناوين (Structural Enrichment SOTA)
+1. **تصنيف العناوين والقوائم في صميم محرك التخطيط (`src/arafix/layout.py`):**
+   - تمييز مستويات العناوين الهرمية (`heading_level`: 1 = H1، 2 = H2، 3 = H3) بالاعتماد على النسبة الهندسية لحجم الخط إلى متوسط الصفحة ($\text{ratio} \ge 1.25$ لـ H1، $\ge 1.12$ لـ H2، والبادئات الدلالية العربية مثل «الفصل»، «المبحث»، «المادة» لـ H3).
+   - تمييز عناصر القوائم (`list_item`) عبر الأنماط العربية والإنجليزية (`١-`, `1-`, `•`, `-`).
+   - إضافة الخصائص المرجعية `LayoutLine.font_size`, `is_heading`, `is_list_item`.
+2. **كشف الترويسات والتذييلات المتكررة وربط الصفحات (`src/arafix/types.py`):**
+   - إضافة كاشف الترويسات والتذييلات المتكررة عبر الصفحات (`identify_running_headers_footers`): استخراج `doc.running_headers` و `doc.running_footers`.
+   - استخراج متن المستند الصافي المنقّى `doc.body_text` مع ربط الفقرات المكسورة عبر حواف الصفحات (Page Boundary Stitching) إذا انتهت الصفحة دون علامة وقف قطعية.
+   - استخراج شجرة عناوين المستند بالكامل: `doc.headings -> [(text, level, page)]`.
+
+### محرك التصدير المنظم ودعم الذكاء الاصطناعي (Multi-Format Exporters & Tokenomics)
+1. **محرك تصدير Markdown مهيكل:**
+   - إضافة `page.to_markdown()` و `doc.to_markdown()` لتحويل العناوين آلياً إلى `#`, `##`, `###` والجداول إلى جداول Markdown قياسية مع تدفق سليم للفقرات واستبعاد الشوائب.
+2. **تصدير سياق فائق النقاء لـ LLMs وتوفير التوكنز (`doc.to_llm_text`):**
+   - إزالة الترويسات والتذييلات المكررة، وصل الجمل المنكسرة، وحذف الكشيدة (`ـ`) وتكثيف الفراغات الزائدة.
+   - خيار تجريد التشكيل (`strip_tashkeel=True`) لتوفير ما يصل إلى 45% من استهلاك التوكنز في نماذج GPT-4 و Claude و Gemini.
+3. **كائن الجداول الغني `TableResult`:**
+   - إتاحة كافة الجداول المستخرجة عبر `doc.tables` ككائنات تدعم التصدير إلى:
+     - `table.to_markdown()` (Markdown table)
+     - `table.to_csv()` (CSV string)
+     - `table.to_dict()` (List of row dictionaries)
+     - `table.to_dataframe()` (Pandas DataFrame مباشر)
+4. **مداخل السطر الواحد وترقية الطرفية (CLI):**
+   - دوال بايثون سريعة: `arafix.read_markdown("file.pdf")` و `arafix.read_llm("file.pdf")`.
+   - خيارات CLI جديدة: `arafix extract file.pdf --format {text,markdown,llm} --strip-tashkeel`.
+
 ## 1.1.0 — 2026-09-03: The SOTA Multi-Column Layout & Ergonomics Release
 
 ### ترقية وضوح وسهولة الاستخدام (UX / Developer Experience Boost)

@@ -25,8 +25,8 @@ authors:
 repository-code: "https://github.com/bio-colab/arafix"
 url: "https://github.com/bio-colab/arafix"
 license: MIT
-version: 1.0.1
-date-released: "2026-08-09"
+version: 1.2.0
+date-released: "2026-09-03"
 keywords:
   - arabic
   - pdf
@@ -38,7 +38,7 @@ keywords:
   - presentation-forms
   - lam-alef
   - mojibake
-  - markitdown
+  - markdown
 preferred-citation:
   type: software
   authors:
@@ -48,8 +48,8 @@ preferred-citation:
       orcid: "https://orcid.org/0009-0004-8402-4399"
   title: "arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs"
   year: 2026
-  month: 8
+  month: 9
   doi: 10.5281/zenodo.21733978
-  version: 1.0.1
+  version: 1.2.0
   url: "https://github.com/bio-colab/arafix"
   license: MIT

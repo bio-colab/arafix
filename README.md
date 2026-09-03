@@ -18,13 +18,14 @@
 | **Core** | Zero dependencies (stdlib only) for text stages 0–2 |
 | **PDF** | `pip install "arafix[pdf]"` — geometric extract + Arabic repair |
 | **Layout** | Multi-column RTL, spanning banners/footnotes, simple tables (`layout=auto`) |
+| **1.2.0** | SOTA Output Engineering: Multi-Format Exporters (Markdown/LLM/CSV/Pandas), Tokenomics Optimization, Heading Tree Introspection |
 | **1.1.0** | SOTA Multi-Column Layout, Precision Spacing Recovery, One-liner API (`arafix.fix`/`read`), Smart CLI |
 | **1.0** | Core lexicon, smart BiDi/LTR, hybrid mojibake, stress-gated (FPR=0, RAR=100%) |
 | **Quality** | Cluster-aware diacritics, PDF homoglyph fold, scientific metrics (MCS/DBR/BFE/SHDR) — [metrics reference](docs/metrics.md) |
 | **Hardening** | Conservative embedded-font CMap fallback, geometric-noise filtering, and solid-block Latin/Bidi protection |
 | **Spacing** | Explicit PDF-space preservation and context-aware Arabic punctuation spacing |
 | **Eval** | Independent Safahat book samples + manual gold, plus a 1,000-case adversarial Bidi corpus (`benchmarks/`) |
-| **Status** | **Stable 1.1.0** — production-ready for native Arabic PDF recovery |
+| **Status** | **Stable 1.2.0** — production-ready for native Arabic PDF recovery |
 
 ### Install
 
@@ -48,6 +49,12 @@ clean = arafix.fix("\ufee3\ufeae\ufea3\ufe92\ufe8e")  # 'مرحبا'
 
 # Extract & fix full Arabic PDF directly to string
 text = arafix.read("thesis.pdf")
+
+# Extract directly to structured Markdown (#, ##, tables, lists)
+md = arafix.read_markdown("thesis.pdf")
+
+# Extract ultra-clean prompt context for LLMs (up to 45% token savings)
+llm_context = arafix.read_llm("thesis.pdf", strip_tashkeel=True)
 ```
 
 #### 💻 Direct CLI (من الطرفية مباشرة)
@@ -56,11 +63,14 @@ text = arafix.read("thesis.pdf")
 # Fix a string directly
 python -m arafix "ﺎﺒﺣﺮﻣ"             # → مرحبا
 
-# Extract & repair a PDF directly
-python -m arafix thesis.pdf          # or: arafix thesis.pdf -o out.txt
+# Extract plain text
+arafix extract thesis.pdf -o out.txt
 
-# Or pipe from another tool
-cat thesis_raw.txt | python -m arafix
+# Extract structured Markdown
+arafix extract thesis.pdf --format markdown -o out.md
+
+# Extract token-optimized context for LLMs
+arafix extract thesis.pdf --format llm --strip-tashkeel
 ```
 
 #### 🔬 Detailed Graded API (تحكم كامل وتشخيص مدقق)
@@ -397,6 +407,46 @@ print(document.confidence)
 print(len(document.pages))
 print(document.metadata.get("producer"), document.metadata.get("creator"))
 
+```
+
+### 📊 محرك التصدير المنظم ودعم الذكاء الاصطناعي (Multi-Format & LLMs)
+
+توفر `arafix` محرك تصدير مهيكل مدمج يرفع كفاءة استخراج المستندات للأبحاث، والمشاريع، وأنظمة الـ RAG، ونماذج اللغة الكبيرة (LLMs):
+
+#### 1. استخراج فوري بصيغة Markdown مهيكلة:
+يترجم العناوين آلياً إلى وسوم `#` و `##` و `###` بحسب هرمية الخط، ويرتب القوائم والجداول في تدفق متناسق:
+```python
+import arafix
+
+# قراءة سريعة بسطر واحد
+markdown = arafix.read_markdown("report.pdf")
+
+# أو عبر كائن الوثيقة المستخرجة
+doc = arafix.extract_pdf("report.pdf")
+print(doc.to_markdown())
+
+# استعراض هرمية العناوين المكتشفة مع درجاتها وأرقام صفحاتها
+for title, level, page in doc.headings:
+    print(f"P{page} H{level}: {title}")
+```
+
+#### 2. تصدير فائق الكفاءة لـ LLMs (توفير حتى 45% من التوكنز):
+يحذف الترويسات والتذييلات وأرقام الصفحات المتكررة، يوصل الجمل المنكسرة عبر حواف الصفحات، ويزيل الكشيدة (`ـ`)، مع خيار تجريد التشكيل (`strip_tashkeel=True`) لمنع هدر التوكنز في نماذج مثل GPT-4 و Claude و Gemini:
+```python
+# سياق نقي مهيأ مباشرةً لنافذة السياق (Context Window)
+prompt_context = arafix.read_llm("report.pdf", strip_tashkeel=True)
+```
+
+#### 3. كائن الجداول الغني `TableResult`:
+يتيح تصدير الجداول المستخرجة مباشرة إلى صيغ Markdown و CSV و Dict و Pandas:
+```python
+doc = arafix.extract_pdf("tables.pdf")
+
+for tbl in doc.tables:
+    print(tbl.to_markdown())   # جدول Markdown قياسي
+    print(tbl.to_csv())        # نص CSV جاهز للفتح
+    records = tbl.to_dict()    # [{'الاسم': 'أحمد', ...}]
+    df = tbl.to_dataframe()    # pandas.DataFrame مباشرة!
 ```
 
 للتشخيص قبل الاستخراج أو الإصلاح:
@@ -811,7 +861,7 @@ class PdfMinerExtractor(Extractor):
   author  = {Sharar, Elias},
   title   = {{arafix: Evidence-Based Repair of Broken Arabic Text in Native PDFs}},
   year    = {2026},
-  version = {1.0.1},
+  version = {1.2.0},
   doi     = {10.5281/zenodo.21733978},
   url     = {https://github.com/bio-colab/arafix},
   license = {MIT}

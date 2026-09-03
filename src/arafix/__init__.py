@@ -30,7 +30,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __license__ = "MIT"
 
 from .adapters import (
@@ -162,6 +162,7 @@ from .types import (
     PageResult,
     RepairResult,
     Stage,
+    TableResult,
     TextBlock,
 )
 from .unicode_tables import (
@@ -201,11 +202,55 @@ def read(
     return extract_pdf(str(path), config=config).text
 
 
+def read_markdown(
+    path: str | Path,
+    config: PipelineConfig | None = None,
+    *,
+    include_page_breaks: bool = True,
+    include_headers_footers: bool = False,
+) -> str:
+    """
+    استخراج ملف PDF العربي وتحويله مباشرةً إلى وثيقة Markdown قياسية وهيكلية.
+
+    Quick one-liner:
+        >>> import arafix
+        >>> md = arafix.read_markdown("report.pdf")  # doctest: +SKIP
+    """
+    return extract_pdf(str(path), config=config).to_markdown(
+        include_page_breaks=include_page_breaks,
+        include_headers_footers=include_headers_footers,
+    )
+
+
+def read_llm(
+    path: str | Path,
+    config: PipelineConfig | None = None,
+    *,
+    optimize_tokens: bool = True,
+    strip_tashkeel: bool = False,
+    include_page_markers: bool = False,
+) -> str:
+    """
+    استخراج ملف PDF العربي وتجهيزه مباشرةً كسياق فائق النظافة لـ LLMs بتوفير توكنز حتى 45%.
+
+    Quick one-liner:
+        >>> import arafix
+        >>> prompt_context = arafix.read_llm("report.pdf")  # doctest: +SKIP
+    """
+    return extract_pdf(str(path), config=config).to_llm_text(
+        optimize_tokens=optimize_tokens,
+        strip_tashkeel=strip_tashkeel,
+        include_page_markers=include_page_markers,
+    )
+
+
 __all__ = [
     "__version__",
     # الأنبوب ومداخل السطر الواحد
     "fix",
     "read",
+    "read_markdown",
+    "read_llm",
     "repair_text",
     "repair_blocks",
     # التدقيق والرقع القابلة للعكس
@@ -307,6 +352,7 @@ __all__ = [
     "RepairResult",
     "PageResult",
     "DocumentResult",
+    "TableResult",
     "TextBlock",
     "BlockResult",
     "BlocksResult",

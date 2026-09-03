@@ -86,7 +86,7 @@ accuracy = max(0, 1 − rate)               ← EditDistance.accuracy
 | `ignore_orthographic_variants` | `False` | توحيد صور الألف والتاء المربوطة |
 | `ignore_punctuation` | `False` | تجاهل الترقيم — **لا تفعّله لتقييم arafix** |
 
-### 1.3 البوابات وقيم اليوم (v1.0.1+)
+### 1.3 البوابات وقيم اليوم (v1.2.0+)
 
 على fixtures حقيقية: `tests/fixtures/real_pdf_narrative/` —
 (`file.pdf` مقابل `original.txt`، و`iraq_constitution.pdf` مقابل

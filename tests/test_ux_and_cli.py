@@ -82,4 +82,18 @@ class TestSmartCLIRouting:
             encoding="utf-8",
         )
         assert proc.returncode == 0
-        assert "1.1.0" in proc.stdout
+        assert "1.2.0" in proc.stdout
+
+    def test_cli_extract_markdown_and_llm(self, capsys):
+        pdf_path = Path("tests/fixtures/real_pdf_narrative/file.pdf")
+        if not pdf_path.exists():
+            return
+        code = main(["extract", str(pdf_path), "--format", "markdown"])
+        assert code == 0
+        captured = capsys.readouterr()
+        assert "#" in captured.out
+
+        code_llm = main(["extract", str(pdf_path), "--format", "llm", "--strip-tashkeel"])
+        assert code_llm == 0
+        captured_llm = capsys.readouterr()
+        assert "َ" not in captured_llm.out

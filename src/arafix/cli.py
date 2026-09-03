@@ -116,7 +116,21 @@ def _cmd_extract(args: argparse.Namespace) -> int:
     )
     doc = extract_pdf(args.path, cfg)
 
-    out = doc.text
+    fmt = getattr(args, "format", "text")
+    if args.output and args.output.endswith(".md") and fmt == "text":
+        fmt = "markdown"
+
+    if fmt == "markdown":
+        out = doc.to_markdown()
+    elif fmt == "llm":
+        out = doc.to_llm_text(strip_tashkeel=bool(getattr(args, "strip_tashkeel", False)))
+    else:
+        out = doc.text
+        if getattr(args, "strip_tashkeel", False):
+            from .unicode_tables import is_arabic_diacritic
+
+            out = "".join(ch for ch in out if not is_arabic_diacritic(ch))
+
     if args.output:
         if Path(args.output).resolve() == Path(args.path).resolve():
             raise RuntimeError(
@@ -293,6 +307,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     x.add_argument("-v", "--verbose", action="store_true", help="اعرض ملخص البنية")
     x.add_argument("--tables", action="store_true", help="اطبع الجداول المستخرجة")
+    x.add_argument(
+        "--format",
+        choices=["text", "markdown", "llm"],
+        default="text",
+        help="صيغة الإخراج: text (عادي) | markdown (مهيكل) | llm (مُحسّن للتوكنز)",
+    )
+    x.add_argument(
+        "--strip-tashkeel",
+        action="store_true",
+        help="تجريد الحركات والتشكيل لتوفير أقصى قدر من التوكنز",
+    )
     x.set_defaults(func=_cmd_extract)
 
     t = sub.add_parser("text", help="أصلح نصاً مباشراً أو من stdin")

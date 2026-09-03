@@ -29,6 +29,9 @@ import json
 import sys
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 # Allow running from repo root without install.
 _ROOT = Path(__file__).resolve().parents[1]
 _SRC = _ROOT / "src"
@@ -163,6 +166,10 @@ def _cmd_pdf(args: argparse.Namespace) -> int:
     print(f"  {report}")
     print(f"  CER={_pct(report.cer.rate)} (letters-only: {_pct(report.cer_letters.rate)})")
     print(f"  WER={_pct(report.wer.rate)} (word-accuracy: {_pct(report.word_accuracy)})")
+    if doc.metadata:
+        prod = doc.metadata.get("producer") or "None"
+        creat = doc.metadata.get("creator") or "None"
+        print(f"  Producer: {prod} | Creator: {creat}")
 
     if args.scientific:
         print("── scientific ──")

@@ -20,6 +20,9 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
 # Ensure arafix is importable
 _ROOT = Path(__file__).resolve().parents[1]
 _SRC = _ROOT / "src"

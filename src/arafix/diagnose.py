@@ -350,6 +350,26 @@ def detect_tatweel(text: str) -> tuple[float, Evidence]:
 # ٤) الاتجاه — ثلاثة شواهد مستقلة، بتصويت مرجَّح
 # ---------------------------------------------------------------------------
 
+_EDGE_PUNCT = re.compile(
+    r"^[\s،؛؟!.\(\)«»\"':\-_–—/\\[\]{}]+|[\s،؛؟!.\(\)«»\"':\-_–—/\\[\]{}]+$"
+)
+
+
+def _clean_punct_only(token: str) -> str:
+    """Strip edge punctuation and brackets without stripping diacritics."""
+    return _EDGE_PUNCT.sub("", token).strip("\u0640")
+
+
+def _clean_final_letters_token(token: str) -> str:
+    """Strip edge punctuation, tatweel, and edge marks for final_only_letters."""
+    t = _clean_punct_only(token)
+    while t and unicodedata.category(t[0]) == "Mn":
+        t = t[1:]
+    while t and unicodedata.category(t[-1]) == "Mn":
+        t = t[:-1]
+    return t.strip("\u0640")
+
+
 def _signal_final_only_letters(tokens: list[str]) -> tuple[float, str] | None:
     """
     الشاهد الأقوى: التاء المربوطة والألف المقصورة **لا تقعان إلا آخر الكلمة**.
@@ -358,7 +378,8 @@ def _signal_final_only_letters(tokens: list[str]) -> tuple[float, str] | None:
     الكلمات، فالنص مخزَّن معكوساً. هذا شاهد قاطع تقريباً.
     """
     head = tail = 0
-    for t in tokens:
+    for raw_t in tokens:
+        t = _clean_final_letters_token(raw_t)
         if len(t) < 2:
             continue
         if t[0] in FINAL_ONLY_LETTERS:
@@ -434,8 +455,9 @@ def _signal_definite_article(tokens: list[str]) -> tuple[float, str] | None:
     أضعف الشواهد الثلاثة — فـ«لا» النافية موجودة، و«ال» قد تكون أصلية.
     ولذلك وزنه أخفّ، ولا يُعتمد وحده أبداً.
     """
-    pre = sum(1 for t in tokens if len(t) > 3 and t.startswith("ال"))
-    post = sum(1 for t in tokens if len(t) > 3 and t.endswith("لا"))
+    clean_tokens = [_clean_punct_only(t) for t in tokens]
+    pre = sum(1 for t in clean_tokens if len(t) > 3 and t.startswith("ال"))
+    post = sum(1 for t in clean_tokens if len(t) > 3 and t.endswith("لا"))
     if pre + post == 0:
         return None
     score = (post - pre) / (pre + post)

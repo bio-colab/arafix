@@ -110,20 +110,22 @@ def test_density_mode_changes_testimony_not_text() -> None:
     assert density.confidence > classic.confidence
 
 
-def test_known_blindspot_numeral_line_is_conservatively_untouched() -> None:
-    const = (REPO / "tests/fixtures/real_pdf_narrative/"
-             "iraq_constitution_original.txt").read_text(encoding="utf-8-sig")
+def test_numeral_line_rescue_success() -> None:
+    """إغلاق العمى الموثق: السطر المعكوس الذي يبدأ برقم/بند أصبح يُكشف ويُنقذ حرفياً."""
+    const = (
+        REPO / "tests/fixtures/real_pdf_narrative/" "iraq_constitution_original.txt"
+    ).read_text(encoding="utf-8-sig")
     numeral_line = next(
         (ln.strip() for ln in const.splitlines() if ln.strip().startswith("٢")),
-        None)
+        None,
+    )
     assert numeral_line is not None, "fixture الدستور تغيّر: لا سطر «٢:»"
 
     rev = reverse_visual_line(numeral_line)
     score, _evs = _line_reversal_score(rev)
     thr = DEFAULT_THRESHOLDS["visual_order"]
-    # العمى الموثَّق: الدرجة تحت العتبة فتمر البوابة محافظةً. إن أُصلح
-    # الكشف مستقبلاً فهذا الاختبار أول من يجب تحديثه قراراً موثقاً.
-    assert score <= thr, "الكشف تغيّر — حدّث هذا التثبيت بقرار موثق"
+    # بعد تطهير أطراف التوكنات لغوياً: الدرجة ترتفع فوق العتبة بيقين (+1.0)
+    assert score > thr, "السطر المعكوس لم يُكشف"
 
     page_lines = _gold_lines("salahaddin", 8)
     truncated = numeral_line[:120]
@@ -132,7 +134,10 @@ def test_known_blindspot_numeral_line_is_conservatively_untouched() -> None:
     corrupted[2] = reverse_visual_line(truncated)
 
     default_out = repair_text("\n".join(corrupted), PipelineConfig(**BASE)).text
-    rescue_out = repair_text("\n".join(corrupted), PipelineConfig(
-        rescue_mixed_lines=True, **BASE)).text
-    assert default_out == rescue_out, (
-        "سلوك الإنقاذ تجاه العمى الرقمي تغيّر دون تحديث التثبيت")
+    rescue_out = repair_text(
+        "\n".join(corrupted), PipelineConfig(rescue_mixed_lines=True, **BASE)
+    ).text
+    assert default_out.splitlines()[2] != truncated
+    assert rescue_out.splitlines()[2] == truncated, (
+        "السطر المعكوس لم يُسترجع بنجاح عبر rescue_mixed_lines"
+    )

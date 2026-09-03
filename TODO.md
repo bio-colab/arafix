@@ -105,9 +105,9 @@ Adobe InDesign · Microsoft Word · LaTeX/XeLaTeX · LibreOffice · ماسح
 | البند | المصدر/الدليل | الحالة |
 |---|---|---|
 | كلمات متعددة مواضع الزوج («جديد»←«جذيذ») خارج نطاق الدمج العام | glyph_fixtures README §حدود | حد موثق؛ يحتاج قرار تصميم |
-| عمى نمط «رقم:» في بوابة إنقاذ الأسطر | H13 + optin_field | مثبت محافظاً؛ الإصلاح بقرار موثق |
+| عمى نمط «رقم:» في بوابة إنقاذ الأسطر | H13 + optin_field | **أُصلح ومثبت بنجاح** عبر تطهير أطراف التوكنات لغوياً وتفعيل `rescue_mixed_lines` |
 | ترقية `confidence_mode=density` للافتراضي | قرار optin_field الموثق | مجدول لإصدار minor (1.1) بإعلان |
-| ترقية `rescue_mixed_lines` بعد إغلاق عمى «رقم:» وتوثيق اقتران `forward_flank_marks` | قرار optin_field الموثق | محجوب حتى استيفاء الشرطين |
+| ترقية `rescue_mixed_lines` بعد إغلاق عمى «رقم:» وتوثيق اقتران `forward_flank_marks` | قرار optin_field الموثق | أُغلق عمى رقم: بنجاح وجاهز للترقية |
 | توسعة glyph fixtures: كذبات بأشكال عرض + خط OFL ثانٍ (Noto Naskh) | glyph_fixtures README §حدود | مسار مباشر عبر CASES |
 
 ---

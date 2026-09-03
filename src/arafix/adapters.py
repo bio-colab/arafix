@@ -4,6 +4,8 @@
     from arafix.adapters import fix_any, fix_table, wrap_callable
 """
 
+from __future__ import annotations
+
 from collections.abc import Callable
 from typing import Any
 

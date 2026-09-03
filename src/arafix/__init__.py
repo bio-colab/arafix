@@ -137,6 +137,7 @@ from .pipeline import (
     PipelineConfig,
     extract_pdf,
     harvest_document_lexicon,
+    iter_extract_pdf,
     repair_blocks,
     repair_text,
 )
@@ -265,6 +266,7 @@ __all__ = [
     "AuditTrail",
     "sha256_text",
     "extract_pdf",
+    "iter_extract_pdf",
     "extract_pdf_rag",
     "spatial_rag_chunks",
     "RAGChunk",

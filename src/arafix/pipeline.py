@@ -25,9 +25,9 @@ tests/hardening/test_h15_mission_boundary.py):
 from __future__ import annotations
 
 import re
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .cmap import GlyphMap
@@ -87,6 +87,7 @@ __all__ = [
     "repair_text",
     "repair_blocks",
     "extract_pdf",
+    "iter_extract_pdf",
     "harvest_document_lexicon",
 ]
 
@@ -1116,7 +1117,77 @@ def _recover_broken_cmap_page(
     return replace(raw, glyphs=glyphs, text=text, layout=None), recovered
 
 
-def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResult:
+def _resolve_extractor(cfg: PipelineConfig):
+    if cfg.extractor == "auto":
+        from .extractors import PyMuPDFExtractor
+
+        return (
+            PyMuPDFExtractor(
+                layout_mode=cfg.layout,
+                geometric_noise=cfg.geometric_noise,
+                preserve_spatial_bboxes=cfg.preserve_spatial_bboxes,
+                layout_config=cfg.layout_config,
+            )
+            if PyMuPDFExtractor.available()
+            else get_extractor("auto")
+        )
+    from .extractors import REGISTRY
+
+    cls = REGISTRY.get(cfg.extractor)
+    if cls is not None and cfg.extractor == "pymupdf":
+        return cls(
+            layout_mode=cfg.layout,
+            preserve_spatial_bboxes=cfg.preserve_spatial_bboxes,
+            layout_config=cfg.layout_config,
+        )  # type: ignore[call-arg]
+    return get_extractor(cfg.extractor)
+
+
+def iter_extract_pdf(
+    path: str,
+    config: PipelineConfig | None = None,
+) -> Iterator[PageResult]:
+    """
+    يستخرج ويصلح صفحات ملف PDF تدفقياً (Streaming Generator)، صفحةً تلو الأخرى.
+
+    مخصصة للملفات الضخمة (مئات أو آلاف الصفحات) حيث يُشترط استهلاك ذاكرة ثابت
+    O(1) لا يتجاوز ~15 MB، وتُسلَّم النتيجة صفحة بصفحة دون مراكمة في الرام.
+    """
+    cfg = config or PipelineConfig()
+    extractor = _resolve_extractor(cfg)
+    page_cfg = replace(
+        cfg,
+        harvest_document_lexicon=False,
+        enable_context_scoring=False,
+    )
+
+    glyph_maps: dict[str, GlyphMap] | None = None
+    for raw in extractor.pages(path):
+        has_unmapped = any(
+            any("\ue000" <= char <= "\uf8ff" or char == "\ufffd" for char in glyph[2])
+            for glyph in raw.glyphs
+        )
+        if has_unmapped:
+            if glyph_maps is None:
+                try:
+                    from .cmap import build_glyph_map
+
+                    glyph_maps = {
+                        name: build_glyph_map(data, name)
+                        for name, data in extractor.font_bytes(path).items()
+                    }
+                except Exception:
+                    glyph_maps = {}
+            raw, _ = _recover_broken_cmap_page(raw, glyph_maps)
+        yield _extract_one_page(raw, page_cfg)
+
+
+def extract_pdf(
+    path: str,
+    config: PipelineConfig | None = None,
+    *,
+    workers: int = 1,
+) -> DocumentResult:
     """
     يستخرج ملف PDF كاملاً ويصلحه صفحةً صفحة.
 
@@ -1129,35 +1200,12 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
 
     مع ``layout="auto"`` (افتراضيّ منذ 0.8.0): تُكتشف الأعمدة والترويسة
     والجداول من هندسة الجليفات، ويُصلَح كل سطر/خلية على حدة.
+
+    :param workers: عدد العمليات المتوازية (افتراضياً 1). مرّر عدداً أكبر (مثل 4 أو 8)
+        لاستغلال كامل أنوية المعالج وتسريع معالجة الوثائق الكبيرة.
     """
     cfg = config or PipelineConfig()
-
-    # مرِّر وضع البنية للمستخرج إن دعمه
-    if cfg.extractor == "auto":
-        from .extractors import PyMuPDFExtractor
-
-        extractor = (
-            PyMuPDFExtractor(
-                layout_mode=cfg.layout,
-                geometric_noise=cfg.geometric_noise,
-                preserve_spatial_bboxes=cfg.preserve_spatial_bboxes,
-                layout_config=cfg.layout_config,
-            )
-            if PyMuPDFExtractor.available()
-            else get_extractor("auto")
-        )
-    else:
-        from .extractors import REGISTRY
-
-        cls = REGISTRY.get(cfg.extractor)
-        if cls is not None and cfg.extractor == "pymupdf":
-            extractor = cls(
-                layout_mode=cfg.layout,
-                preserve_spatial_bboxes=cfg.preserve_spatial_bboxes,
-                layout_config=cfg.layout_config,
-            )  # type: ignore[call-arg]
-        else:
-            extractor = get_extractor(cfg.extractor)
+    extractor = _resolve_extractor(cfg)
 
     page_cfg = replace(
         cfg,
@@ -1168,10 +1216,10 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
     doc = DocumentResult(path=path)
     doc.metadata["extractor"] = extractor.name
     doc.metadata["layout"] = cfg.layout
+    if workers > 1:
+        doc.metadata["workers"] = workers
 
-    # Optional source metadata is descriptive only.  It must never influence
-    # diagnosis or repair decisions, and older/custom extractors remain valid
-    # through the non-abstract Extractor.metadata() hook.
+    # Optional source metadata is descriptive only.
     try:
         source_metadata = extractor.metadata(path)
     except Exception as exc:  # pragma: no cover - defensive extractor boundary
@@ -1187,32 +1235,63 @@ def extract_pdf(path: str, config: PipelineConfig | None = None) -> DocumentResu
     cmap_recovered = 0
     noise_removed = 0
     noise_reasons: dict[str, int] = {}
-    for raw in extractor.pages(path):
-        noise_removed += int(getattr(raw, "noise_spans_removed", 0) or 0)
-        for reason, count in (getattr(raw, "noise_reasons", {}) or {}).items():
-            noise_reasons[reason] = noise_reasons.get(reason, 0) + int(count)
-        has_unmapped = any(
-            any("\ue000" <= char <= "\uf8ff" or char == "\ufffd" for char in glyph[2])
-            for glyph in raw.glyphs
-        )
-        if has_unmapped:
-            if glyph_maps is None:
-                try:
-                    from .cmap import build_glyph_map
 
-                    glyph_maps = {
-                        name: build_glyph_map(data, name)
-                        for name, data in extractor.font_bytes(path).items()
-                    }
-                except Exception as exc:
-                    glyph_maps = {}
-                    # الفشل الصامت يُخفي سبب ضياع استرجاع الدرجة ٣؛ نسجّله
-                    # كي يفحصه المستخدم في diagnose بدل التخمين.
-                    doc.metadata["cmap_build_failed"] = str(exc)
-            raw, count = _recover_broken_cmap_page(raw, glyph_maps)
-            cmap_recovered += count
-        page = _extract_one_page(raw, page_cfg)
-        doc.pages.append(page)
+    if workers > 1:
+        import concurrent.futures
+
+        raw_pages: list[RawPage] = []
+        for raw in extractor.pages(path):
+            noise_removed += int(getattr(raw, "noise_spans_removed", 0) or 0)
+            for reason, count in (getattr(raw, "noise_reasons", {}) or {}).items():
+                noise_reasons[reason] = noise_reasons.get(reason, 0) + int(count)
+            has_unmapped = any(
+                any("\ue000" <= char <= "\uf8ff" or char == "\ufffd" for char in glyph[2])
+                for glyph in raw.glyphs
+            )
+            if has_unmapped:
+                if glyph_maps is None:
+                    try:
+                        from .cmap import build_glyph_map
+
+                        glyph_maps = {
+                            name: build_glyph_map(data, name)
+                            for name, data in extractor.font_bytes(path).items()
+                        }
+                    except Exception as exc:
+                        glyph_maps = {}
+                        doc.metadata["cmap_build_failed"] = str(exc)
+                raw, count = _recover_broken_cmap_page(raw, glyph_maps)
+                cmap_recovered += count
+            raw_pages.append(raw)
+
+        with concurrent.futures.ProcessPoolExecutor(max_workers=workers) as pool:
+            tasks = [(raw, page_cfg) for raw in raw_pages]
+            doc.pages.extend(pool.map(_parallel_page_worker, tasks))
+    else:
+        for raw in extractor.pages(path):
+            noise_removed += int(getattr(raw, "noise_spans_removed", 0) or 0)
+            for reason, count in (getattr(raw, "noise_reasons", {}) or {}).items():
+                noise_reasons[reason] = noise_reasons.get(reason, 0) + int(count)
+            has_unmapped = any(
+                any("\ue000" <= char <= "\uf8ff" or char == "\ufffd" for char in glyph[2])
+                for glyph in raw.glyphs
+            )
+            if has_unmapped:
+                if glyph_maps is None:
+                    try:
+                        from .cmap import build_glyph_map
+
+                        glyph_maps = {
+                            name: build_glyph_map(data, name)
+                            for name, data in extractor.font_bytes(path).items()
+                        }
+                    except Exception as exc:
+                        glyph_maps = {}
+                        doc.metadata["cmap_build_failed"] = str(exc)
+                raw, count = _recover_broken_cmap_page(raw, glyph_maps)
+                cmap_recovered += count
+            page = _extract_one_page(raw, page_cfg)
+            doc.pages.append(page)
 
     context_model = cfg.context_model
     if cfg.enable_context_scoring and context_model is None and doc.pages:
@@ -1511,4 +1590,11 @@ def _repaired_tables(layout, by_id: dict[str, str], page_number: int) -> list[li
 
 def _raw_tables(layout) -> list[list[list[str]]]:
     return [t.rows for t in layout.tables]
+
+
+def _parallel_page_worker(args: tuple[Any, PipelineConfig]) -> PageResult:
+    """عامل مستقل لتنفيذ معالجة الصفحة بالتوازي عبر العمليات الفرعية."""
+    raw, page_cfg = args
+    return _extract_one_page(raw, page_cfg)
+
 

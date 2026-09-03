@@ -16,7 +16,6 @@ for path in (_ROOT, _SRC):
         sys.path.insert(0, str(path))
 
 from arafix import AuditMode, PipelineConfig, repair_text, sha256_text  # noqa: E402
-
 from scripts.mutation_engine import generate_cases  # noqa: E402
 
 DEFAULT_OUTPUT = _ROOT / "reports" / "audit" / "mutation-l0.json"

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import pytest
+
 from arafix import (
     PipelineConfig,
     Stage,
@@ -186,3 +187,36 @@ class TestAdapters:
 
     def test_repair_extracted(self):
         assert repair_extracted("مرحبا\u00a0بكم").text == "مرحبا بكم"
+
+
+class TestP0HygieneAndOrderFixes:
+    def test_conjunction_waw_collapsed(self):
+        assert repair_text("الحرية و حرية الرأي").text == "الحرية وحرية الرأي"
+        assert repair_text("و أكدت المصادر").text == "وأكدت المصادر"
+
+    def test_single_letter_kerning_fragment_collapsed(self):
+        assert repair_text("ق واعد البناء").text == "قواعد البناء"
+        assert repair_text("ع لاقة قوية").text == "علاقة قوية"
+
+    def test_glued_article_particle_split(self):
+        assert repair_text("أوالاجتماعي").text == "أو الاجتماعي"
+        assert repair_text("مايأتي في النص").text == "ما يأتي في النص"
+
+    def test_parenthesis_inside_spaces_removed(self):
+        assert repair_text("( لكل مواطن )").text == "(لكل مواطن)"
+        assert repair_text("المادة(١٨)").text == "المادة (١٨)"
+        assert repair_text("القانون) ،").text == "القانون)،"
+
+    def test_inverted_item_enumeration_normalized(self):
+        from arafix.order import reverse_visual_line
+        assert "١- " in reverse_visual_line("ﺔﻣﺎﻌﻟا قوﻘﺣﻟا ١-")
+        assert "٢: " in reverse_visual_line("ﺎًﻧطاوﻣ دﻌﯾ ٢ :")
+        assert "((١: " in reverse_visual_line("ةﺎﯾﺣﻟا قﺣ ١ :)):ﻰﻠﻋ")
+
+    def test_ascending_chain_range_restored(self):
+        from arafix.order import reverse_visual_line
+        # In visual reverse stream: ١٤-١٥-١٦-) reversed gives (-٦١-٥١-٤١
+        # With chain range scoring, it must restore ascending order (-١٤-١٥-١٦
+        reversed_line = "١٤-١٥-١٦-) داوـﻣﻟا ﻲـﻫو"
+        restored = reverse_visual_line(reversed_line)
+        assert "(-١٤-١٥-١٦" in restored

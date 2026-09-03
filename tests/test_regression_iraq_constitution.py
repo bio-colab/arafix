@@ -23,6 +23,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+
 from arafix import (
     Defect,
     EvalConfig,
@@ -30,15 +31,17 @@ from arafix import (
     evaluate_text,
     extract_pdf,
 )
+from arafix.evaluate import wer
 from arafix.extractors import PyMuPDFExtractor
 
 FIXTURE_DIR = Path(__file__).resolve().parent / "fixtures" / "real_pdf_narrative"
 PDF_PATH = FIXTURE_DIR / "iraq_constitution.pdf"
 TRUTH_PATH = FIXTURE_DIR / "iraq_constitution_original.txt"
 
-_FULL_CER_CEILING = 0.18
-_CONTENT_CER_CEILING = 0.18
+_FULL_CER_CEILING = 0.05
+_CONTENT_CER_CEILING = 0.05
 _LETTERS_ONLY_CER_CEILING = 0.02
+_WER_CEILING = 0.16
 _MIN_CONFIDENCE = 0.80
 
 pytestmark = [
@@ -134,6 +137,12 @@ class TestIraqMeasuredCeilings:
             f"letters-only CER={rep.cer.rate:.2%} ≥ {_LETTERS_ONLY_CER_CEILING:.1%}"
         )
 
+    def test_wer_has_a_ceiling(self, truth, hyp):
+        rate = wer(truth, hyp).rate
+        assert rate < _WER_CEILING, (
+            f"full WER={rate:.2%} ≥ {_WER_CEILING:.0%}"
+        )
+
 
 # ── linguistic layers ───────────────────────────────────────────────────
 
@@ -146,6 +155,11 @@ class TestIraqLettersAndWords:
             "أنواع الحقوق",
             "الحقوق الاقتصادية والاجتماعية والثقافية",
             "الحريات العامة",
+            "قواعد العدالة الاجتماعية",
+            "أو الاجتماعي",
+            "١- الحقوق",
+            "٢: ",
+            "١٤-١٥-١٦",
         ):
             assert phrase in hyp, f"missing key phrase with spaces: {phrase!r}"
 

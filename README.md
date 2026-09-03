@@ -88,8 +88,8 @@ Measured on official real-world publication ([`iraq_constitution.pdf`](tests/fix
 | **Raw PyMuPDF (no repair)** | 66.06% | 64.89% | 99.40% | 0.60% | 115.5 ms |
 | **pdfplumber** | 101.91% | 79.50% | 100.48% | 0.00% | 383.3 ms |
 | **pdfminer.six** | 103.74% | 79.55% | 116.49% | 0.00% | 484.3 ms |
-| **arafix (default)** | **3.05%** | **0.82%** | **17.21%** | **82.79%** | 300.8 ms |
-| **arafix (layout-aware)** | **3.05%** | **0.82%** | **17.21%** | **82.79%** | 243.0 ms |
+| **arafix (default)** | **2.13%** | **0.82%** | **13.24%** | **86.76%** | 313.8 ms |
+| **arafix (layout-aware)** | **2.13%** | **0.82%** | **13.24%** | **86.76%** | 260.1 ms |
 
 > **Reproduce locally:**
 > ```bash

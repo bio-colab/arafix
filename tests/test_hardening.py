@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+
 from arafix import GeometricNoiseConfig, GeometricNoiseFilter, extract_pdf
 from arafix.hygiene import normalize_arabic_punctuation_spacing
 from arafix.order import fix_order

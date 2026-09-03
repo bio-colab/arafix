@@ -256,11 +256,11 @@ _LETTER_WITH_MARKS = rf"[\u0621-\u064A]{_MARKS_CLASS}*"
 # were previously recompiled per invocation.
 _SPACE_BEFORE_MARK_RE = re.compile(rf"\s+(?={_MARKS_CLASS})")
 _TA_MARBUTA_SPLIT_RE = re.compile(
-    rf"(?<![\u0621-\u064A])((?:{_LETTER_WITH_MARKS}){{3,}})\s+"
+    rf"(?<![\u0621-\u064A\u064B-\u0655\u0670\u0640])((?:{_LETTER_WITH_MARKS}){{3,}})\s+"
     rf"(?=ة(?:{_MARKS_CLASS})*(?![\u0621-\u064A]))"
 )
 _FRAGMENT_RE = re.compile(
-    rf"(?<![\u0621-\u064A])((?:{_LETTER_WITH_MARKS}){{1,3}})\s+(?=[\u0621-\u064A])"
+    rf"(?<![\u0621-\u064A\u064B-\u0655\u0670\u0640])((?:{_LETTER_WITH_MARKS}){{1,3}})\s+(?=[\u0621-\u064A])"
 )
 _STRIP_MARKS_RE = re.compile(_MARKS_CLASS)
 _ARTICLE_PREFIX_RE = re.compile(rf"{_MARKS_CLASS}*ال")
@@ -303,13 +303,18 @@ def collapse_midword_spaces(text: str) -> str:
         right = _STRIP_MARKS_RE.sub("", right_cluster)
         if left in _KEEP_SPACE_AFTER or right in _KEEP_SPACE_AFTER:
             return m.group(0)
-        if len(left) == 1 and left in _NO_COLLAPSE_SINGLE:
+        # Single-letter Arabic prefixes/fragments (e.g. و حرية, ق واعد):
+        # In Arabic orthography, single-letter proclitics (و, ف) attach directly
+        # to the following word, and isolated consonants before stems of length >= 2
+        # are geometry split artifacts (ق واعد -> قواعد). Only keep the space if
+        # the following token is also a single letter (alphabet listing: أ ب ت ث).
+        if len(left) == 1 and len(right) <= 1:
             return m.group(0)
         # A two-letter standalone word followed by a normal-length word is
         # overwhelmingly a real word boundary (نص سليم, أي إصلاح), not a
         # geometry fragment. Keep it unless an explicit function-word rule
         # above or an article-prefix rule below provides stronger evidence.
-        if len(left) <= 2 and len(right) > 2:
+        if len(left) == 2 and len(right) > 2:
             return m.group(0)
         # Keep space before definite article ال…
         if _ARTICLE_PREFIX_RE.match(rest):
@@ -355,6 +360,8 @@ _SAFE_GLUED_FUNCTION_BOUNDARIES: tuple[tuple[str, str], ...] = (
     ("كما", "ان"),
     ("لذا", "اعتدنا"),
     ("من", "العصور"),
+    ("ما", "يأتي"),
+    ("ما", "يتكون"),
 )
 
 
@@ -377,29 +384,11 @@ _SAFE_GLUED_NAME_ANCHORS: tuple[tuple[str, str], ...] = (
 )
 
 
-_GLUE_SPLIT_SAFE: tuple[str, ...] = (
-    "وكذلك",
-    "كذلك",
-    "لذلك",
-    "عندما",
-    "بينما",
-    "حيثما",
-    "بعدما",
-    "قبلما",
-    "كما",
-    "لذا",
-    "فقد",
-    "وقد",
-    "ولكن",
-    "لكن",
-    "ولو",
-)
-
-
 # Precompile the audited closed-list rules. The prior implementation ran one
 # regex pass per entry; grouping the same guarded alternatives preserves their
 # evidence constraints while avoiding repeated full-text scans.
 _ARABIC_BASE = r"\u0621-\u064A"
+_DIGIT_BASE = r"0-9\u0660-\u0669\u06F0-\u06F9"
 
 
 def _compile_guarded_pairs(pairs: tuple[tuple[str, str], ...]) -> re.Pattern[str]:
@@ -416,7 +405,21 @@ def _compile_guarded_pairs(pairs: tuple[tuple[str, str], ...]) -> re.Pattern[str
     return re.compile(rf"(?<![{_ARABIC_BASE}])({alternatives})")
 
 
-_ARTICLE_PARTICLES = ("من", "في", "عن", "على", "إلى", "الى", "مع", "بين", "عند", "بعد", "قبل")
+_ARTICLE_PARTICLES = (
+    "أو",
+    "او",
+    "من",
+    "في",
+    "عن",
+    "على",
+    "إلى",
+    "الى",
+    "مع",
+    "بين",
+    "عند",
+    "بعد",
+    "قبل",
+)
 _PARTICLE_ARTICLE_RE = re.compile(
     rf"(?<![{_ARABIC_BASE}])"
     rf"({'|'.join(re.escape(p) for p in _ARTICLE_PARTICLES)})"
@@ -429,13 +432,10 @@ _NAME_ANCHOR_RE = re.compile(
     rf"(?<![{_ARABIC_BASE}])"
     rf"({'|'.join(re.escape(p) for p in sorted(_NAME_ANCHOR_MAP, key=len, reverse=True))})"
 )
-_SAFE_PARTICLE_RE = re.compile(
-    rf"(?<![{_ARABIC_BASE}])"
-    rf"({'|'.join(re.escape(p) for p in _GLUE_SPLIT_SAFE)})"
-    rf"(?=[{_ARABIC_BASE}]{{2,}})"
-)
 _PUNCT_BEFORE_ARABIC_RE = re.compile(r"([.،؛:!?؟»])(?=[\u0621-\u064A])")
-_PUNCT_SPACE_BEFORE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}])[ ]+(?=[،؛:!?؟.,)])")
+_PUNCT_SPACE_BEFORE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}{_DIGIT_BASE})])[ ]+(?=[،؛:!?؟.,)])")
+_OPEN_PUNCT_SPACE_AFTER_RE = re.compile(rf"([(«])[ ]+(?=[{_ARABIC_BASE}{_DIGIT_BASE}])")
+_CLOSE_PUNCT_SPACE_BEFORE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}{_DIGIT_BASE}])[ ]+([)»])")
 _PUNCT_SPACE_AFTER_RE = re.compile(rf"([،؛:!?؟.,])[ ]*(?=[{_ARABIC_BASE}])")
 _ARABIC_OPEN_PUNCT_RE = re.compile(rf"(?<=[{_ARABIC_BASE}])(?=[(«])")
 _ARABIC_MULTI_SPACE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}])[^\S\n\r]{{2,}}(?=[{_ARABIC_BASE}])")
@@ -455,6 +455,7 @@ def insert_particle_spaces(text: str) -> str:
         return text
     out = _PUNCT_BEFORE_ARABIC_RE.sub(r"\1 ", text)
     out = _FUNCTION_BOUNDARY_RE.sub(r"\1 ", out)
+    out = _PARTICLE_ARTICLE_RE.sub(r"\1 ", out)
 
     # A first restored boundary exposes the next one in long name chains
     # (e.g. سليمانبنعبدالملكرضيالله). Two passes are sufficient for the
@@ -484,6 +485,8 @@ def normalize_arabic_punctuation_spacing(text: str) -> str:
     if not text:
         return text
     out = _PUNCT_SPACE_BEFORE_RE.sub("", text)
+    out = _OPEN_PUNCT_SPACE_AFTER_RE.sub(r"\1", out)
+    out = _CLOSE_PUNCT_SPACE_BEFORE_RE.sub(r"\1", out)
     out = _ARABIC_OPEN_PUNCT_RE.sub(" ", out)
     return _PUNCT_SPACE_AFTER_RE.sub(r"\1 ", out)
 

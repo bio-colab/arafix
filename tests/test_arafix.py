@@ -9,6 +9,7 @@ import pathlib
 import unicodedata
 
 import pytest
+
 from arafix import (
     Defect,
     NormalizeConfig,
@@ -986,6 +987,7 @@ class TestCMapGlyphRecovery:
         from pathlib import Path
 
         import pytest
+
         from arafix.cmap import build_glyph_map
 
         candidates = (

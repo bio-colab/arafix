@@ -85,6 +85,9 @@ _SOLID_DATE = re.compile(
 _SOLID_RANGE = re.compile(
     rf"^{_LTR_DIGIT}{{1,4}}[-–—]{_LTR_DIGIT}{{1,4}}$"
 )
+_SOLID_CHAIN_RANGE = re.compile(
+    rf"^{_LTR_DIGIT}+(?:[-–—]{_LTR_DIGIT}+){{2,}}$"
+)
 _SOLID_PHONE = re.compile(
     rf"^\+?{_LTR_DIGIT}(?:[{_LTR_DIGIT_CHARS} ()-]){{5,}}{_LTR_DIGIT}$"
 )
@@ -133,6 +136,7 @@ def _is_solid_ltr_block(run: str) -> bool:
         for pattern in (
             _SOLID_DATE,
             _SOLID_RANGE,
+            _SOLID_CHAIN_RANGE,
             _SOLID_PHONE,
             _SOLID_VERSION,
             _SOLID_EMAIL,
@@ -193,6 +197,16 @@ def _solid_ltr_quality(run: str) -> float:
             score += 8.0
         elif 1 <= left_i <= 12 < right_i <= 31:
             score -= 8.0
+    if _SOLID_CHAIN_RANGE.fullmatch(candidate):
+        try:
+            num_parts = [int(p) for p in re.split(r"[-–—]", candidate)]
+            if len(num_parts) >= 3:
+                if all(a < b for a, b in zip(num_parts, num_parts[1:])):
+                    score += 15.0
+                elif all(a > b for a, b in zip(num_parts, num_parts[1:])):
+                    score -= 15.0
+        except ValueError:
+            pass
     if (
         _SOLID_PHONE.fullmatch(candidate)
         and candidate.startswith(("+", "0"))
@@ -649,6 +663,17 @@ def reverse_visual_line(line: str, config: ReorderConfig | None = None) -> str:
         out = "".join(_mirror(c) for c in out)
         # Inverted quotation marks from visual reversal: »نص« -> «نص»
         out = re.sub(r"»([^«»\n]+)«", r"«\1»", out)
+        # Inverted Arabic item enumeration markers from visual reversal: -١ -> ١-, : ٢ -> ٢:
+        out = re.sub(
+            r"(^|[\s(«])-([٠-٩]+|[1-9])(?=[\s\u0621-\u064A])",
+            r"\g<1>\g<2>-",
+            out,
+        )
+        out = re.sub(
+            r"(^|[\s(«]):\s*([0-9\u0660-\u0669\u06F0-\u06F9]+)(?=[\s\u0621-\u064A])",
+            r"\g<1>\g<2>:",
+            out,
+        )
 
     if cfg.repair_ltr_parens:
         out = repair_inverted_ltr_parens(out)

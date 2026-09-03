@@ -72,7 +72,7 @@ jobs:
       - name: سجلّ التغييرات يجب أن يذكر هذه النسخة
         # لا نُصدر إصداراً لا يقول للناس ما تغيّر فيه.
         run: |
-          grep -q "^## ${{ steps.v.outputs.version }}" CHANGELOG.md || {
+          grep -E -q "^## \[?${{ steps.v.outputs.version }}\]?" CHANGELOG.md || {
             echo "::error::لا مدخلَ للنسخة ${{ steps.v.outputs.version }} في CHANGELOG.md"
             exit 1
           }

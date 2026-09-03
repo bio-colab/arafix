@@ -1,6 +1,6 @@
 # سجلّ التغييرات
 
-## [1.1.0] — 2026-09-03: The SOTA Multi-Column Layout & Ergonomics Release
+## 1.1.0 — 2026-09-03: The SOTA Multi-Column Layout & Ergonomics Release
 
 ### ترقية وضوح وسهولة الاستخدام (UX / Developer Experience Boost)
 1. **دوال السطر الواحد المباشرة (One-Liner API):**

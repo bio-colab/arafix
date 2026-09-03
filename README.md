@@ -281,10 +281,10 @@ PyMuPDF already exposes optional glyph ID, font, size, sequence, and bounding-bo
 | `()مقدمة` | Engine bidi vs neutrals | geometric extract |
 | Misplaced harakat / `َحرب` | Mn glued to wrong base | extract + clusters |
 | `ی`/`ھ` vs `ي`/`ه` | PDF ToUnicode lookalikes | `fold_pdf_homoglyphs` |
-| Two columns mixed | Line-joined gutters | layout (0.8+) |
+| Two columns mixed | Line-joined gutters | layout (auto) |
 | Empty / PUA soup | Broken ToUnicode / scan | 3 / 4 (OCR not shipped) |
 
-### Configuration highlights (1.0)
+### Configuration highlights
 
 ```python
 from arafix import PipelineConfig, NormalizeConfig, ReorderConfig, repair_text

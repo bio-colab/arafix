@@ -28,7 +28,9 @@ MIT license. Primary long-form docs are in Arabic (README).
 
 from __future__ import annotations
 
-__version__ = "1.0.1"
+from pathlib import Path
+
+__version__ = "1.1.0"
 __license__ = "MIT"
 
 from .adapters import (
@@ -172,9 +174,38 @@ from .unicode_tables import (
     unicode_version,
 )
 
+
+def fix(text: str, config: PipelineConfig | None = None) -> str:
+    """
+    إصلاح النص العربي المعطوب بسطر واحد وإرجاع نصٍّ سليم مباشرةً.
+
+    Quick one-liner:
+        >>> import arafix
+        >>> arafix.fix("\ufee3\ufeae\ufea3\ufe92\ufe8e")
+        'مرحبا'
+    """
+    return repair_text(text, config=config).text
+
+
+def read(
+    path: str | Path,
+    config: PipelineConfig | None = None,
+) -> str:
+    """
+    قراءة واسترجاع نص ملف PDF العربي كاملاً كسلسلة نصية مباشرة.
+
+    Quick one-liner:
+        >>> import arafix
+        >>> text = arafix.read("document.pdf")  # doctest: +SKIP
+    """
+    return extract_pdf(str(path), config=config).text
+
+
 __all__ = [
     "__version__",
-    # الأنبوب
+    # الأنبوب ومداخل السطر الواحد
+    "fix",
+    "read",
     "repair_text",
     "repair_blocks",
     # التدقيق والرقع القابلة للعكس

@@ -333,9 +333,73 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _normalize_argv(argv: list[str]) -> list[str]:
+    """
+    تيسير سطر الأوامر (Smart CLI Routing):
+    إذا مرّر المستخدم ملف PDF أو نصاً دون تحديد أمر فرعي صريح
+    (مثل `arafix file.pdf` أو `arafix 'مرحبا'`)، نوجهه تلقائياً
+    للأمر المناسب بدل رمي خطأ syntax غامض.
+    """
+    if not argv:
+        return argv
+
+    known_cmds = {
+        "diagnose",
+        "extract",
+        "text",
+        "blocks",
+        "eval",
+        "fonts",
+        "-h",
+        "--help",
+        "-v",
+        "--version",
+    }
+
+    first_non_opt_idx = -1
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg in ("-e", "--extractor"):
+            i += 2
+            continue
+        if arg.startswith("-"):
+            i += 1
+            continue
+        first_non_opt_idx = i
+        break
+
+    if first_non_opt_idx == -1:
+        return argv
+
+    first_arg = argv[first_non_opt_idx]
+    if first_arg in known_cmds:
+        return argv
+
+    # لم يحدد أمراً فرعياً: خمن بذكاء
+    if first_arg.lower().endswith(".pdf") or Path(first_arg).suffix.lower() == ".pdf":
+        return argv[:first_non_opt_idx] + ["extract"] + argv[first_non_opt_idx:]
+
+    return argv[:first_non_opt_idx] + ["text"] + argv[first_non_opt_idx:]
+
+
 def main(argv: list[str] | None = None) -> int:
     _ensure_utf8_stdio()
-    args = build_parser().parse_args(argv)
+    if argv is None:
+        raw_argv = sys.argv[1:]
+        # إذا كان الدخل من الطرفية واستُدعي بلا معاملات، تحقق إن كان أنبوباً
+        is_tty = getattr(sys.stdin, "isatty", lambda: True)()
+        if not raw_argv and not is_tty:
+            raw_argv = ["text"]
+    else:
+        raw_argv = list(argv)
+
+    if not raw_argv:
+        build_parser().print_help()
+        return 0
+
+    norm_argv = _normalize_argv(raw_argv)
+    args = build_parser().parse_args(norm_argv)
     try:
         return args.func(args)
     except (RuntimeError, KeyError, FileNotFoundError) as exc:

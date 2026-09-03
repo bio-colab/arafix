@@ -17,14 +17,14 @@
 |---|---|
 | **Core** | Zero dependencies (stdlib only) for text stages 0–2 |
 | **PDF** | `pip install "arafix[pdf]"` — geometric extract + Arabic repair |
-| **Layout** | Multi-column RTL, headers/footers, simple tables (`layout=auto`) |
-| **1.0.1** | Glyph word-spacing + closed PDF confusions from **published Arabic books** (not AI fixtures) |
+| **Layout** | Multi-column RTL, spanning banners/footnotes, simple tables (`layout=auto`) |
+| **1.1.0** | SOTA Multi-Column Layout, Precision Spacing Recovery, One-liner API (`arafix.fix`/`read`), Smart CLI |
 | **1.0** | Core lexicon, smart BiDi/LTR, hybrid mojibake, stress-gated (FPR=0, RAR=100%) |
 | **Quality** | Cluster-aware diacritics, PDF homoglyph fold, scientific metrics (MCS/DBR/BFE/SHDR) — [metrics reference](docs/metrics.md) |
 | **Hardening** | Conservative embedded-font CMap fallback, geometric-noise filtering, and solid-block Latin/Bidi protection |
 | **Spacing** | Explicit PDF-space preservation and context-aware Arabic punctuation spacing |
 | **Eval** | Independent Safahat book samples + manual gold, plus a 1,000-case adversarial Bidi corpus (`benchmarks/`) |
-| **Status** | **Stable 1.0.1** — production-ready for native Arabic PDF recovery |
+| **Status** | **Stable 1.1.0** — production-ready for native Arabic PDF recovery |
 
 ### Install
 
@@ -38,25 +38,47 @@ pip install "arafix[all]"       # + fonttools (advanced CMap recovery)
 
 ### 30-second start
 
+#### ⚡ Fast One-Liners (حل سريع بسطر واحد)
+
 ```python
-from arafix import repair_text, extract_pdf, PipelineConfig
+import arafix
 
-# Presentation-form garbage → readable Arabic
-print(repair_text("\ufee3\ufeae\ufea3\ufe92\ufe8e").text)  # مرحبا
+# Fix broken Arabic string directly
+clean = arafix.fix("\ufee3\ufeae\ufea3\ufe92\ufe8e")  # 'مرحبا'
 
-# Ambiguous lam-alef via embedded core lexicon
-print(repair_text("صدرت المجالت العلمية").text)  # صدرت المجلات العلمية
+# Extract & fix full Arabic PDF directly to string
+text = arafix.read("thesis.pdf")
+```
 
-# Hybrid mojibake (windowed) — Latin/code left intact
-print(repair_text("Ø§Ù„Ù…ÙCustomer Report (Status: 200 OK)").text)
-# → المCustomer Report (Status: 200 OK)
+#### 💻 Direct CLI (من الطرفية مباشرة)
 
-# Native (not scanned) Arabic PDF
+```bash
+# Fix a string directly
+python -m arafix "ﺎﺒﺣﺮﻣ"             # → مرحبا
+
+# Extract & repair a PDF directly
+python -m arafix thesis.pdf          # or: arafix thesis.pdf -o out.txt
+
+# Or pipe from another tool
+cat thesis_raw.txt | python -m arafix
+```
+
+#### 🔬 Detailed Graded API (تحكم كامل وتشخيص مدقق)
+
+```python
+from arafix import repair_text, extract_pdf
+
+# Detailed repair with diagnosis and confidence
+res = repair_text("صدرت المجالت العلمية")
+print(res.text)             # 'صدرت المجلات العلمية'
+print(res.confidence)       # 0.95
+print(res.stages_applied)   # [<Stage.DIAGNOSE>, <Stage.REPAIR_LAM_ALEF>]
+
+# Native Arabic PDF with multi-column layout detection
 doc = extract_pdf("thesis.pdf")
 print(doc.text)
 print(doc.confidence, doc.pages[0].n_columns)
 print(doc.metadata.get("producer"), doc.metadata.get("creator"))
-
 ```
 
 ```python

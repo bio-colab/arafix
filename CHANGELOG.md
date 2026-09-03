@@ -1,8 +1,22 @@
 # سجلّ التغييرات
 
-## Unreleased
+## [1.1.0] — 2026-09-03: The SOTA Multi-Column Layout & Ergonomics Release
 
-### كشف التخطيط المعقد متعدد الأعمدة وعزل العناوين والحواشي الممتدة (P1 Multi-Column Layout SOTA) — 2026-09-03
+### ترقية وضوح وسهولة الاستخدام (UX / Developer Experience Boost)
+1. **دوال السطر الواحد المباشرة (One-Liner API):**
+   - إضافة دالة `arafix.fix(text) -> str` لإصلاح السلسلة المعطوبة وإرجاع نص نقي مباشرة دون الحاجة لفك كائنات النتائج.
+   - إضافة دالة `arafix.read(pdf_path) -> str` لاستخراج كامل نص ملف الـ PDF كـ `str` فوري بخطوة واحدة.
+2. **سلاسة طباعة النتائج (`__str__` Integration):**
+   - تزويد كافة فئات النتائج (`RepairResult`, `DocumentResult`, `PageResult`, `BlockResult`, `BlocksResult`) بـ `__str__` تعيد النص المعالج مباشرة، مما يجعل `print(repair_text(...))` أو `f"{doc}"` تعرض النص النقي بدلاً من تمثيل البيانات الخام.
+3. **تحديث واجهة الطرفية والتوجيه الذكي (Smart CLI & `python -m arafix`):**
+   - إضافة ملف `src/arafix/__main__.py` لتمكين تشغيل الحزمة عبر `python -m arafix` على كافة المنصات وبيئات بايثون.
+   - التوجيه الذكي للمدخلات دون إجبار المستخدم على الأوامر الفرعية:
+     - `arafix file.pdf` يوجه تلقائياً إلى الاستخراج `extract`.
+     - `arafix "ﺎﺒﺣﺮﻣ"` يوجه تلقائياً إلى معالجة النص `text`.
+     - دعم التمرير عبر الأنابيب (Piped Stdin) تلقائياً: `cat text.txt | python -m arafix`.
+     - عند تشغيل `arafix` دون معاملات يُعرض دليل المساعدة المنسق بسلاسة.
+
+### كشف التخطيط المعقد متعدد الأعمدة وعزل العناوين والحواشي الممتدة (P1 Multi-Column Layout SOTA)
 
 تنفيذاً للمرحلة P1 من خارطة الطريق نحو SOTA:
 1. **تحليل المقاطع الإسقاطية للكثافة (Occupancy Profile Projection):**

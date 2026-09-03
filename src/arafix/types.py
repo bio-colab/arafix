@@ -145,6 +145,9 @@ class RepairResult:
         """Return the hash-guarded patch when full auditing was requested."""
         return self.audit.patch if self.audit is not None else None
 
+    def __str__(self) -> str:
+        return self.text
+
 
 @dataclass
 class PageResult:
@@ -167,6 +170,9 @@ class PageResult:
     @property
     def text(self) -> str:
         return self.repair.text
+
+    def __str__(self) -> str:
+        return self.text
 
 
 @dataclass
@@ -218,6 +224,9 @@ class DocumentResult:
         }
         return json.dumps(payload, ensure_ascii=False, indent=indent)
 
+    def __str__(self) -> str:
+        return self.text
+
     @property
     def all_tables(self) -> list[list[list[str]]]:
         """كل جداول المستند بالترتيب."""
@@ -229,13 +238,7 @@ class DocumentResult:
 
 @dataclass
 class TextBlock:
-    """
-    وحدة نصّية تُعالَج **مستقلة** — خلية جدول، سطر، تسمية، حاشية.
-
-    ``id`` و``meta`` و``bbox`` للمُضيف (مستخرج جداول، خطوط أنابيب…):
-    نُرجعها كما وصلت؛ لا نفسّرها. الاستقلال مقصود: خليةٌ معكوسة لا
-    يجوز أن تُفسِد جارةً سليمة بتشخيصٍ جَمعيّ.
-    """
+    """كتلة نصية ذات موقع وهوية — خلية جدول، سطر، ترويسة."""
 
     text: str
     id: str | None = None
@@ -259,6 +262,9 @@ class BlockResult:
     def id(self) -> str | None:
         return self.block.id
 
+    def __str__(self) -> str:
+        return self.text
+
 
 @dataclass
 class BlocksResult:
@@ -279,3 +285,6 @@ class BlocksResult:
 
     def join(self, sep: str = "\n") -> str:
         return sep.join(b.text for b in self.blocks)
+
+    def __str__(self) -> str:
+        return self.join()

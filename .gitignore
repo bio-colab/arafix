@@ -6,7 +6,9 @@ dist/
 build/
 *.egg-info/
 .eggs/
-wheels/
+/wheels/
+!docs/wheels/
+!docs/wheels/**
 pip-wheel-metadata/
 
 # --- Test / type / lint caches ---

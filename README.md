@@ -6,12 +6,15 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/arafix.svg)](https://pypi.org/project/arafix/)
 [![PyPI pyversions](https://img.shields.io/pypi/pyversions/arafix.svg)](https://pypi.org/project/arafix/)
+[![Live Web Demo](https://img.shields.io/badge/Playground-Live%20WASM%20Demo-10b981?style=flat&logo=webassembly&logoColor=white)](https://bio-colab.github.io/arafix/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen)
 ![Typing](https://img.shields.io/badge/typing-py.typed-blue)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21733978.svg)](https://doi.org/10.5281/zenodo.21733978)
 
 **Recover broken Arabic text from PDFs** — diagnose first, then apply a graded repair ladder. Not a single hammer, and not “just run OCR.”
+
+> 🚀 **Try it live in your browser (100% Client-Side WebAssembly — Zero Server):** [**arafix Web Playground**](https://bio-colab.github.io/arafix/)
 
 | | |
 |---|---|

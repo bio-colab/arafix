@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>arafix Playground — تجربة تفاعلية حية عبر WebAssembly</title>
+  <meta name="description" content="إصلاح وتشخيص النصوص العربية المعكوسة والمشوهة في متصفحك محلياً 100% عبر تقنية WebAssembly و Pyodide">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- Pyodide CDN -->
+  <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+
+  <style>
+    :root {
+      --bg-primary: #0b0f17;
+      --bg-card: rgba(18, 24, 38, 0.75);
+      --bg-card-border: rgba(255, 255, 255, 0.08);
+      --accent: #10b981;
+      --accent-hover: #059669;
+      --accent-glow: rgba(16, 185, 129, 0.25);
+      --accent-blue: #3b82f6;
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #6b7280;
+      --defect-bg: rgba(239, 68, 68, 0.15);
+      --defect-border: rgba(239, 68, 68, 0.3);
+      --defect-text: #f87171;
+      --stage-bg: rgba(59, 130, 246, 0.15);
+      --stage-border: rgba(59, 130, 246, 0.3);
+      --stage-text: #60a5fa;
+      --font-arabic: 'Cairo', system-ui, -apple-system, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-arabic);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background-image: 
+        radial-gradient(circle at 15% 20%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 75%, rgba(59, 130, 246, 0.08) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+
+    header {
+      border-bottom: 1px solid var(--bg-card-border);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(11, 15, 23, 0.85);
+    }
+
+    .nav-container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 0.85rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .brand-logo {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-blue));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.2rem;
+      color: #fff;
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+
+    .brand-title {
+      font-size: 1.35rem;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      background: linear-gradient(to left, #fff, #9ca3af);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .brand-badge {
+      font-size: 0.7rem;
+      font-family: var(--font-mono);
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--accent);
+      padding: 0.15rem 0.5rem;
+      border-radius: 999px;
+      margin-right: 0.25rem;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+
+    .nav-link {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: color 0.2s;
+    }
+
+    .nav-link:hover {
+      color: var(--text-main);
+    }
+
+    .main-content {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      flex: 1;
+      width: 100%;
+    }
+
+    .hero-banner {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+
+    .hero-title {
+      font-size: 2.2rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      line-height: 1.3;
+    }
+
+    .hero-title span {
+      background: linear-gradient(135deg, var(--accent), #34d399);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-desc {
+      color: var(--text-muted);
+      font-size: 1.05rem;
+      max-width: 700px;
+      margin: 0 auto 1rem;
+    }
+
+    .privacy-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-size: 0.82rem;
+      padding: 0.35rem 0.9rem;
+      border-radius: 999px;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #34d399;
+    }
+
+    /* Engine Status Card */
+    .engine-status {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 12px;
+      padding: 0.85rem 1.25rem;
+      margin-bottom: 1.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      backdrop-filter: blur(8px);
+    }
+
+    .status-left {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      font-size: 0.9rem;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(16, 185, 129, 0.2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .progress-bar {
+      flex: 1;
+      max-width: 200px;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 999px;
+      overflow: hidden;
+      margin: 0 1rem;
+      display: none;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-blue));
+      transition: width 0.3s ease;
+    }
+
+    /* Playground Studio */
+    .studio-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+
+    @media (max-width: 900px) {
+      .studio-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .pane {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      backdrop-filter: blur(12px);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+    }
+
+    .pane-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .pane-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .presets-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .preset-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-family: var(--font-arabic);
+      font-weight: 600;
+      padding: 0.35rem 0.75rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .preset-btn:hover {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: rgba(16, 185, 129, 0.3);
+      color: #fff;
+    }
+
+    .text-area-wrapper {
+      position: relative;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    textarea {
+      width: 100%;
+      height: 220px;
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 10px;
+      padding: 1rem;
+      color: #fff;
+      font-family: var(--font-arabic);
+      font-size: 1rem;
+      line-height: 1.7;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+
+    textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 10px var(--accent-glow);
+    }
+
+    .pane-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+
+    .controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .mode-select {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid var(--bg-card-border);
+      color: var(--text-main);
+      font-family: var(--font-arabic);
+      font-size: 0.85rem;
+      padding: 0.4rem 0.8rem;
+      border-radius: 8px;
+      outline: none;
+      cursor: pointer;
+    }
+
+    .action-btn {
+      background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+      color: #fff;
+      border: none;
+      font-family: var(--font-arabic);
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding: 0.55rem 1.4rem;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s;
+      box-shadow: 0 4px 15px var(--accent-glow);
+    }
+
+    .action-btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 20px var(--accent-glow);
+    }
+
+    .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .copy-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--bg-card-border);
+      color: var(--text-muted);
+      font-family: var(--font-arabic);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 0.35rem 0.8rem;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+
+    /* Diagnostics Section */
+    .diag-box {
+      border-top: 1px solid var(--bg-card-border);
+      padding-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .diag-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.85rem;
+    }
+
+    .chip-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+    }
+
+    .chip {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.15rem 0.55rem;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+
+    .chip-defect {
+      background: var(--defect-bg);
+      border: 1px solid var(--defect-border);
+      color: var(--defect-text);
+    }
+
+    .chip-stage {
+      background: var(--stage-bg);
+      border: 1px solid var(--stage-border);
+      color: var(--stage-text);
+    }
+
+    .stat-badge {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Developer Integration Snippets */
+    .dev-section {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 16px;
+      padding: 1.75rem;
+      margin-bottom: 2rem;
+      backdrop-filter: blur(12px);
+    }
+
+    .dev-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 0.5rem;
+      border-bottom: 1px solid var(--bg-card-border);
+      margin-bottom: 1rem;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      border-bottom: 2px solid transparent;
+      color: var(--text-muted);
+      font-family: var(--font-arabic);
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 0.5rem 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+    }
+
+    .tab-pane {
+      display: none;
+    }
+
+    .tab-pane.active {
+      display: block;
+    }
+
+    pre {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      color: #34d399;
+      overflow-x: auto;
+      direction: ltr;
+      text-align: left;
+    }
+
+    footer {
+      border-top: 1px solid var(--bg-card-border);
+      padding: 1.5rem;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-dim);
+      background: rgba(11, 15, 23, 0.9);
+    }
+
+    footer a {
+      color: var(--text-muted);
+      text-decoration: none;
+    }
+
+    footer a:hover {
+      color: var(--accent);
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: rgba(16, 185, 129, 0.95);
+      color: #fff;
+      padding: 0.6rem 1.4rem;
+      border-radius: 999px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
+      transition: transform 0.3s ease;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="nav-container">
+      <a href="#" class="brand">
+        <div class="brand-logo">ع</div>
+        <div>
+          <span class="brand-title">arafix</span>
+          <span class="brand-badge">WASM Playground</span>
+        </div>
+      </a>
+      <div class="nav-links">
+        <a href="https://github.com/bio-colab/arafix" target="_blank" class="nav-link">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+          GitHub
+        </a>
+        <a href="https://pypi.org/project/arafix/" target="_blank" class="nav-link">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0L1.5 6v12L12 24l10.5-6V6L12 0zm-1.5 3.35v3.1L6 8.9V5.8l4.5-2.45zm3 0l4.5 2.45v3.1l-4.5-2.45V3.35zm-6 4.9l4.5 2.45-4.5 2.45-4.5-2.45 4.5-2.45zm9 0l4.5 2.45-4.5 2.45-4.5-2.45 4.5-2.45zM3 9.4l4.5 2.45v5.15L3 14.55V9.4zm18 0v5.15l-4.5 2.45V11.85l4.5-2.45zM12 14.3l4.5-2.45v5.15l-4.5 2.45v-5.15zm-1.5 0v5.15L6 17V11.85l4.5 2.45z"/></svg>
+          PyPI
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content">
+    
+    <div class="hero-banner">
+      <h1 class="hero-title">إصلاح النصوص العربية المعكوسة <span>في المتصفح فوراً</span></h1>
+      <p class="hero-desc">
+        تجربة تفاعلية حية لمكتبة <strong>arafix</strong> عبر WebAssembly. ألصق النص المعطوب المستخرج من PDF أو OCR وشاهده يُصحح فورياً مع كشف العيوب الجنائية ومسار المعالجة.
+      </p>
+      <div class="privacy-tag">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+        خصوصية مطلقة: يعمل محلياً 100% في جهازك عبر WebAssembly (لا يتم إرسال أي نص لخوادم خارجية)
+      </div>
+    </div>
+
+    <!-- Status -->
+    <div class="engine-status" id="engineStatus">
+      <div class="status-left">
+        <div class="spinner" id="statusSpinner"></div>
+        <span id="statusText">جاري تحميل بيئة WebAssembly (Pyodide)...</span>
+      </div>
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-fill" id="progressFill"></div>
+      </div>
+      <div class="stat-badge" id="statusBadge">Python 3.12 WASM</div>
+    </div>
+
+    <!-- Studio -->
+    <div class="studio-grid">
+      <!-- Input Pane -->
+      <div class="pane">
+        <div class="pane-header">
+          <div class="pane-title">
+            <span>📥 النص المدخل (المعوّج / المستخرج)</span>
+          </div>
+        </div>
+
+        <div class="presets-row">
+          <button class="preset-btn" onclick="loadPreset(0)">🔄 نص معكوس + أرقام</button>
+          <button class="preset-btn" onclick="loadPreset(1)">🔤 أشكال عرض (Presentation Forms)</button>
+          <button class="preset-btn" onclick="loadPreset(2)">🌐 روابط وعملات سالبة</button>
+          <button class="preset-btn" onclick="loadPreset(3)">📜 نص دستوري مشكول</button>
+        </div>
+
+        <div class="text-area-wrapper">
+          <textarea id="inputText" placeholder="ألصق النص العربي المقلوب أو المعطوب هنا..."></textarea>
+        </div>
+
+        <div class="pane-footer">
+          <span id="inputStats">0 محرف • 0 كلمة</span>
+          <button class="preset-btn" onclick="clearInput()">مسح ✕</button>
+        </div>
+
+        <div class="controls-row">
+          <select class="mode-select" id="repairMode">
+            <option value="fix">arafix.fix() — الإصلاح الشامل التلقائي (موصى به)</option>
+            <option value="reverse_line">reverse_visual_line() — عكس السطور البصرية</option>
+            <option value="diagnose">diagnose() — تشخيص العيوب فقط بدون تعديل</option>
+          </select>
+          <button class="action-btn" id="repairBtn" onclick="executeRepair()" disabled>
+            <span>إصلاح النص الآن</span>
+            <span id="btnIcon">⚡</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Output Pane -->
+      <div class="pane">
+        <div class="pane-header">
+          <div class="pane-title">
+            <span>✨ النتيجة السليمة (Logical Arabic)</span>
+          </div>
+          <button class="copy-btn" onclick="copyOutput()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            نسخ النص
+          </button>
+        </div>
+
+        <div class="text-area-wrapper">
+          <textarea id="outputText" readonly placeholder="ستظهر النتيجة السليمة هنا بعد المعالجة..."></textarea>
+        </div>
+
+        <div class="pane-footer">
+          <span id="outputStats">0 محرف • 0 كلمة</span>
+          <span class="stat-badge" id="latencyBadge">⏱️ في انتظار الأمر</span>
+        </div>
+
+        <!-- Diagnostics -->
+        <div class="diag-box">
+          <div class="diag-row">
+            <span style="color: var(--text-muted); font-size: 0.8rem;">العيوب المكتشفة (Defects):</span>
+            <div class="chip-container" id="defectsList">
+              <span style="color: var(--text-dim); font-size: 0.8rem;">—</span>
+            </div>
+          </div>
+          <div class="diag-row">
+            <span style="color: var(--text-muted); font-size: 0.8rem;">مراحل الإصلاح (Stages):</span>
+            <div class="chip-container" id="stagesList">
+              <span style="color: var(--text-dim); font-size: 0.8rem;">—</span>
+            </div>
+          </div>
+          <div class="diag-row">
+            <span style="color: var(--text-muted); font-size: 0.8rem;">قوة دليل التشخيص (Confidence):</span>
+            <span class="stat-badge" id="confidenceBadge">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Developer Snippets -->
+    <div class="dev-section">
+      <div class="dev-title">
+        <span>💻 التكامل البرمجي في مشاريعك</span>
+      </div>
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab(0)">بايثون بسطر واحد</button>
+        <button class="tab-btn" onclick="switchTab(1)">استخراج PDF & RAG</button>
+        <button class="tab-btn" onclick="switchTab(2)">أداة سطر الأوامر (CLI)</button>
+      </div>
+
+      <div class="tab-pane active" id="tab0">
+        <pre><code># تثبيت النواة النقية (0 dependencies):
+pip install arafix
+
+# الاستخدام بسطر واحد:
+import arafix
+
+broken = "ةيبرعلا ةغللا 123"
+clean = arafix.fix(broken)
+print(clean)
+# → 123 اللغة العربية</code></pre>
+      </div>
+
+      <div class="tab-pane" id="tab1">
+        <pre><code># تثبيت مع دعم PDF:
+pip install "arafix[pdf]"
+
+import arafix
+
+# 1. استخراج فوري نقي
+text = arafix.read("document.pdf")
+
+# 2. استخراج Markdown مهيكل للذكاء الاصطناعي مع الجداول
+md = arafix.read_markdown("document.pdf")
+
+# 3. استخراج RAG مكاني جاهز للربط مع LangChain / LlamaIndex
+chunks = arafix.extract_pdf_rag("document.pdf")
+for chunk in chunks["chunks"]:
+    print(chunk["text"], chunk["spatial"]["page"])</code></pre>
+      </div>
+
+      <div class="tab-pane" id="tab2">
+        <pre><code># استخراج ملف PDF مباشرة من الطرفية:
+arafix document.pdf -o out.txt
+
+# استخراج مع تصدير Markdown والجداول:
+arafix extract report.pdf --format markdown --tables
+
+# تشخيص العيوب الجنائية لملف PDF:
+arafix diagnose thesis.pdf -v</code></pre>
+      </div>
+    </div>
+
+  </main>
+
+  <footer>
+    <p>
+      مكتبة <strong>arafix</strong> — مرخصة تحت رخصة MIT. برمجة وتطوير Elias Sharar & bio-colab.
+      <br>
+      <a href="https://github.com/bio-colab/arafix">المستودع على GitHub</a> • 
+      <a href="https://pypi.org/project/arafix/">حزمة PyPI</a> • 
+      <a href="https://github.com/bio-colab/arafix/blob/main/docs/metrics.md">المعايير والتقييم العلمي SOTA</a>
+    </p>
+  </footer>
+
+  <div id="toast">تم النسخ إلى الحافظة بنجاح!</div>
+
+  <script>
+    const PRESETS = [
+      "ةيبرعلا ةغللا نم ةخسن 2026",
+      "ﺣﻘوق اﻹﻧﺳﺎن ﻓﻲ اﻟدﺳﺗور اﻟﻌراﻗﻲ اﻟﻧﺎﻓذ ﻟﻌﺎم)٥٠٠٢(\nﺟﺎء اﻟدﺳﺗور اﻟﻌراﻗﻲ اﻟﺻﺎدر ﺳﻧﺔ\n٥٠٠٢ ﻟﯾﻛون ﺑﻣﺛﺎﺑﺔ ﻋﻘد اﺟﺗﻣﺎﻋﻲ-",
+      "يفاصلا )00.052,1 DSU-( ةيبسنلا (1=b?a/moc.elpmaxe//:sptth) يف خيرات 2026-09-04",
+      "«الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ»\nالْحُرِّيَاتُ الْعَامَّةُ وَقَوَاعِدُ الْعَدَالَةِ الِاجْتِمَاعِيَّةِ"
+    ];
+
+    let pyodide = null;
+    let arafixReady = false;
+
+    function updateStatus(text, progress, isDone = false) {
+      document.getElementById('statusText').innerText = text;
+      const pBar = document.getElementById('progressBar');
+      const pFill = document.getElementById('progressFill');
+      if (progress > 0 && progress < 100) {
+        pBar.style.display = 'block';
+        pFill.style.width = progress + '%';
+      } else {
+        pBar.style.display = 'none';
+      }
+      if (isDone) {
+        document.getElementById('statusSpinner').style.display = 'none';
+        document.getElementById('statusBadge').innerText = '✅ arafix جاهز محلياً';
+        document.getElementById('repairBtn').disabled = false;
+      }
+    }
+
+    async function initPlayground() {
+      try {
+        updateStatus("جاري تهيئة بيئة WebAssembly...", 25);
+        pyodide = await loadPyodide({
+          indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/"
+        });
+
+        updateStatus("جاري تهيئة مدير الحزم micropip...", 60);
+        await pyodide.loadPackage("micropip");
+        const micropip = pyodide.pyimport("micropip");
+
+        updateStatus("جاري تثبيت arafix في المتصفح...", 85);
+        let installed = false;
+        try {
+          // جلب العجلة من نفس النطاق أولاً (سرعة فائقة و0ms CORS)
+          await micropip.install("./wheels/arafix-1.2.0-py3-none-any.whl");
+          installed = true;
+        } catch (e1) {
+          console.warn("Local wheel install failed, trying PyPI fallback...", e1);
+          try {
+            await micropip.install("arafix");
+            installed = true;
+          } catch (e2) {
+            console.error("PyPI fallback failed:", e2);
+            throw new Error("تعذر تثبيت arafix: " + e2.message);
+          }
+        }
+
+        // تهيئة دالة بايثون السريعة
+        pyodide.runPython(`
+import json
+import time
+import arafix
+
+def py_repair(text, mode="fix"):
+    t0 = time.perf_counter()
+    if mode == "reverse_line":
+        lines = [arafix.reverse_visual_line(l) for l in text.splitlines()]
+        repaired = "\n".join(lines)
+        diag = arafix.diagnose(text)
+        stages = ["REVERSE_VISUAL_LINE"]
+        confidence = 1.0
+        defects = [d.name for d in diag.defects]
+    elif mode == "diagnose":
+        diag = arafix.diagnose(text)
+        repaired = text
+        stages = ["DIAGNOSE_ONLY"]
+        confidence = diag.confidence
+        defects = [d.name for d in diag.defects]
+    else:
+        rep = arafix.repair_text(text)
+        repaired = rep.text
+        stages = [s.name for s in rep.stages_applied]
+        confidence = rep.confidence
+        defects = [d.name for d in rep.diagnosis.defects]
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+    return json.dumps({
+        "repaired": repaired,
+        "defects": defects,
+        "stages": stages,
+        "confidence": confidence,
+        "elapsed_ms": elapsed_ms,
+    }, ensure_ascii=False)
+`);
+
+        arafixReady = true;
+        updateStatus("المحرك جاهز بنسبة 100% — تم تفعيل arafix في المتصفح ⚡", 100, true);
+
+        // تحميل المثال الأول تلقائياً
+        loadPreset(0);
+        executeRepair();
+      } catch (err) {
+        console.error(err);
+        updateStatus("حدث خطأ في تحميل المحرك: " + err.message, 0);
+        document.getElementById('statusSpinner').style.background = '#ef4444';
+      }
+    }
+
+    function updateStats(id, text) {
+      const chars = text.length;
+      const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+      document.getElementById(id).innerText = `${chars} محرف • ${words} كلمة`;
+    }
+
+    document.getElementById('inputText').addEventListener('input', (e) => {
+      updateStats('inputStats', e.target.value);
+    });
+
+    function loadPreset(idx) {
+      const raw = PRESETS[idx];
+      document.getElementById('inputText').value = raw.replace(/\\n/g, '\n');
+      updateStats('inputStats', document.getElementById('inputText').value);
+      if (arafixReady) {
+        executeRepair();
+      }
+    }
+
+    function clearInput() {
+      document.getElementById('inputText').value = '';
+      document.getElementById('outputText').value = '';
+      updateStats('inputStats', '');
+      updateStats('outputStats', '');
+      document.getElementById('defectsList').innerHTML = '<span style="color: var(--text-dim);">—</span>';
+      document.getElementById('stagesList').innerHTML = '<span style="color: var(--text-dim);">—</span>';
+      document.getElementById('confidenceBadge').innerText = '—';
+      document.getElementById('latencyBadge').innerText = '⏱️ في انتظار الأمر';
+    }
+
+    function executeRepair() {
+      if (!arafixReady || !pyodide) return;
+      const text = document.getElementById('inputText').value;
+      if (!text.trim()) {
+        clearInput();
+        return;
+      }
+
+      const mode = document.getElementById('repairMode').value;
+      document.getElementById('btnIcon').innerText = '⏳';
+
+      try {
+        // نمرر النص والنمط كـ globals لتفادي أي مشاكل هروب نصوص
+        pyodide.globals.set("current_input_text", text);
+        pyodide.globals.set("current_mode", mode);
+        const resultJsonStr = pyodide.runPython('py_repair(current_input_text, current_mode)');
+        const data = JSON.parse(resultJsonStr);
+
+        document.getElementById('outputText').value = data.repaired;
+        updateStats('outputStats', data.repaired);
+
+        // Latency
+        document.getElementById('latencyBadge').innerText = `⚡ تم في ${data.elapsed_ms.toFixed(1)} ms`;
+
+        // Confidence
+        document.getElementById('confidenceBadge').innerText = `${(data.confidence * 100).toFixed(0)}%`;
+
+        // Defects Chips
+        const dContainer = document.getElementById('defectsList');
+        if (data.defects && data.defects.length > 0) {
+          dContainer.innerHTML = data.defects.map(d => `<span class="chip chip-defect">${d}</span>`).join('');
+        } else {
+          dContainer.innerHTML = '<span class="chip" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">نظيف (سليم)</span>';
+        }
+
+        // Stages Chips
+        const sContainer = document.getElementById('stagesList');
+        if (data.stages && data.stages.length > 0) {
+          sContainer.innerHTML = data.stages.map(s => `<span class="chip chip-stage">${s}</span>`).join('');
+        } else {
+          sContainer.innerHTML = '<span style="color: var(--text-dim);">—</span>';
+        }
+
+      } catch (err) {
+        console.error(err);
+        document.getElementById('outputText').value = "خطأ في المعالجة: " + err.message;
+      } finally {
+        document.getElementById('btnIcon').innerText = '⚡';
+      }
+    }
+
+    function copyOutput() {
+      const out = document.getElementById('outputText');
+      if (!out.value) return;
+      navigator.clipboard.writeText(out.value).then(() => {
+        showToast("تم نسخ النص السليم إلى الحافظة!");
+      }).catch(() => {
+        out.select();
+        document.execCommand('copy');
+        showToast("تم نسخ النص!");
+      });
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2200);
+    }
+
+    function switchTab(idx) {
+      document.querySelectorAll('.tab-btn').forEach((b, i) => {
+        b.classList.toggle('active', i === idx);
+      });
+      document.querySelectorAll('.tab-pane').forEach((p, i) => {
+        p.classList.toggle('active', i === idx);
+      });
+    }
+
+    window.addEventListener('DOMContentLoaded', initPlayground);
+  </script>
+</body>
+</html>

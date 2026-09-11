@@ -823,7 +823,7 @@ def py_repair(text, mode="fix"):
     t0 = time.perf_counter()
     if mode == "reverse_line":
         lines = [arafix.reverse_visual_line(l) for l in text.splitlines()]
-        repaired = "\n".join(lines)
+        repaired = chr(10).join(lines)
         diag = arafix.diagnose(text)
         stages = ["REVERSE_VISUAL_LINE"]
         confidence = 1.0
@@ -875,7 +875,7 @@ def py_repair(text, mode="fix"):
 
     function loadPreset(idx) {
       const raw = PRESETS[idx];
-      document.getElementById('inputText').value = raw.replace(/\\n/g, '\n');
+      document.getElementById('inputText').value = raw;
       updateStats('inputStats', document.getElementById('inputText').value);
       if (arafixReady) {
         executeRepair();

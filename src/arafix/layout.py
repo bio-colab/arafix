@@ -203,8 +203,21 @@ def join_glyphs_preserving_ltr(
     # shaped Arabic fonts the origin-to-origin advance varies substantially
     # by glyph, so inferring *additional* spaces on a line that already
     # carries explicit PDF spaces fragments valid words (دراسة → درا سة).
-    # Keep geometry inference for the genuinely space-less extraction case.
-    has_explicit_space = any(_glyph_is_ltr_space(g.text) for g in ordered)
+    #
+    spaces = [idx for idx, g in enumerate(ordered) if _glyph_is_ltr_space(g.text)]
+    if not spaces:
+        has_explicit_space = False
+    elif len(spaces) == 1 and spaces[0] <= 4 and all(
+        _glyph_is_ltr_unit(ordered[k].text) or ordered[k].text in ".)-:]>"
+        for k in range(spaces[0])
+    ):
+        # A single space immediately following a leading numbering/bullet prefix
+        # (e.g. "1. ", "A) ", "- ") separates the bullet from the body, but does
+        # not indicate that the subsequent body has inter-word spaces.
+        has_explicit_space = False
+    else:
+        has_explicit_space = True
+
     if not insert_spaces or has_explicit_space or len(token_texts) <= 1:
         return "".join(token_texts)
 
@@ -612,11 +625,43 @@ def _find_gutters(
         mid = (xs[i] + xs[i + 1]) / 2
         left_n = prefix_count[i + 1]
         right_n = n - left_n
-        if left_n / n < cfg.min_side_fraction or right_n / n < cfg.min_side_fraction:
-            continue
         left_span = prefix_max[i + 1] - prefix_min[i + 1]
         right_span = suffix_max[i + 1] - suffix_min[i + 1]
-        if left_span > page_span * 0.25 and right_span > page_span * 0.25:
+
+        # 1. الأعمدة المتناظرة (الحالة القياسية)
+        symmetric_ok = (
+            left_n / n >= cfg.min_side_fraction
+            and right_n / n >= cfg.min_side_fraction
+            and left_span > page_span * 0.25
+            and right_span > page_span * 0.25
+        )
+
+        # 2. الأعمدة غير المتناظرة (عمود ختامي قصير كالصفحة الأخيرة من بحث أو عمود جانبي)
+        asymmetric_ok = False
+        if not symmetric_ok:
+            if left_span > page_span * 0.25 and left_n / n >= cfg.min_side_fraction:
+                major_side = (left_n, left_span, prefix_min[i + 1], prefix_max[i + 1], xs[i] - xs[0])
+                minor_side = (right_n, right_span, suffix_min[i + 1], suffix_max[i + 1], xs[-1] - xs[i + 1])
+            elif right_span > page_span * 0.25 and right_n / n >= cfg.min_side_fraction:
+                major_side = (right_n, right_span, suffix_min[i + 1], suffix_max[i + 1], xs[-1] - xs[i + 1])
+                minor_side = (left_n, left_span, prefix_min[i + 1], prefix_max[i + 1], xs[i] - xs[0])
+            else:
+                major_side = minor_side = None
+
+            if major_side and minor_side:
+                min_n, min_span, min_ymin, min_ymax, min_w = minor_side
+                maj_n, maj_span, maj_ymin, maj_ymax, maj_w = major_side
+                v_overlap = min(min_ymax, maj_ymax) - max(min_ymin, maj_ymin)
+                if (
+                    min_n >= 10
+                    and min_n / n >= 0.03
+                    and min_w >= max(page_width * 0.10, 40.0)
+                    and min_span >= 15.0
+                    and v_overlap > 0
+                ):
+                    asymmetric_ok = True
+
+        if symmetric_ok or asymmetric_ok:
             candidates.append((gap, mid))
 
     if not candidates:

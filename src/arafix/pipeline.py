@@ -337,6 +337,7 @@ def _rescue_mixed_direction_lines(
     fixed_count = 0
     weakest_score = 1.0
     evidence_items: list[EvidenceItem] = []
+    rescued_indices: set[int] = set()
     for i, line in enumerate(lines):
         if not line.strip():
             continue
@@ -353,10 +354,41 @@ def _rescue_mixed_direction_lines(
         if out[i] == before_line:
             continue  # لا شيء تغيّر فعلاً — لا نشاهد إنقاذاً وهمياً
         fixed_count += 1
+        rescued_indices.add(i)
         weakest_score = min(weakest_score, abs(score))
         evidence_items.append(
             EvidenceItem(f"line-{i + 1}-order-score", score, detail=evs[0].detail if evs else "")
         )
+
+    # المرحلة الثانية: وراثة السياق للأسطر والعناوين القصيرة
+    # إن ثبت وجود أسطر معكوسة في الصفحة (fixed_count > 0)، يُسمح للأسطر
+    # والعناوين القصيرة (arabic_chars >= 3) ذات الانعكاس العالي بالإنقاذ.
+    if fixed_count > 0:
+        for i, line in enumerate(lines):
+            if i in rescued_indices or not line.strip():
+                continue
+            shaped_line = src_lines[i] if aligned else line
+            score, evs = _line_reversal_score(shaped_line)
+            if score <= th["visual_order"]:
+                continue
+            arabic_chars = sum(1 for c in line if is_arabic(c) or is_presentation_form(c))
+            if arabic_chars < 3:
+                continue
+            has_strong_signal = score >= 0.70 or any(
+                e.name in ("final_only_letters", "definite_article") and e.value > 0
+                for e in evs
+            )
+            if not has_strong_signal:
+                continue
+            before_line = line
+            out[i] = fix_order(line)
+            if out[i] == before_line:
+                continue
+            fixed_count += 1
+            weakest_score = min(weakest_score, abs(score))
+            evidence_items.append(
+                EvidenceItem(f"line-{i + 1}-short-rescued-score", score, detail=evs[0].detail if evs else "")
+            )
 
     if not fixed_count:
         return None

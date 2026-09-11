@@ -360,6 +360,98 @@ def _clean_punct_only(token: str) -> str:
     return _EDGE_PUNCT.sub("", token).strip("\u0640")
 
 
+#: كلمات عربية أساسية وفائقة الشيوع لحسم اتجاه النصوص المجردة
+_COMMON_ARABIC_WORDS: frozenset[str] = frozenset({
+    # حروف وأدوات
+    "في", "من", "على", "إلى", "عن", "مع", "بين", "حتى", "غير", "بعد", "قبل",
+    "عند", "نحو", "دون", "حول", "خلال", "مثل", "منذ", "حيث", "لدى",
+    "ثم", "أو", "أم", "بل", "لكن", "إن", "أن", "إذا", "إذ", "لو", "كي",
+    "ما", "لا", "لم", "لن", "قد", "كل", "أي", "كم", "كيف", "أين", "متى",
+    # ضمائر وأسماء إشارة وموصول
+    "هو", "هي", "هم", "هن", "نحن", "أنا", "أنت", "أنتم",
+    "هذا", "هذه", "هؤلاء", "ذلك", "تلك", "أولئك", "هنا", "هناك",
+    "الذي", "التي", "الذين", "اللواتي", "اللائي", "اللذين", "اللتين",
+    # أدوات مركبة مع واو/فاء العطف
+    "وهو", "وهي", "وهم", "وفي", "ومن", "وعلى", "وعن", "ومع", "وبين",
+    "وقد", "وكان", "وكانت", "ولم", "ولن", "ولكن", "وإن", "وأن", "ولا",
+    "فإن", "بأن", "بما", "كما", "كذلك", "لذلك", "لأن", "فقد", "فكان",
+    # أفعال فائقة الشيوع
+    "كان", "كانت", "يكون", "تكون", "ليس", "ليست", "قال", "قالت", "يقول",
+    "كتب", "كتبت", "درس", "علم", "عرف", "عمل", "فعل", "جاء", "أتى", "وجد",
+    "يريد", "يعمل", "يعرف", "يمكن", "يجب", "يبدو", "أصبح", "صار", "قام",
+    # أسماء وكلمات أساسية
+    "الله", "كتاب", "درس", "قواعد", "سنة", "عام", "يوم", "وقت", "مكان",
+    "طريق", "اسم", "نفس", "جميع", "بعض", "أحد", "أول", "آخر", "أكثر", "أقل",
+    "كبير", "صغير", "كثير", "قليل", "جديد", "قديم", "عالم", "دين", "فكر",
+    "لغة", "كلمة", "جملة", "نص", "أصل", "فصل", "باب", "جزء", "نوع", "شكل",
+    "صورة", "عدد", "قيمة", "حد", "أمر", "حاجة", "حق", "خير", "شر", "حال",
+    "سبب", "شأن", "أثر", "حياة", "موت", "بلد", "مدينة", "دولة", "شعب", "رجل",
+    "محمد", "أحمد", "علي", "عمر", "حسن", "حسين", "فاطمة", "مريم",
+    # ترويسات ومصطلحات الجداول والوثائق الإدارية
+    "هدف", "أهداف", "تاريخ", "تقرير", "بيان", "جدول", "رقم", "رمز", "عنوان",
+    "ملاحظات", "صفحة", "مجموع", "نسبة", "نتيجة", "حالة", "وصف", "سعر", "كمية",
+    "إجمالي", "مبلغ", "رصيد", "حساب", "فرع", "قسم", "إدارة", "ملف", "مستند",
+    "توقيع", "ختم", "مرجع", "كود", "بند", "سم",
+})
+
+
+
+def _signal_lexicon_direction(tokens: list[str]) -> tuple[float, str] | None:
+    """
+    مطابقة الكلمات مع معجم النواة العربي قبل وبعد العكس.
+
+    حين تعمى شواهد الرسم والوصل والأحرف الطرفية (نص يونيكود مجرد)،
+    يحتكم الكاشف إلى المعجم الحتمي: إن كانت الكلمات عند عكس حروفها
+    تعطي كلمات عربية صحيحة في المعجم بينما هي في ترتيبها الحالي غائبة،
+    فهذا دليل قاطع على أن الكلمات مخزونة بترتيب بصري معكوس.
+    """
+    if not tokens:
+        return None
+    vocab = _COMMON_ARABIC_WORDS
+    try:
+        from .lexicon.core import get_core_lexicon
+
+        vocab = vocab | get_core_lexicon()
+    except Exception:
+        pass
+
+    clean = [_clean_punct_only(t) for t in tokens]
+    words = [
+        "".join(c for c in t if unicodedata.category(c) != "Mn")
+        for t in clean
+    ]
+    words = [w for w in words if len(w) >= 2]
+    if not words:
+        return None
+
+    def _in_vocab(w: str) -> bool:
+        if w in vocab:
+            return True
+        if len(w) > 4 and w.startswith("ال") and w[2:] in vocab:
+            return True
+        return False
+
+    forward_hits = 0
+    reversed_hits = 0
+    for w in words:
+        in_fwd = _in_vocab(w)
+        in_rev = _in_vocab(w[::-1])
+        if in_fwd and not in_rev:
+            forward_hits += 1
+        elif in_rev and not in_fwd:
+            reversed_hits += 1
+
+    total = forward_hits + reversed_hits
+    if total == 0:
+        return None
+
+    score = (reversed_hits - forward_hits) / total
+    return score, f"تطابق معجمي: {reversed_hits} كلمة معكوسة في المعجم مقابل {forward_hits} أصلية"
+
+
+_NON_INITIAL_ARABIC_LETTERS = frozenset("ةىئؤ")
+
+
 def _clean_final_letters_token(token: str) -> str:
     """Strip edge punctuation, tatweel, and edge marks for final_only_letters."""
     t = _clean_punct_only(token)
@@ -372,24 +464,29 @@ def _clean_final_letters_token(token: str) -> str:
 
 def _signal_final_only_letters(tokens: list[str]) -> tuple[float, str] | None:
     """
-    الشاهد الأقوى: التاء المربوطة والألف المقصورة **لا تقعان إلا آخر الكلمة**.
+    الشاهد الأقوى: محارف لا تقع في أول الكلمة العربية إطلاقاً.
 
-    قاعدة إملائية صلبة لا استثناء لها في العربية. فإن وجدناهما أوّل
-    الكلمات، فالنص مخزَّن معكوساً. هذا شاهد قاطع تقريباً.
+    التاء المربوطة، الألف المقصورة، الهمزة على واو، الهمزة على نبرة/ياء:
+    كلها قواعد إملائية وصرفية صلبة لا استثناء لها في العربية.
+    فإن وجدناها في أوائل الكلمات، فالنص مخزَّن معكوساً قطعاً.
+    وإن غابت كلها، احتكمنا إلى فحص المعجم الاتجاهي للكلمات المجردة.
     """
     head = tail = 0
     for raw_t in tokens:
         t = _clean_final_letters_token(raw_t)
         if len(t) < 2:
             continue
-        if t[0] in FINAL_ONLY_LETTERS:
+        if t[0] in _NON_INITIAL_ARABIC_LETTERS:
             head += 1
-        if t[-1] in FINAL_ONLY_LETTERS:
+        if t[-1] in _NON_INITIAL_ARABIC_LETTERS:
             tail += 1
+
     if head + tail == 0:
-        return None
+        # احتكام معجمي في النصوص المجردة التي تخلو من الأحرف الطرفية
+        return _signal_lexicon_direction(tokens)
+
     score = (head - tail) / (head + tail)
-    return score, f"ة/ى في أول {head} كلمة مقابل آخر {tail} كلمة"
+    return score, f"أحرف طرفية في أول {head} كلمة مقابل آخر {tail} كلمة"
 
 
 def _joins_forward(f: JoiningForm) -> bool:
@@ -480,9 +577,9 @@ def detect_visual_order(
 
     :param shaped_source: النصّ **قبل** التطبيع، إن توفّر.
 
-    ولِمَ معاملان لنصٍّ واحد؟ لأن الشواهد الثلاثة لا تعيش في طبقةٍ واحدة:
+    ولِمَ معاملان لنصٍّ واحد؟ لأن الشواهد لا تعيش في طبقةٍ واحدة:
 
-      * `final_only_letters` و`definite_article` يحتاجان الحروف **الأصلية**،
+      * `final_only_letters` (بما فيها شاهد المعجم) و`definite_article` يحتاجان الحروف **الأصلية**،
         فالتاء المربوطة مخبوءةٌ خلف U+FE93 ما لم تُطبَّع.
       * `joining_forms` يحتاج الأشكال **الرسومية**، فالتطبيع يمحوها ويمحو
         شهادتها معها.
@@ -593,9 +690,25 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
     )
     # حارسُ كفاية العيّنة يحرس الإحصاء وحده. أما هويّة الوصل فبرهانٌ،
     # والبرهانُ لا يحتاج عيّنةً: خرقٌ واحد في «توقف!» يكفي كخرقٍ في صفحة.
+    # ويمتد البرهان إلى الاستحالة الصرفية القاطعة (كالبدء بتاء مربوطة «ةنسلا»)
+    # أو الانقلاب المعجمي الحاسم لأداة التعريف («فدهلا» -> «الهدف»).
     proof = next(
         (e for e in order_ev if e.name == "joining_forms" and e.value > 0), None
     )
+    if not proof and order_score >= 0.8 and arabic_chars >= 3:
+        clean_toks = [_clean_final_letters_token(t) for t in _ARABIC_TOKEN.findall(fold_simple_forms(text))]
+        has_impossible_initial = any(
+            len(t) >= 2 and t[0] in _NON_INITIAL_ARABIC_LETTERS
+            for t in clean_toks
+        )
+        has_article_reversal = any(
+            e.name == "definite_article" and e.value > 0 for e in order_ev
+        ) and any(
+            len(_clean_punct_only(t)) >= 4 and _clean_punct_only(t).endswith("لا")
+            for t in _ARABIC_TOKEN.findall(text)
+        )
+        if has_impossible_initial or has_article_reversal:
+            proof = True
     if arabic_chars >= th["min_arabic_chars"] or proof:
         dg.evidence.extend(order_ev)
         dg.metrics["order_score"] = order_score

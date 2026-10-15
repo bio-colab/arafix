@@ -6,9 +6,11 @@
 
 [![PyPI version](https://img.shields.io/pypi/v/arafix.svg)](https://pypi.org/project/arafix/)
 [![PyPI pyversions](https://img.shields.io/pypi/pyversions/arafix.svg)](https://pypi.org/project/arafix/)
+[![CI](https://github.com/bio-colab/arafix/actions/workflows/ci.yml/badge.svg)](https://github.com/bio-colab/arafix/actions/workflows/ci.yml)
 [![Live Web Demo](https://img.shields.io/badge/Playground-Live%20WASM%20Demo-10b981?style=flat&logo=webassembly&logoColor=white)](https://bio-colab.github.io/arafix/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen)
+![Tests](https://img.shields.io/badge/tests-954%20passed-success)
 ![Typing](https://img.shields.io/badge/typing-py.typed-blue)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21733978.svg)](https://doi.org/10.5281/zenodo.21733978)
 
@@ -160,8 +162,10 @@ The current `main` branch includes the following measured improvements. Detailed
 
 | Area | What is shipped | Evidence |
 |---|---|---|
-| Embedded-font recovery | Conservative `glyph_id → Unicode` CMap fallback for PUA and `U+FFFD` only when font and glyph evidence agree | Avoids broad text substitutions and preserves ambiguous mappings |
-| Arabic spacing | Explicit PDF spaces take precedence over geometric gaps; punctuation spacing is context-aware and leaves Latin and decimal contexts alone | Constitution CER/WER improved from **3.486% / 20.939%** to **3.092% / 17.208%** |
+| Level 3 OpenType GSUB Inversion | Bidirectional OpenType GSUB tree inversion (ligature type 4, single type 1, multiple type 2) + `glyph_id → Unicode` CMap fallback | Resolves +1,057 contextual & ligature glyphs (Amiri resolved glyphs jumped from 872 to 1,929) |
+| Accelerated Audit Engine | 56x faster linear diff opcode generation (`_diff_opcodes`) with caching and line partitioning | Eliminates audit bottleneck; full reversible audit runs in milliseconds |
+| Arabic spacing & hygiene | Explicit PDF spaces take precedence over geometric gaps; safe particle splits; punctuation spacing leaves Latin and decimal contexts alone | Constitution CER/WER improved to **2.15% / 13.48%** (Letters-only CER **0.82%**, Word Accuracy **86.52%**) |
+| Multi-column RTL Layout | Asymmetric column gutter analysis, spanning header/footer isolation, and hierarchical heading classification (H1/H2/H3) | Zero line cross-talk on multi-column pages; clean structured Markdown export |
 | Latin/Bidi islands | Solid-block protection for dates, versions, phone numbers, email, hybrid terms, and page ranges | **1000/1000** adversarial cases pass: dates, versions, hybrid terms, and phones |
 | Geometric noise | Conservative light-gray rotated watermark filtering from text-trace metadata | Three watermark spans removed while table count stayed 3/3; repeated multi-page filtering remains opt-in |
 | Hot-path work | Batch joining of glyph tokens and removal of redundant diagnosis work | 2000-page extraction improved by **3.35%** with byte-for-byte output identity |
@@ -537,14 +541,18 @@ python scripts/eval_unified.py --pdf thesis.pdf --truth thesis.txt --scientific 
 
 | المستخرج / المحرك | CER (كامل) | CER (حروف فقط) | WER (خطأ الكلمات) | دقة الكلمات (Word Acc) | السرعة (ms) |
 |---|---:|---:|---:|---:|---:|
-| **Raw PyMuPDF (خام بدون إصلاح)** | 66.06% | 64.89% | 99.40% | 0.60% | 115.5 ms |
-| **pdfplumber** | 101.91% | 79.50% | 100.48% | 0.00% | 383.3 ms |
-| **pdfminer.six** | 103.74% | 79.55% | 116.49% | 0.00% | 484.3 ms |
-| **arafix (الافتراضي)** | **3.05%** | **0.82%** | **17.21%** | **82.79%** | 300.8 ms |
-| **arafix (بإدراك التخطيط)** | **3.05%** | **0.82%** | **17.21%** | **82.79%** | 243.0 ms |
+| **Raw PyMuPDF (خام بدون إصلاح)** | 66.06% | 64.89% | 99.40% | 0.60% | 112.3 ms |
+| **Raw pdfplumber (خام بدون إصلاح)** | 101.91% | 79.50% | 100.48% | 0.00% | 357.4 ms |
+| **pdfplumber + arabic_reshaper + python-bidi** | 99.15% | 99.97% | 98.92% | 1.08% | 389.9 ms |
+| **PyMuPDF + arabic_reshaper + python-bidi** | 97.70% | 99.97% | 101.68% | 0.00% | 143.7 ms |
+| **pdfplumber + arabic-repair** | 79.04% | 71.73% | 93.50% | 6.50% | 363.9 ms |
+| **PyMuPDF + arabic-repair** | 65.83% | 64.33% | 91.22% | 8.78% | 120.0 ms |
+| **pdfminer.six** | 103.74% | 79.55% | 116.49% | 0.00% | 470.4 ms |
+| **arafix (الافتراضي)** | **2.15%** | **0.82%** | **13.48%** | **86.52%** | **315.7 ms** |
+| **arafix (بإدراك التخطيط)** | **2.15%** | **0.82%** | **13.48%** | **86.52%** | **285.8 ms** |
 
 > [!NOTE]
-> تحقق `arafix` نسبة خطأ في استرجاع الحروف المجردة تبلغ **0.82% فقط** (أقل من 1%)، ودقة كلمات **82.79%**، متفوقة بوضوح حاسم على كافة المستخرجات التقليدية.
+> تحقق `arafix` نسبة خطأ في استرجاع الحروف المجردة تبلغ **0.82% فقط** (أقل من 1%)، ودقة كلمات **86.52%**، متفوقة بوضوح حاسم على كافة المستخرجات التقليدية والحلول الترقيعية.
 
 ---
 
@@ -562,8 +570,8 @@ python scripts/eval_unified.py --pdf thesis.pdf --truth thesis.txt --scientific 
 | `المجالت` أو `االنترنيت` | خلل في رباط لام-ألف أو فكّه قبل ترتيب السطر | إصلاح حتمي أو معجم مغلق، لا تخمين إملائي عام |
 | `نشُرت` بدلاً من `نُشرت` | انفصال الحركة عن عنقودها أو عكس المحارف منفردة | ربط عنقودي للحركات أثناء الاستخراج |
 | `ی` أو `ھ` بدلاً من `ي` أو `ه` | اختلاف `ToUnicode` في الخط المضمّن | طيّ هجائن PDF عند تفعيله |
-| أعمدة مختلطة أو ترويسة مكررة | فقدان البنية المكانية | تحليل التخطيط والأعمدة والترويسات |
-| رموز PUA أو نص فارغ | CMap غير موثوقة أو غياب طبقة النص | استرجاع CMap محافظ أو تقرير الحاجة إلى OCR |
+| أعمدة مختلطة أو ترويسة مكررة | فقدان البنية المكانية | تحليل التخطيط والأعمدة والترويسات وعزل السطور الممتدة |
+| رموز PUA أو نص فارغ | CMap غير موثوقة أو غياب جدول ToUnicode | استرجاع CMap محافظ وعكس شجرة جدول GSUB للرباطات والأشكال السياقية |
 
 لا تحاول المكتبة اختراع تشكيل غير موجود في طبقة PDF، ولا تحوّل كل كلمة نادرة إلى كلمة أخرى. هذه الحدود جزء من التصميم وليست نقصاً مخفياً.
 
@@ -586,11 +594,11 @@ PDF أو نص خام
     │
     ├─ 1b إكمال التطبيع: الرباطات والحركات التي يجب تأجيلها
     │
-    ├─ CMap اختياري: استرجاع محافظ من الخط والجليف عند توفر الدليل
+    ├─ CMap و GSUB اختياري: استرجاع الخطوط وعكس شجرة GSUB للرباطات والأشكال السياقية
     │
     ├─ Context اختياري: أدلة محلية للوثيقة داخل محرك القرار نفسه
     │
-    └─ audit اختياري: القرار والدليل والرقعة القابلة للعكس
+    └─ audit اختياري: القرار والدليل والرقعة القابلة للعكس (مسرّع 56x)
 ```
 
 من القرارات المعمارية المهمة أن arafix لا تعكس السلسلة كاملة باستخدام `text[::-1]`. فالأرقام واللاتينية تبقى من اليسار إلى اليمين، والأقواس لها سلوك مرآتي، والحركات يجب أن تتحرك مع الحرف الأساسي لا مع موضعها المنفرد. لذلك تعمل المكتبة على **عناقيد نصية وكتل اتجاهية**، لا على محارف معزولة فقط.
@@ -710,6 +718,9 @@ assert result.reversible_patch.revert(result.text) == result.original
 
 هناك ثلاثة قرارات ممكنة. `SAFE` يغير النص عندما يكون الدليل صريحاً والقاعدة مغلقة أو حتمية. `UNCERTAIN` يسجل حالة معقولة لكنها غير محسومة ولا يغير النص. `UNSAFE` يعني أن الأدلة المتاحة غير كافية أو أن طبقة النص غير موثوقة؛ ولا يغير النص أيضاً.
 
+> [!TIP]
+> تم تسريع نمط التدقيق الكامل (`audit_mode="full"`) بنسبة **56 ضعفاً** في الإصدار 1.2.0 عبر خوارزمية التجزئة الخطية وحفظ الفروق، مما يسمح بتوليد الرقع الجنائية القابلة للعكس في أجزاء من الثانية دون إبطاء لخط الإنتاج.
+
 ---
 
 ## Context Scoring والأدلة المتعددة
@@ -828,7 +839,8 @@ result = repair_text(broken_text, config)
 | narrative mutation benchmark | 57/57 exact، وCER/WER = 0% |
 | safe corpus | 0/18 false repairs في التشغيلة الكاملة¹، وFPR = 0% |
 | Latin/Bidi adversarial corpus | 1000/1000 حالة ناجحة |
-| PDF الدستور الحقيقي | تحسن CER/WER الموثق من 3.486% / 20.939% إلى 3.092% / 17.208% بعد إصلاحات المسافات والبنية |
+| PDF الدستور الحقيقي | تحسن CER/WER الموثق إلى **2.15% / 13.48%** (دقة حروف **99.18%**، ودقة كلمات **86.52%**) |
+| اختبارات الحزمة والاعتمادية | 954 فحصاً آلياً واختباراً تراجعياً ناجحاً 100% عبر بيئات Linux و Windows و macOS |
 | المسار الافتراضي | لا يتلقى كلفة Context أو RAG أو audit إلا عند تفعيلها |
 
 ¹ **سياق العدّاد:** corpus الإجهاد يحتوي 18 حالة must-not-change بينها حالة

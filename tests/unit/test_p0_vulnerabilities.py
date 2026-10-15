@@ -13,12 +13,9 @@
 """
 from __future__ import annotations
 
-import pytest
-
-from arafix import PipelineConfig, repair_text
+from arafix import repair_text
 from arafix.diagnose import Defect, detect_visual_order, diagnose
 from arafix.layout import Glyph, join_glyphs_preserving_ltr
-
 
 # ---------------------------------------------------------------------------
 # 1. Plain Unicode Direction Detection Tests
@@ -31,8 +28,10 @@ def test_plain_unicode_reversed_sentence_detection() -> None:
     Original: 'كتب محمد درس قواعد'
     Reversed: 'دعاق سرد دمحم بتك'
     """
-    # 'كتب محمد درس قواعد'[::-1]
-    reversed_plain = "\u062f\u0639\u0627\u0648\u0642 \u0633\u0631\u062f \u062f\u0645\u062d\u0645 \u0628\u062a\u0643"
+    reversed_plain = (
+        "\u062f\u0639\u0627\u0648\u0642 \u0633\u0631\u062f "
+        "\u062f\u0645\u062d\u0645 \u0628\u062a\u0643"
+    )
     score, evidence = detect_visual_order(reversed_plain)
     assert score > 0.30, f"Expected reversal score > 0.30, got {score}"
 

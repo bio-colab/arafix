@@ -24,8 +24,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import re
 from dataclasses import dataclass, field
+from typing import Any
 
 from .unicode_tables import PF_TO_BASE, is_arabic
 
@@ -106,7 +108,7 @@ def decode_glyph_name(name: str) -> str | None:
 # عكس جدول cmap وشجرة GSUB داخل الخط
 # ---------------------------------------------------------------------------
 
-def _propagate_gsub_mappings(font: any, mapping: dict[str, str]) -> tuple[dict[str, str], int]:
+def _propagate_gsub_mappings(font: Any, mapping: dict[str, str]) -> tuple[dict[str, str], int]:
     """
     ينشر المعنى اليونيكودي عبر شجرة جدول GSUB (Glyph Substitution).
 
@@ -157,10 +159,13 @@ def _propagate_gsub_mappings(font: any, mapping: dict[str, str]) -> tuple[dict[s
                         for lig in lig_list:
                             all_comp = [first] + list(getattr(lig, "Component", []))
                             lig_glyph = getattr(lig, "LigGlyph", None)
-                            if lig_glyph and lig_glyph not in out_map:
-                                if all(c in out_map for c in all_comp):
-                                    out_map[lig_glyph] = "".join(out_map[c] for c in all_comp)
-                                    new_added += 1
+                            if (
+                                lig_glyph
+                                and lig_glyph not in out_map
+                                and all(c in out_map for c in all_comp)
+                            ):
+                                out_map[lig_glyph] = "".join(out_map[c] for c in all_comp)
+                                new_added += 1
 
                 # 3. الاستبدال المتعدد (Multiple Substitution)
                 elif st_type == 2 and hasattr(real_st, "mapping"):
@@ -208,21 +213,17 @@ def reverse_font_cmap(font_bytes: bytes) -> dict[str, str]:
         pass
 
     # --- المصدر ٢: أسماء الجليفات لسدّ الثغرات ---------------------------
-    try:
+    with contextlib.suppress(Exception):
         for gname in font.getGlyphOrder():
             if gname in mapping:
                 continue
             decoded = decode_glyph_name(gname)
             if decoded:
                 mapping[gname] = "".join(PF_TO_BASE.get(c, c) for c in decoded)
-    except Exception:
-        pass
 
     # --- المصدر ٣: عكس شجرة جدول GSUB لربط الأشكال السياقية والرباطات -----
-    try:
+    with contextlib.suppress(Exception):
         mapping, _ = _propagate_gsub_mappings(font, mapping)
-    except Exception:
-        pass
 
     font.close()
     return mapping
@@ -287,22 +288,17 @@ def build_glyph_map(font_bytes: bytes, font_name: str = "") -> GlyphMap:
     except Exception:
         pass
 
-    try:
+    with contextlib.suppress(Exception):
         for gname in font.getGlyphOrder():
             if gname in mapping:
                 continue
             decoded = decode_glyph_name(gname)
             if decoded:
                 mapping[gname] = "".join(PF_TO_BASE.get(c, c) for c in decoded)
-    except Exception:
-        pass
 
-    base_count = len(mapping)
     gsub_added = 0
-    try:
+    with contextlib.suppress(Exception):
         mapping, gsub_added = _propagate_gsub_mappings(font, mapping)
-    except Exception:
-        pass
 
     try:
         total = len(font.getGlyphOrder())

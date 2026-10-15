@@ -351,7 +351,9 @@ def _rescue_mixed_direction_lines(
         if not proof and arabic_chars < th["min_arabic_chars"]:
             continue
         before_line = line
-        target_line = fold_simple_forms(line) if any(is_presentation_form(c) for c in line) else line
+        target_line = (
+            fold_simple_forms(line) if any(is_presentation_form(c) for c in line) else line
+        )
         out[i] = fix_order(target_line, rcfg)
         if out[i] == before_line:
             continue  # لا شيء تغيّر فعلاً — لا نشاهد إنقاذاً وهمياً
@@ -359,7 +361,9 @@ def _rescue_mixed_direction_lines(
         rescued_indices.add(i)
         weakest_score = min(weakest_score, abs(score))
         evidence_items.append(
-            EvidenceItem(f"line-{i + 1}-order-score", score, detail=evs[0].detail if evs else "")
+            EvidenceItem(
+                f"line-{i + 1}-order-score", score, detail=evs[0].detail if evs else ""
+            )
         )
 
     # المرحلة الثانية: وراثة السياق للأسطر والعناوين القصيرة
@@ -383,14 +387,20 @@ def _rescue_mixed_direction_lines(
             if not has_strong_signal:
                 continue
             before_line = line
-            target_line = fold_simple_forms(line) if any(is_presentation_form(c) for c in line) else line
+            target_line = (
+                fold_simple_forms(line) if any(is_presentation_form(c) for c in line) else line
+            )
             out[i] = fix_order(target_line, rcfg)
             if out[i] == before_line:
                 continue
             fixed_count += 1
             weakest_score = min(weakest_score, abs(score))
             evidence_items.append(
-                EvidenceItem(f"line-{i + 1}-short-rescued-score", score, detail=evs[0].detail if evs else "")
+                EvidenceItem(
+                    f"line-{i + 1}-short-rescued-score",
+                    score,
+                    detail=evs[0].detail if evs else "",
+                )
             )
 
     if not fixed_count:

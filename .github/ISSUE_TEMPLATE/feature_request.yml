@@ -1,0 +1,28 @@
+name: Feature Request / طلب ميزة
+description: Suggest an idea or enhancement for arafix.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        We welcome ideas that expand Arabic PDF recovery while preserving our core principles: zero external dependencies in core, conservative repair, and evidence-first decision making.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / المشكلة المراد حلها
+      description: Is your feature request related to a specific problem or PDF workflow?
+    validations:
+      required: true
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed Solution / الحل المقترح
+      description: Describe the solution or new capability you would like to see.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered / البدائل المطروحة
+      description: Any alternative solutions or workarounds you have considered.

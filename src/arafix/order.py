@@ -25,8 +25,7 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-
-from .types import RepairResult, Stage
+from typing import Any
 
 __all__ = [
     "ReorderConfig",

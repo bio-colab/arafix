@@ -295,10 +295,11 @@ class PageResult:
             for idx, ln in enumerate(all_lines):
                 if ln.role in ("header", "footer") and not include_headers_footers:
                     continue
-                if use_rep:
-                    rep = rep_lines[idx].strip()
-                else:
-                    rep = repair_text(ln.text).text.strip()
+                rep = (
+                    rep_lines[idx].strip()
+                    if use_rep
+                    else repair_text(ln.text).text.strip()
+                )
                 if rep:
                     lines.append((rep, ln.role, ln.heading_level))
 

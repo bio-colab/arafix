@@ -1,0 +1,43 @@
+name: Bug Report / إبلاغ عن خطأ
+description: File a bug report or report an Arabic text recovery failure.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please provide as much detail as possible to help us reproduce and fix it.
+  - type: textarea
+    id: sample-text
+    attributes:
+      label: Sample Input / النص المدخل أو نموذج الخلل
+      description: Provide the broken Arabic text or description of the PDF.
+      placeholder: "e.g. ﺎﺒﺣﺮﻣ or reversed text"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior / السلوك المتوقع
+      description: What should arafix produce?
+      placeholder: "e.g. مرحبا"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior / السلوك الفعلي
+      description: What does arafix currently output?
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment / البيئة
+      description: OS, Python version, arafix version (`arafix --version`).
+      placeholder: |
+        - OS: [e.g. Windows, Ubuntu, macOS]
+        - Python: [e.g. 3.11]
+        - arafix: [e.g. 1.2.0]
+    validations:
+      required: true

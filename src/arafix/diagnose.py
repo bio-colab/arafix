@@ -24,7 +24,6 @@ import unicodedata
 from .lamalef import detect_lam_alef_transposition
 from .types import DETERMINISTIC_DEFECTS, Defect, Diagnosis, Evidence
 from .unicode_tables import (
-    FINAL_ONLY_LETTERS,
     PF_JOINING_FORM,
     PF_TO_BASE,
     TATWEEL,
@@ -380,7 +379,7 @@ _COMMON_ARABIC_WORDS: frozenset[str] = frozenset({
     "كتب", "كتبت", "درس", "علم", "عرف", "عمل", "فعل", "جاء", "أتى", "وجد",
     "يريد", "يعمل", "يعرف", "يمكن", "يجب", "يبدو", "أصبح", "صار", "قام",
     # أسماء وكلمات أساسية
-    "الله", "كتاب", "درس", "قواعد", "سنة", "عام", "يوم", "وقت", "مكان",
+    "الله", "كتاب", "قواعد", "سنة", "عام", "يوم", "وقت", "مكان",
     "طريق", "اسم", "نفس", "جميع", "بعض", "أحد", "أول", "آخر", "أكثر", "أقل",
     "كبير", "صغير", "كثير", "قليل", "جديد", "قديم", "عالم", "دين", "فكر",
     "لغة", "كلمة", "جملة", "نص", "أصل", "فصل", "باب", "جزء", "نوع", "شكل",
@@ -425,11 +424,7 @@ def _signal_lexicon_direction(tokens: list[str]) -> tuple[float, str] | None:
         return None
 
     def _in_vocab(w: str) -> bool:
-        if w in vocab:
-            return True
-        if len(w) > 4 and w.startswith("ال") and w[2:] in vocab:
-            return True
-        return False
+        return w in vocab or (len(w) > 4 and w.startswith("ال") and w[2:] in vocab)
 
     forward_hits = 0
     reversed_hits = 0
@@ -696,8 +691,11 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
     proof = next(
         (e for e in order_ev if e.name == "joining_forms" and e.value > 0), None
     )
-    if not proof and order_score >= 0.8 and arabic_chars >= 3:
-        clean_toks = [_clean_final_letters_token(t) for t in _ARABIC_TOKEN.findall(inspected_text)]
+    has_proof = proof is not None
+    if not has_proof and order_score >= 0.8 and arabic_chars >= 3:
+        clean_toks = [
+            _clean_final_letters_token(t) for t in _ARABIC_TOKEN.findall(inspected_text)
+        ]
         has_impossible_initial = any(
             len(t) >= 2 and t[0] in _NON_INITIAL_ARABIC_LETTERS
             for t in clean_toks
@@ -709,8 +707,8 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
             for t in _ARABIC_TOKEN.findall(text)
         )
         if has_impossible_initial or has_article_reversal:
-            proof = True
-    if arabic_chars >= th["min_arabic_chars"] or proof:
+            has_proof = True
+    if arabic_chars >= th["min_arabic_chars"] or has_proof:
         dg.evidence.extend(order_ev)
         dg.metrics["order_score"] = order_score
         if order_score > th["visual_order"]:

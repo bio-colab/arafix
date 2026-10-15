@@ -639,12 +639,38 @@ def _find_gutters(
         # 2. الأعمدة غير المتناظرة (عمود ختامي قصير كالصفحة الأخيرة من بحث أو عمود جانبي)
         asymmetric_ok = False
         if not symmetric_ok:
+            major_side: tuple[int, float, float, float, float] | None = None
+            minor_side: tuple[int, float, float, float, float] | None = None
             if left_span > page_span * 0.25 and left_n / n >= cfg.min_side_fraction:
-                major_side = (left_n, left_span, prefix_min[i + 1], prefix_max[i + 1], xs[i] - xs[0])
-                minor_side = (right_n, right_span, suffix_min[i + 1], suffix_max[i + 1], xs[-1] - xs[i + 1])
+                major_side = (
+                    left_n,
+                    left_span,
+                    prefix_min[i + 1],
+                    prefix_max[i + 1],
+                    xs[i] - xs[0],
+                )
+                minor_side = (
+                    right_n,
+                    right_span,
+                    suffix_min[i + 1],
+                    suffix_max[i + 1],
+                    xs[-1] - xs[i + 1],
+                )
             elif right_span > page_span * 0.25 and right_n / n >= cfg.min_side_fraction:
-                major_side = (right_n, right_span, suffix_min[i + 1], suffix_max[i + 1], xs[-1] - xs[i + 1])
-                minor_side = (left_n, left_span, prefix_min[i + 1], prefix_max[i + 1], xs[i] - xs[0])
+                major_side = (
+                    right_n,
+                    right_span,
+                    suffix_min[i + 1],
+                    suffix_max[i + 1],
+                    xs[-1] - xs[i + 1],
+                )
+                minor_side = (
+                    left_n,
+                    left_span,
+                    prefix_min[i + 1],
+                    prefix_max[i + 1],
+                    xs[i] - xs[0],
+                )
             else:
                 major_side = minor_side = None
 

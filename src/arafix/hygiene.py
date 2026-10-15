@@ -278,13 +278,12 @@ def collapse_midword_spaces(text: str) -> str:
         if left in _KEEP_SPACE_AFTER or right in _KEEP_SPACE_AFTER:
             return m.group(0)
         # Single-letter Arabic prefixes/fragments (e.g. و حرية, ق واعد):
-        if len(left) == 1:
-            if (
-                len(right) <= 1
-                or left in ("ة", "ى")
-                or bool(_ENUM_NOUNS_RE.search(m.string[: m.start()]))
-            ):
-                return m.group(0)
+        if len(left) == 1 and (
+            len(right) <= 1
+            or left in ("ة", "ى")
+            or bool(_ENUM_NOUNS_RE.search(m.string[: m.start()]))
+        ):
+            return m.group(0)
         # 2-letter standalone words:
         if len(left) == 2:
             if left in ("ال", "لل"):
@@ -412,12 +411,18 @@ _NAME_ANCHOR_RE = re.compile(
     rf"({'|'.join(re.escape(p) for p in sorted(_NAME_ANCHOR_MAP, key=len, reverse=True))})"
 )
 _PUNCT_BEFORE_ARABIC_RE = re.compile(r"([.،؛:!?؟»])(?=[\u0621-\u064A])")
-_PUNCT_SPACE_BEFORE_RE = re.compile(rf"([{_ARABIC_BASE}{_DIGIT_BASE})]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)[ ]+(?=[،؛:!?؟.,)])")
+_PUNCT_SPACE_BEFORE_RE = re.compile(
+    rf"([{_ARABIC_BASE}{_DIGIT_BASE})]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)[ ]+(?=[،؛:!?؟.,)])"
+)
 _OPEN_PUNCT_SPACE_AFTER_RE = re.compile(rf"([(«])[ ]+(?=[{_ARABIC_BASE}{_DIGIT_BASE}])")
-_CLOSE_PUNCT_SPACE_BEFORE_RE = re.compile(rf"([{_ARABIC_BASE}{_DIGIT_BASE}]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)[ ]+([)»])")
+_CLOSE_PUNCT_SPACE_BEFORE_RE = re.compile(
+    rf"([{_ARABIC_BASE}{_DIGIT_BASE}]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)[ ]+([)»])"
+)
 _PUNCT_SPACE_AFTER_RE = re.compile(rf"([،؛:!?؟.,])[ ]*(?=[{_ARABIC_BASE}])")
 _ARABIC_OPEN_PUNCT_RE = re.compile(rf"([{_ARABIC_BASE}]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)(?=[(«])")
-_ARABIC_MULTI_SPACE_RE = re.compile(rf"([{_ARABIC_BASE}]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)[^\S\n\r]{{2,}}(?=[{_ARABIC_BASE}])")
+_ARABIC_MULTI_SPACE_RE = re.compile(
+    rf"([{_ARABIC_BASE}]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)[^\S\n\r]{{2,}}(?=[{_ARABIC_BASE}])"
+)
 
 
 def insert_particle_spaces(text: str) -> str:

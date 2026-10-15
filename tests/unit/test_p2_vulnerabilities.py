@@ -6,9 +6,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+
 import pytest
 
-from arafix.cmap import build_glyph_map, reverse_font_cmap, _propagate_gsub_mappings
+from arafix.cmap import _propagate_gsub_mappings, build_glyph_map, reverse_font_cmap
 from arafix.unicode_tables import is_arabic
 
 AMIRI_FONT_PATH = Path("benchmarks/glyph_fixtures/fonts/Amiri-Regular.ttf")
@@ -35,11 +36,19 @@ class TestP2GSUBInversion:
         mapping = reverse_font_cmap(data)
 
         # التحقق من أن الرباطات والأشكال السياقية تحمل نصوصاً عربية صحيحة
-        arabic_resolved = [v for v in mapping.values() if any(is_arabic(c) or ("\u0600" <= c <= "\u06ff") for c in v)]
+        arabic_resolved = [
+            v
+            for v in mapping.values()
+            if any(is_arabic(c) or ("\u0600" <= c <= "\u06ff") for c in v)
+        ]
         assert len(arabic_resolved) >= 1800
 
         # رباط اللام-ألف ومشتقاته
-        lam_alef_forms = [v for v in mapping.values() if "لا" in v or "لأ" in v or "لإ" in v or "لآ" in v]
+        lam_alef_forms = [
+            v
+            for v in mapping.values()
+            if any(sub in v for sub in ("لا", "لأ", "لإ", "لآ"))
+        ]
         assert len(lam_alef_forms) >= 8
 
     def test_synthetic_gsub_propagation_bidirectional(self):

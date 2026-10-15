@@ -189,7 +189,7 @@ class Patch:
     @classmethod
     def from_texts(cls, original: str, repaired: str) -> Patch:
         operations: list[PatchOperation] = []
-        for tag, i1, i2, j1, j2 in _diff_opcodes(original, repaired):
+        for _tag, i1, i2, j1, j2 in _diff_opcodes(original, repaired):
             operations.append(
                 PatchOperation(
                     start_before=i1,
@@ -339,7 +339,7 @@ class AuditTrail:
             self._next_id += 1
             return after
 
-        for tag, i1, i2, j1, j2 in _diff_opcodes(before, after):
+        for _tag, i1, i2, j1, j2 in _diff_opcodes(before, after):
             self._events.append(
                 AuditEvent(
                     event_id=self._next_id,

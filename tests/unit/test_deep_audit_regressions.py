@@ -5,7 +5,6 @@ identified in the comprehensive arafix audit report.
 
 from __future__ import annotations
 
-import re
 from arafix.cli import _normalize_argv
 from arafix.extractors.pymupdf_extractor import PyMuPDFExtractor
 from arafix.hygiene import (
@@ -13,7 +12,6 @@ from arafix.hygiene import (
     normalize_arabic_punctuation_spacing,
 )
 from arafix.lamalef import (
-    detect_lam_alef_transposition,
     repair_lam_alef_transposition,
 )
 from arafix.normalize import (
@@ -91,7 +89,8 @@ class TestB03SeparateFusedPresentationForms:
         # Visual reversed tokens like 'مرجع القرار' should not be mutated or falsely split inside
         # \ufeae (isolated reh) followed by \ufe8e (final alef)
         # In visual order: 'القرار' backwards has \ufeae (isolated reh) at the boundary
-        # Test that separate_fused_presentation_forms handles logical and visual streams appropriately
+        # Test that separate_fused_presentation_forms handles logical and visual
+        # streams appropriately
         clean = separate_fused_presentation_forms("الحمد لله")
         assert "الحمد" in clean
 

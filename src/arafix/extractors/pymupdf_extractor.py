@@ -87,7 +87,7 @@ class PyMuPDFExtractor(Extractor):
         """Letter base that may carry tashkeel — not space, punct, or digits."""
         if not text:
             return False
-        return unicodedata.category(text[0]).startswith("L")
+        return text[0] != "\u0640" and unicodedata.category(text[0]).startswith("L")
 
     @staticmethod
     def _as_combining_marks(ch: str) -> str | None:

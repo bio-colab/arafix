@@ -385,7 +385,18 @@ def _normalize_argv(argv: list[str]) -> list[str]:
     i = 0
     while i < len(argv):
         arg = argv[i]
-        if arg in ("-e", "--extractor"):
+        if arg in (
+            "-e",
+            "--extractor",
+            "-o",
+            "--output",
+            "--layout",
+            "--reading-order",
+            "--format",
+            "-n",
+            "--pages",
+            "--truth",
+        ):
             i += 2
             continue
         if arg.startswith("-"):

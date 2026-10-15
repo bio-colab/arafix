@@ -185,13 +185,18 @@ class PageResult:
                     lvl = int(b.block.meta.get("heading_level", 1))
                     out.append((b.text.strip(), lvl))
         elif self.layout is not None:
-            from .pipeline import repair_text
+            all_lines = [ln for col in getattr(self.layout, "columns", []) for ln in col.lines]
+            rep_lines = [ln for ln in self.text.splitlines() if ln.strip()]
+            use_rep = len(all_lines) == len(rep_lines)
+            for idx, ln in enumerate(all_lines):
+                if getattr(ln, "is_heading", False):
+                    if use_rep:
+                        repaired = rep_lines[idx].strip()
+                    else:
+                        from .pipeline import repair_text
 
-            for col in getattr(self.layout, "columns", []):
-                for ln in col.lines:
-                    if getattr(ln, "is_heading", False):
                         repaired = repair_text(ln.text).text.strip()
-                        out.append((repaired, getattr(ln, "heading_level", 1) or 1))
+                    out.append((repaired, getattr(ln, "heading_level", 1) or 1))
         return out
 
     @property
@@ -238,10 +243,21 @@ class PageResult:
                 if b.block.role not in ("header", "footer")
             ]
             return "\n".join(p.strip() for p in parts if p.strip())
-        if self.layout is not None and getattr(self.layout, "columns", None):
-            col_texts = [c.text.strip() for c in self.layout.columns if c.text.strip()]
-            return "\n\n".join(col_texts)
-        return self.text
+        if self.layout is not None:
+            has_headers = bool(getattr(self.layout, "headers", None))
+            has_footers = bool(getattr(self.layout, "footers", None))
+            if not has_headers and not has_footers:
+                return self.text.strip()
+            all_lines = [ln for col in getattr(self.layout, "columns", []) for ln in col.lines]
+            rep_lines = [ln for ln in self.text.splitlines() if ln.strip()]
+            if len(all_lines) == len(rep_lines):
+                parts = [
+                    rep_lines[i].strip()
+                    for i, ln in enumerate(all_lines)
+                    if ln.role not in ("header", "footer")
+                ]
+                return "\n".join(p for p in parts if p)
+        return self.text.strip()
 
     @property
     def tables_rich(self) -> list[TableResult]:
@@ -271,15 +287,20 @@ class PageResult:
                 lvl = int(b.block.meta.get("heading_level", 0) or 0)
                 lines.append((b.text.strip(), b.block.role or "body", lvl))
         elif self.layout is not None:
+            all_lines = [ln for col in getattr(self.layout, "columns", []) for ln in col.lines]
+            rep_lines = [ln for ln in self.text.splitlines() if ln.strip()]
+            use_rep = len(all_lines) == len(rep_lines)
             from .pipeline import repair_text
 
-            for col in getattr(self.layout, "columns", []):
-                for ln in col.lines:
-                    if ln.role in ("header", "footer") and not include_headers_footers:
-                        continue
+            for idx, ln in enumerate(all_lines):
+                if ln.role in ("header", "footer") and not include_headers_footers:
+                    continue
+                if use_rep:
+                    rep = rep_lines[idx].strip()
+                else:
                     rep = repair_text(ln.text).text.strip()
-                    if rep:
-                        lines.append((rep, ln.role, ln.heading_level))
+                if rep:
+                    lines.append((rep, ln.role, ln.heading_level))
 
         p_buffer: list[str] = []
 

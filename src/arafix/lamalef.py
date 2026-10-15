@@ -52,14 +52,14 @@ __all__ = [
 
 
 _ALEF = "".join(sorted(ALEF_FORMS))
+_MARKS = r"[\u064B-\u0655\u0670]*"
+_STRIP_MARKS_RE = re.compile(r"[\u064B-\u0655\u0670]")
 
-#: الشاهد القاطع: ألفٌ، فألفٌ، فلام. الوسطى والأخيرة تتبادلان.
-#: نلتقط الألف الأولى في مجموعةٍ لنعيد بناء النصّ بها دون فقدها.
-_DECISIVE = re.compile(f"([{_ALEF}])([{_ALEF}])({LAM})")
+_DECISIVE = re.compile(rf"([{_ALEF}]{_MARKS})([{_ALEF}])({LAM})({_MARKS})")
 
-#: مرشّحٌ مُبهَم: ألفٌ فلامٌ يتلوها حرفٌ عربيّ — قد تكون «ال» أصيلة
+#: مرشّحٌ مُبهَم: ألفٌ فلامٌ وسط أو نهاية الكلمة — قد تكون «ال» أصيلة
 #: وقد تكون رباطاً منقلباً. لا نمسّها إلا بمعجم.
-_AMBIGUOUS = re.compile(f"(?<=[\u0600-\u06FF])([{_ALEF}])({LAM})(?=[\u0600-\u06FF])")
+_AMBIGUOUS = re.compile(rf"(?<=[\u0600-\u06FF])([{_ALEF}])({LAM})({_MARKS})")
 
 #: كلمة عربية: من همزة القطع حتى صدر القرآن (U+06D3) — يشمل الألف الوصلية
 #: (ٱ U+0671)، والألف الخنجرية (ٰ U+0670)، والحركات، والتطويل. كان النطاق
@@ -161,10 +161,12 @@ def repair_lam_alef_transposition(
     # --- القاطع: نكرّر حتى الاستقرار، فقد تتلاصق شواهد في كلمةٍ واحدة ---
     out = text
     for _ in range(8):  # سقفٌ يقي من دورةٍ لا تنتهي مهما شذّ المُدخَل
-        new = _DECISIVE.sub(lambda m: m.group(1) + m.group(3) + m.group(2), out)
-        if new == out:
+        new, n_sub = _DECISIVE.subn(
+            lambda m: m.group(1) + m.group(3) + m.group(2) + m.group(4), out
+        )
+        if n_sub == 0:
             break
-        report.fixed_decisive += 1
+        report.fixed_decisive += n_sub
         out = new
 
     # --- المُبهَم ---
@@ -219,14 +221,19 @@ def _apply_lexicon(text: str, vocab: set[str]) -> tuple[str, int, list[str]]:
     def repl(m: re.Match) -> str:
         nonlocal fixed
         word = m.group(0)
-        hits = [h.start() for h in _AMBIGUOUS.finditer(word)]
+        hits = list(_AMBIGUOUS.finditer(word))
         if not hits:
             return word
-        if word in vocab:
+        clean_word = _STRIP_MARKS_RE.sub("", word)
+        if clean_word in vocab or word in vocab:
             return word  # الكلمة صحيحة كما هي — لا تُمسّ («أفعالهم»)
-        for i in hits:
-            cand = _swap_at(word, i)
-            if cand in vocab:
+        for hit in hits:
+            alef_c = hit.group(1)
+            lam_c = hit.group(2)
+            trailing_marks = hit.group(3)
+            cand = word[: hit.start()] + lam_c + alef_c + trailing_marks + word[hit.end() :]
+            clean_cand = _STRIP_MARKS_RE.sub("", cand)
+            if clean_cand in vocab or cand in vocab:
                 fixed += 1
                 return cand
         left.append(word)

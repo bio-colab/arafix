@@ -77,6 +77,8 @@ _HOMOGLYPH_TO_CANON = {
     "\u06be": "\u0647",  # Heh Doachashmee → Heh
     "\u06c1": "\u0647",
     "\u06c2": "\u0647",
+    "\u06c0": "\u0629",  # Heh with Yeh above → Teh Marbuta (ۀ ← ة)
+    "\u06d5": "\u0647",  # Ae → Heh (ە ← ه)
     "\u06a9": "\u0643",  # Keheh → Kaf
     "\u06c3": "\u0629",
 }

@@ -194,56 +194,30 @@ _KEEP_SPACE_AFTER = frozenset(
     }
 )
 
-#: Particles that often glue to the next word in book PDFs; insert a space
-#: after them when missing. Longest first. Avoid short stems that begin
-#: ordinary words (لا/ما/قد/أن…). Evidence: thumb_red gold loop 3.
-_PARTICLE_SPACE_AFTER: tuple[str, ...] = (
-    "كذلك",
-    "لذلك",
-    "عندما",
-    "بينما",
-    "حيثما",
-    "بعدما",
-    "قبلما",
-    "وكذلك",
-    "كما",
-    "لذا",
-    "فقد",
-    "وقد",
-    "ولكن",
-    "لكن",
-    "ولو",
-    "حتى",
-    "على",
-    "إلى",
-    "الى",
-    "عند",
-    "بين",
-    "قبل",
-    "بعد",
-    "نحو",
-    "منذ",
-    "غير",
-    "سوى",
-    "هذا",
-    "هذه",
-    "ذلك",
-    "تلك",
-    "كان",
-    "قال",
-    "ثم",
-    "أو",
-    "او",
-    "في",
-    "من",
-    "عن",
-    "مع",
+_ENUM_NOUNS_RE = re.compile(
+    r"(?:المجموعة|مجموعة|الفئة|فئة|القسم|قسم|البند|بند|الفقرة|فقرة|المادة|مادة|الجدول|جدول|الشكل|شكل|الملحق|ملحق|النموذج|نموذج)\s+$"
 )
 
+_VALID_2_LETTER_WORDS: frozenset[str] = frozenset(
+    {
+        # Common prepositions, particles, pronouns, conjunctions
+        "في", "من", "عن", "لو", "كي", "أو", "او", "أم", "ام", "لا", "ما", "أن",
+        "ان", "إن", "لم", "لن", "قد", "بل", "هل", "هو", "هي", "كم", "هم", "هن",
+        "كل", "ثم", "مع", "مذ", "قط", "يا", "أي", "اي", "ذا", "ذي", "ذو", "بي",
+        "لي", "له", "به", "لك", "بك", "نا", "تا",
+        # Common 2-letter nouns and verbs (including geminate roots)
+        "تم", "حل", "حق", "رد", "سد", "سن", "ضخ", "طي", "فك", "غض", "شن", "قل",
+        "يد", "دم", "رب", "أب", "اب", "أخ", "اخ", "فم", "عد", "جد", "مد", "شد",
+        "مر", "سر", "بر", "حر", "ذر", "قر", "جر", "فر", "كر", "صل", "سل", "فل",
+        "مل", "عل", "عم", "قم", "سم", "ضم", "نم", "كن", "ظن", "جن", "تن", "بن",
+        "ذن", "بت", "حد", "ود", "صف", "قف", "ضع", "خذ", "دع",
+    }
+)
 
-#: Single letters that often end a real word before a space (do not glue
-#: ``صلَّى الله`` → ``صلَّىالله``).
-_NO_COLLAPSE_SINGLE = frozenset("اأإآةىوويف")
+_ARTICLE_3_PREFIXES = frozenset(
+    {"وال", "بال", "كال", "فال", "لل"}
+    | {f"ال{ch}" for ch in "بتثجحخدذرزسشصضطظعغفقكلمنهوي"}
+) - {"الله", "اللذ", "اللت", "اللا"}
 
 #: Combining marks treated as part of the neighbouring Arabic letter. Spans
 #: standard tashkeel (U+064B–U+0652), maddah/hamza marks (U+0653–U+0655, as in
@@ -304,23 +278,28 @@ def collapse_midword_spaces(text: str) -> str:
         if left in _KEEP_SPACE_AFTER or right in _KEEP_SPACE_AFTER:
             return m.group(0)
         # Single-letter Arabic prefixes/fragments (e.g. و حرية, ق واعد):
-        # In Arabic orthography, single-letter proclitics (و, ف) attach directly
-        # to the following word, and isolated consonants before stems of length >= 2
-        # are geometry split artifacts (ق واعد -> قواعد). Only keep the space if
-        # the following token is also a single letter (alphabet listing: أ ب ت ث).
-        if len(left) == 1 and len(right) <= 1:
-            return m.group(0)
-        # A two-letter standalone word followed by a normal-length word is
-        # overwhelmingly a real word boundary (نص سليم, أي إصلاح), not a
-        # geometry fragment. Keep it unless an explicit function-word rule
-        # above or an article-prefix rule below provides stronger evidence.
-        if len(left) == 2 and len(right) > 2:
-            return m.group(0)
+        if len(left) == 1:
+            if (
+                len(right) <= 1
+                or left in ("ة", "ى")
+                or bool(_ENUM_NOUNS_RE.search(m.string[: m.start()]))
+            ):
+                return m.group(0)
+        # 2-letter standalone words:
+        if len(left) == 2:
+            if left in ("ال", "لل"):
+                return left
+            if len(right) > 2:
+                return m.group(0)
+            if (left in _KEEP_SPACE_AFTER or left in _VALID_2_LETTER_WORDS) and (
+                right in _KEEP_SPACE_AFTER or right in _VALID_2_LETTER_WORDS
+            ):
+                return m.group(0)
         # Keep space before definite article ال…
         if _ARTICLE_PREFIX_RE.match(rest):
             return m.group(0)
-        # Article-like prefixes always glue (الع صور → العصور)
-        if left in ("الع", "الم", "وال", "بال", "كال", "فال", "لل"):
+        # Article-like prefixes always glue (الع صور → العصور, الد ستور → الدستور)
+        if left in _ARTICLE_3_PREFIXES:
             return left
         # 3-letter left: do NOT collapse if right is 2+ letters (e.g. ذهب به, كتب له, قلت له)
         # Only collapse if right is a genuine single-letter tail fragment (e.g. عاد ي -> عادي)
@@ -433,12 +412,12 @@ _NAME_ANCHOR_RE = re.compile(
     rf"({'|'.join(re.escape(p) for p in sorted(_NAME_ANCHOR_MAP, key=len, reverse=True))})"
 )
 _PUNCT_BEFORE_ARABIC_RE = re.compile(r"([.،؛:!?؟»])(?=[\u0621-\u064A])")
-_PUNCT_SPACE_BEFORE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}{_DIGIT_BASE})])[ ]+(?=[،؛:!?؟.,)])")
+_PUNCT_SPACE_BEFORE_RE = re.compile(rf"([{_ARABIC_BASE}{_DIGIT_BASE})]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)[ ]+(?=[،؛:!?؟.,)])")
 _OPEN_PUNCT_SPACE_AFTER_RE = re.compile(rf"([(«])[ ]+(?=[{_ARABIC_BASE}{_DIGIT_BASE}])")
-_CLOSE_PUNCT_SPACE_BEFORE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}{_DIGIT_BASE}])[ ]+([)»])")
+_CLOSE_PUNCT_SPACE_BEFORE_RE = re.compile(rf"([{_ARABIC_BASE}{_DIGIT_BASE}]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)[ ]+([)»])")
 _PUNCT_SPACE_AFTER_RE = re.compile(rf"([،؛:!?؟.,])[ ]*(?=[{_ARABIC_BASE}])")
-_ARABIC_OPEN_PUNCT_RE = re.compile(rf"(?<=[{_ARABIC_BASE}])(?=[(«])")
-_ARABIC_MULTI_SPACE_RE = re.compile(rf"(?<=[{_ARABIC_BASE}])[^\S\n\r]{{2,}}(?=[{_ARABIC_BASE}])")
+_ARABIC_OPEN_PUNCT_RE = re.compile(rf"([{_ARABIC_BASE}]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)(?=[(«])")
+_ARABIC_MULTI_SPACE_RE = re.compile(rf"([{_ARABIC_BASE}]|[{_ARABIC_BASE}]{_MARKS_CLASS}+)[^\S\n\r]{{2,}}(?=[{_ARABIC_BASE}])")
 
 
 def insert_particle_spaces(text: str) -> str:
@@ -472,7 +451,7 @@ def insert_particle_spaces(text: str) -> str:
     # aligned Latin text are valid inputs. Collapse only a run whose two
     # immediate non-space neighbours are Arabic letters, where it is a PDF
     # word-boundary artifact rather than user formatting.
-    return _ARABIC_MULTI_SPACE_RE.sub(" ", out)
+    return _ARABIC_MULTI_SPACE_RE.sub(r"\1 ", out)
 
 
 def normalize_arabic_punctuation_spacing(text: str) -> str:
@@ -484,10 +463,10 @@ def normalize_arabic_punctuation_spacing(text: str) -> str:
     """
     if not text:
         return text
-    out = _PUNCT_SPACE_BEFORE_RE.sub("", text)
+    out = _PUNCT_SPACE_BEFORE_RE.sub(r"\1", text)
     out = _OPEN_PUNCT_SPACE_AFTER_RE.sub(r"\1", out)
-    out = _CLOSE_PUNCT_SPACE_BEFORE_RE.sub(r"\1", out)
-    out = _ARABIC_OPEN_PUNCT_RE.sub(" ", out)
+    out = _CLOSE_PUNCT_SPACE_BEFORE_RE.sub(r"\1\2", out)
+    out = _ARABIC_OPEN_PUNCT_RE.sub(r"\1 ", out)
     return _PUNCT_SPACE_AFTER_RE.sub(r"\1 ", out)
 
 

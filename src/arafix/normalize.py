@@ -119,6 +119,8 @@ _PDF_HOMOGLYPH_TABLE = str.maketrans(
         "\u06be": "\u0647",  # HEH DOACHASHMEE → HEH
         "\u06c1": "\u0647",  # HEH GOAL → HEH
         "\u06c2": "\u0647",  # HEH GOAL WITH HAMZA → HEH
+        "\u06c0": "\u0629",  # HEH WITH YEH ABOVE → TEH MARBUTA (ۀ ← ة)
+        "\u06d5": "\u0647",  # AE → HEH (ە ← ه)
         "\u06a9": "\u0643",  # KEHEH → KAF
         "\u06c3": "\u0629",  # TEH MARBUTA GOAL → TEH MARBUTA
     }
@@ -185,6 +187,30 @@ _DUAL_JOINING_BASES = frozenset("بتثجحخسشصضطظعغفقكلمنهي")
 _PF_TA_MARBUTA = frozenset({"\ufe93", "\ufe94"})
 
 
+def _is_visual_pf_token(chars: list[str]) -> bool:
+    forms = [
+        PF_JOINING_FORM.get(c, JoiningForm.UNKNOWN)
+        for c in chars
+        if PF_JOINING_FORM.get(c, JoiningForm.UNKNOWN) is not JoiningForm.UNKNOWN
+        and unicodedata.category(PF_TO_BASE.get(c, c)[:1] or " ") != "Mn"
+    ]
+    if not forms:
+        return False
+    if forms[0] is JoiningForm.FINAL or forms[-1] is JoiningForm.INITIAL:
+        return True
+    fwd_ok = sum(
+        (a in (JoiningForm.INITIAL, JoiningForm.MEDIAL))
+        == (b in (JoiningForm.MEDIAL, JoiningForm.FINAL))
+        for a, b in zip(forms, forms[1:])
+    )
+    rev_ok = sum(
+        (a in (JoiningForm.MEDIAL, JoiningForm.FINAL))
+        == (b in (JoiningForm.INITIAL, JoiningForm.MEDIAL))
+        for a, b in zip(forms, forms[1:])
+    )
+    return rev_ok > fwd_ok
+
+
 def separate_fused_presentation_forms(text: str) -> str:
     """
     يفصل حدود الكلمات الملتصقة الناتجة عن أشكال العرض الختامية في ملفات PDF.
@@ -207,22 +233,7 @@ def separate_fused_presentation_forms(text: str) -> str:
 
         chars = list(token)
         n = len(chars)
-
-        # ابحث عن أول حرف عربي حقيقي في الكتلة متجاوزاً علامات الترقيم والأقواس
-        first_ar_char = next(
-            (c for c in chars if unicodedata.category(c).startswith("L")), None
-        )
-
-        if first_ar_char is not None:
-            first_form = PF_JOINING_FORM.get(first_ar_char, JoiningForm.UNKNOWN)
-            # إن بدأت الكتلة بشكل ختامي أو تاء مربوطة فهي مقلوبة بصرياً؛ لا نلمسها
-            if (
-                first_form == JoiningForm.FINAL
-                or first_ar_char in _PF_TA_MARBUTA
-                or first_ar_char == "ة"
-            ):
-                out_tokens.append(token)
-                continue
+        is_visual = _is_visual_pf_token(chars)
 
         w_out: list[str] = []
         i = 0
@@ -232,12 +243,15 @@ def separate_fused_presentation_forms(text: str) -> str:
             base_c = PF_TO_BASE.get(c, c)
             form = PF_JOINING_FORM.get(c, JoiningForm.UNKNOWN)
 
-            is_final_boundary = (
-                c in _PF_TA_MARBUTA
-                or (form == JoiningForm.FINAL and base_c in _DUAL_JOINING_BASES)
-            )
+            if is_visual:
+                is_boundary = form in (JoiningForm.INITIAL, JoiningForm.ISOLATED)
+            else:
+                is_boundary = (
+                    c in _PF_TA_MARBUTA
+                    or (form == JoiningForm.FINAL and base_c in _DUAL_JOINING_BASES)
+                )
 
-            if is_final_boundary and i + 1 < n:
+            if is_boundary and i + 1 < n:
                 j = i + 1
                 while j < n and unicodedata.category(chars[j]) == "Mn":
                     w_out.append(chars[j])
@@ -246,13 +260,21 @@ def separate_fused_presentation_forms(text: str) -> str:
                     next_c = chars[j]
                     next_base = PF_TO_BASE.get(next_c, next_c)
                     next_form = PF_JOINING_FORM.get(next_c, JoiningForm.UNKNOWN)
-                    # في أشكال العرض، لا تبدأ كلمة تالية بغير شكل ابتدائي أو مفرد:
-                    if (
-                        next_form in (JoiningForm.INITIAL, JoiningForm.ISOLATED)
-                        and next_base
-                        and unicodedata.category(next_base[0]).startswith("L")
-                        and next_c not in ' \t\r\n،.؛:!?()[]"«»'
-                    ):
+
+                    if is_visual:
+                        valid_next = (
+                            next_c in _PF_TA_MARBUTA
+                            or (next_form == JoiningForm.FINAL and next_base in _DUAL_JOINING_BASES)
+                        )
+                    else:
+                        valid_next = (
+                            next_form in (JoiningForm.INITIAL, JoiningForm.ISOLATED)
+                            and next_base
+                            and unicodedata.category(next_base[0]).startswith("L")
+                            and next_c not in ' \t\r\n،.؛:!?()[]"«»'
+                        )
+
+                    if valid_next:
                         w_out.append(" ")
                 i = j - 1
             i += 1

@@ -683,10 +683,11 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
     #
     # ولا يُغيّر هذا النصَّ ولا يُطبّعه: `diagnose` لا يكتب شيئاً أبداً،
     # وإنما يفتح عينه على طبقتين معاً كما يفعل الأنبوب.
-    from .normalize import fold_simple_forms
+    from .normalize import fold_pdf_homoglyphs, fold_simple_forms
 
+    inspected_text = fold_pdf_homoglyphs(fold_simple_forms(text))
     order_score, order_ev = detect_visual_order(
-        fold_simple_forms(text), shaped_source=text
+        inspected_text, shaped_source=text
     )
     # حارسُ كفاية العيّنة يحرس الإحصاء وحده. أما هويّة الوصل فبرهانٌ،
     # والبرهانُ لا يحتاج عيّنةً: خرقٌ واحد في «توقف!» يكفي كخرقٍ في صفحة.
@@ -696,7 +697,7 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
         (e for e in order_ev if e.name == "joining_forms" and e.value > 0), None
     )
     if not proof and order_score >= 0.8 and arabic_chars >= 3:
-        clean_toks = [_clean_final_letters_token(t) for t in _ARABIC_TOKEN.findall(fold_simple_forms(text))]
+        clean_toks = [_clean_final_letters_token(t) for t in _ARABIC_TOKEN.findall(inspected_text)]
         has_impossible_initial = any(
             len(t) >= 2 and t[0] in _NON_INITIAL_ARABIC_LETTERS
             for t in clean_toks

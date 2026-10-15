@@ -308,6 +308,7 @@ def _rescue_mixed_direction_lines(
     text: str,
     shaped_source: str,
     th: dict[str, float],
+    rcfg: ReorderConfig | None = None,
 ) -> tuple[str, int, float, list[EvidenceItem]] | None:
     """
     إنقاذ الانعكاس الجزئي — يعالج ما يغارقه التصويت الصفحي.
@@ -350,7 +351,8 @@ def _rescue_mixed_direction_lines(
         if not proof and arabic_chars < th["min_arabic_chars"]:
             continue
         before_line = line
-        out[i] = fix_order(line)
+        target_line = fold_simple_forms(line) if any(is_presentation_form(c) for c in line) else line
+        out[i] = fix_order(target_line, rcfg)
         if out[i] == before_line:
             continue  # لا شيء تغيّر فعلاً — لا نشاهد إنقاذاً وهمياً
         fixed_count += 1
@@ -381,7 +383,8 @@ def _rescue_mixed_direction_lines(
             if not has_strong_signal:
                 continue
             before_line = line
-            out[i] = fix_order(line)
+            target_line = fold_simple_forms(line) if any(is_presentation_form(c) for c in line) else line
+            out[i] = fix_order(target_line, rcfg)
             if out[i] == before_line:
                 continue
             fixed_count += 1
@@ -472,7 +475,7 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     dg: Diagnosis = diagnose(current, th)
     stages.append(Stage.DIAGNOSE)
 
-    presentation_count = sum(0xFE70 <= ord(char) <= 0xFE7F for char in current)
+    presentation_count = sum(1 for char in current if is_presentation_form(char))
     if audit.enabled and presentation_count and not dg.has(Defect.PRESENTATION_FORMS):
         audit.abstain(
             stage=Stage.NORMALIZE.value,
@@ -526,6 +529,8 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
     #
     # فتُفتَح عينُ الدرجة ٢ ولا تُسلَّم سكيناً.
     shaped_source = current  # الطبقة الرسومية — شاهدةُ الدرجة ٢، تُحفظ قبل محوها
+    if cfg.enable_normalize and cfg.normalize.fold_pdf_homoglyphs:
+        current = fold_pdf_homoglyphs(current)
     needs_norm = dg.has(Defect.PRESENTATION_FORMS) or dg.has(Defect.TATWEEL_NOISE)
     if cfg.enable_normalize and needs_norm:
         before = current
@@ -580,7 +585,8 @@ def repair_text(text: str, config: PipelineConfig | None = None) -> RepairResult
             # قد تخفي سطراً معكوساً يغارقه التصويت الصفحي.
             rescued: tuple[str, int, float, list[EvidenceItem]] | None = None
             if cfg.rescue_mixed_lines and "\n" in current:
-                rescued = _rescue_mixed_direction_lines(current, shaped_source, th)
+                rcfg = replace(cfg.reorder, forward_flank_marks=cfg.forward_flank_marks)
+                rescued = _rescue_mixed_direction_lines(current, shaped_source, th, rcfg=rcfg)
             if rescued is not None:
                 before = current
                 current, n_rescued, rescue_conf, rescue_evidence = rescued

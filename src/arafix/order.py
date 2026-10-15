@@ -239,23 +239,55 @@ _PAGE_RANGE_P = re.compile(
     r"\b(p{1,2}\s*\.?\s*)(\d+)\s*([-–—])\s*(\d+)",
     re.IGNORECASE,
 )
-_INVERTED_PARENS = re.compile(r"\)([^()\n]{1,48})\(")
-_LEADING_DOT_YEAR = re.compile(r"(?<![\d.])\.(\d{4})\b")
+_LEADING_DOT_YEAR = re.compile(r"(?<![\d.])\.(\d{4})\.?\b")
 _LEADING_DOT_AFTER_AR = re.compile(
     r"(?<=[\s\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF])\.(\d{2,})\b"
 )
-_DOUBLE_SENTENCE_DOTS = re.compile(r"\.{2,}")
+_DOUBLE_SENTENCE_DOTS = re.compile(r"(?<!\.)\.\.(?!\.)")
 
 #: Arabic shadda — must precede vowel marks on the same base (UAX #9 / CLDR).
 _SHADDA = "\u0651"
-_ARABIC_VOWEL_MARKS = frozenset(
-    "\u064b\u064c\u064d\u064e\u064f\u0650\u0652\u0653\u0657\u0658\u0670"
-)
 
 
 def _is_markable_base(ch: str) -> bool:
     """True if *ch* is a letter that may carry combining marks."""
-    return bool(ch) and unicodedata.category(ch).startswith("L")
+    return bool(ch) and ch != "\u0640" and unicodedata.category(ch).startswith("L")
+
+
+def _fix_unbalanced_pairs(
+    text: str,
+    open_ch: str,
+    close_ch: str,
+    predicate: Any = None,
+    max_len: int = 1000,
+) -> str:
+    if open_ch not in text or close_ch not in text:
+        return text
+    chars = list(text)
+    n = len(chars)
+    i = 0
+    while i < n:
+        if chars[i] == open_ch:
+            # Properly opened pair: skip until closed
+            j = i + 1
+            while j < n and chars[j] not in (open_ch, close_ch, "\n"):
+                j += 1
+            if j < n and chars[j] == close_ch:
+                i = j + 1
+                continue
+        elif chars[i] == close_ch:
+            # Orphan close at depth 0: look for an orphan open following it
+            j = i + 1
+            while j < n and chars[j] not in (open_ch, close_ch, "\n"):
+                j += 1
+            if j < n and chars[j] == open_ch and (j - i - 1) <= max_len:
+                inner = "".join(chars[i + 1 : j])
+                if predicate is None or predicate(inner):
+                    chars[i], chars[j] = open_ch, close_ch
+                    i = j + 1
+                    continue
+        i += 1
+    return "".join(chars)
 
 
 #: حروفٌ صغيرةٌ علوية في الرسم العثماني (ۥ ۦ): فئتها Lm «حرفٌ مُعدِّل»
@@ -564,14 +596,7 @@ def repair_inverted_ltr_parens(text: str) -> str:
     """
     if ")" not in text or "(" not in text:
         return text
-
-    def repl(m: re.Match[str]) -> str:
-        inner = m.group(1)
-        if _looks_ltr_heavy(inner):
-            return f"({inner})"
-        return m.group(0)
-
-    return _INVERTED_PARENS.sub(repl, text)
+    return _fix_unbalanced_pairs(text, "(", ")", predicate=_looks_ltr_heavy, max_len=48)
 
 
 def _swap_range_if_descending(a: str, b: str) -> tuple[str, str]:
@@ -623,7 +648,6 @@ def relocate_sentence_punctuation(text: str) -> str:
         return text
     out = _LEADING_DOT_YEAR.sub(r"\1.", text)
     out = _LEADING_DOT_AFTER_AR.sub(r"\1.", out)
-    # نقاط جملة مكررة شاردة.
     out = _DOUBLE_SENTENCE_DOTS.sub(".", out)
     return out
 
@@ -662,7 +686,7 @@ def reverse_visual_line(line: str, config: ReorderConfig | None = None) -> str:
     if cfg.mirror_brackets:
         out = "".join(_mirror(c) for c in out)
         # Inverted quotation marks from visual reversal: »نص« -> «نص»
-        out = re.sub(r"»([^«»\n]+)«", r"«\1»", out)
+        out = _fix_unbalanced_pairs(out, "«", "»")
         # Inverted Arabic item enumeration markers from visual reversal: -١ -> ١-, : ٢ -> ٢:
         out = re.sub(
             r"(^|[\s(«])-([٠-٩]+|[1-9])(?=[\s\u0621-\u064A])",
@@ -693,35 +717,3 @@ def fix_order(text: str, config: ReorderConfig | None = None) -> str:
     if not cfg.per_line:
         return reverse_visual_line(text, cfg)
     return "\n".join(reverse_visual_line(ln, cfg) for ln in text.split("\n"))
-
-
-def fix_order_result(text: str, config: ReorderConfig | None = None) -> RepairResult:
-    """
-    غلافٌ يشخّص أوّلاً ثم يصلح **إن لزم فقط**.
-
-    قاعدة صريحة: لا يعكس هذه الدالة نصاً سليماً. الدرجة ٢ لا تُطبَّق
-    إلا بشاهدٍ من الدرجة ٠، وإلا خرّبنا بأيدينا ما كان صحيحاً.
-    """
-    from .diagnose import DEFAULT_THRESHOLDS, detect_visual_order, diagnose
-
-    dg = diagnose(text)
-    score, _ = detect_visual_order(text)
-
-    if score <= DEFAULT_THRESHOLDS["visual_order"]:
-        return RepairResult(
-            text=text,
-            original=text,
-            diagnosis=dg,
-            stages_applied=[],
-            confidence=1.0,
-            notes=[f"لم يُعكس: درجة الاتجاه {score:.2f} دون العتبة"],
-        )
-
-    return RepairResult(
-        text=fix_order(text, config),
-        original=text,
-        diagnosis=dg,
-        stages_applied=[Stage.REORDER],
-        confidence=round(min(1.0, abs(score)), 3),
-        notes=[f"عُكس بدرجة اتجاه {score:.2f}"],
-    )

@@ -204,7 +204,9 @@ def _make_paragraph_chunks(
         if buffer:
             previous = buffer[-1][0]
             vertical_gap = line.spatial_bbox[1] - previous.spatial_bbox[3]
-            if vertical_gap > max(page_size * 1.8, 18.0):
+            col_changed = getattr(line, "column_index", None) != getattr(previous, "column_index", None)
+            is_jump_up = vertical_gap < -page_size
+            if col_changed or is_jump_up or vertical_gap > max(page_size * 1.8, 18.0):
                 flush()
         candidate = "\n".join([*(value for _, value in buffer), text]).strip()
         if buffer and len(candidate) > max_chars:

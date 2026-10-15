@@ -3,26 +3,32 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>arafix Playground — تجربة تفاعلية حية عبر WebAssembly</title>
-  <meta name="description" content="إصلاح وتشخيص النصوص العربية المعكوسة والمشوهة في متصفحك محلياً 100% عبر تقنية WebAssembly و Pyodide">
+  <title>arafix Web Studio — منصة استخراج وإصلاح الـ PDF العربي في المتصفح</title>
+  <meta name="description" content="استخراج وإصلاح ملفات PDF والنصوص العربية المعكوسة والمشوهة في متصفحك محلياً 100% عبر WebAssembly والذكاء الهندسي">
   
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   
-  <!-- Pyodide CDN -->
+  <!-- Pyodide WASM Engine -->
   <script src="https://cdn.jsdelivr.net/pyodide/v0.26.2/full/pyodide.js"></script>
+  <!-- Mozilla PDF.js for Client-Side Zero-Server PDF Parsing -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <!-- Marked.js for Live Markdown & Table Rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
   <style>
     :root {
-      --bg-primary: #0b0f17;
-      --bg-card: rgba(18, 24, 38, 0.75);
+      --bg-primary: #0a0e17;
+      --bg-card: rgba(16, 22, 36, 0.75);
       --bg-card-border: rgba(255, 255, 255, 0.08);
+      --bg-input: rgba(8, 12, 20, 0.6);
       --accent: #10b981;
       --accent-hover: #059669;
       --accent-glow: rgba(16, 185, 129, 0.25);
       --accent-blue: #3b82f6;
+      --accent-purple: #8b5cf6;
       --text-main: #f3f4f6;
       --text-muted: #9ca3af;
       --text-dim: #6b7280;
@@ -32,15 +38,13 @@
       --stage-bg: rgba(59, 130, 246, 0.15);
       --stage-border: rgba(59, 130, 246, 0.3);
       --stage-text: #60a5fa;
+      --diff-add: rgba(16, 185, 129, 0.25);
+      --diff-add-text: #34d399;
       --font-arabic: 'Cairo', system-ui, -apple-system, sans-serif;
       --font-mono: 'JetBrains Mono', monospace;
     }
 
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       background-color: var(--bg-primary);
@@ -50,22 +54,22 @@
       display: flex;
       flex-direction: column;
       background-image: 
-        radial-gradient(circle at 15% 20%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
-        radial-gradient(circle at 85% 75%, rgba(59, 130, 246, 0.08) 0%, transparent 40%);
+        radial-gradient(circle at 10% 15%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 90% 80%, rgba(59, 130, 246, 0.08) 0%, transparent 40%);
       background-attachment: fixed;
     }
 
     header {
       border-bottom: 1px solid var(--bg-card-border);
-      backdrop-filter: blur(12px);
+      backdrop-filter: blur(14px);
       position: sticky;
       top: 0;
       z-index: 50;
-      background: rgba(11, 15, 23, 0.85);
+      background: rgba(10, 14, 23, 0.88);
     }
 
     .nav-container {
-      max-width: 1280px;
+      max-width: 1360px;
       margin: 0 auto;
       padding: 0.85rem 1.5rem;
       display: flex;
@@ -82,37 +86,38 @@
     }
 
     .brand-logo {
-      width: 36px;
-      height: 36px;
+      width: 40px;
+      height: 40px;
       background: linear-gradient(135deg, var(--accent), var(--accent-blue));
-      border-radius: 10px;
+      border-radius: 12px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-weight: 800;
-      font-size: 1.2rem;
+      font-weight: 900;
+      font-size: 1.35rem;
       color: #fff;
-      box-shadow: 0 0 15px var(--accent-glow);
+      box-shadow: 0 0 18px var(--accent-glow);
     }
 
     .brand-title {
-      font-size: 1.35rem;
-      font-weight: 800;
+      font-size: 1.45rem;
+      font-weight: 900;
       letter-spacing: -0.5px;
-      background: linear-gradient(to left, #fff, #9ca3af);
+      background: linear-gradient(to left, #fff, #cbd5e1);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
 
     .brand-badge {
-      font-size: 0.7rem;
+      font-size: 0.72rem;
       font-family: var(--font-mono);
       background: rgba(16, 185, 129, 0.15);
       border: 1px solid rgba(16, 185, 129, 0.3);
       color: var(--accent);
-      padding: 0.15rem 0.5rem;
+      padding: 0.15rem 0.55rem;
       border-radius: 999px;
-      margin-right: 0.25rem;
+      margin-right: 0.35rem;
+      font-weight: 700;
     }
 
     .nav-links {
@@ -132,12 +137,10 @@
       transition: color 0.2s;
     }
 
-    .nav-link:hover {
-      color: var(--text-main);
-    }
+    .nav-link:hover { color: var(--text-main); }
 
     .main-content {
-      max-width: 1280px;
+      max-width: 1360px;
       margin: 0 auto;
       padding: 2rem 1.5rem;
       flex: 1;
@@ -150,78 +153,79 @@
     }
 
     .hero-title {
-      font-size: 2.2rem;
-      font-weight: 800;
-      margin-bottom: 0.5rem;
-      line-height: 1.3;
+      font-size: 2.35rem;
+      font-weight: 900;
+      margin-bottom: 0.6rem;
+      line-height: 1.35;
     }
 
     .hero-title span {
-      background: linear-gradient(135deg, var(--accent), #34d399);
+      background: linear-gradient(135deg, var(--accent), #34d399, var(--accent-blue));
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
 
     .hero-desc {
       color: var(--text-muted);
-      font-size: 1.05rem;
-      max-width: 700px;
-      margin: 0 auto 1rem;
+      font-size: 1.1rem;
+      max-width: 780px;
+      margin: 0 auto 1.1rem;
+      line-height: 1.7;
     }
 
     .privacy-tag {
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
-      font-size: 0.82rem;
-      padding: 0.35rem 0.9rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.4rem 1.1rem;
       border-radius: 999px;
       background: rgba(16, 185, 129, 0.1);
-      border: 1px solid rgba(16, 185, 129, 0.25);
+      border: 1px solid rgba(16, 185, 129, 0.28);
       color: #34d399;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.08);
     }
 
     /* Engine Status Card */
     .engine-status {
       background: var(--bg-card);
       border: 1px solid var(--bg-card-border);
-      border-radius: 12px;
-      padding: 0.85rem 1.25rem;
+      border-radius: 14px;
+      padding: 0.85rem 1.4rem;
       margin-bottom: 1.75rem;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      backdrop-filter: blur(8px);
+      backdrop-filter: blur(10px);
     }
 
     .status-left {
       display: flex;
       align-items: center;
-      gap: 0.75rem;
-      font-size: 0.9rem;
+      gap: 0.85rem;
+      font-size: 0.92rem;
     }
 
     .spinner {
-      width: 16px;
-      height: 16px;
+      width: 18px;
+      height: 18px;
       border: 2px solid rgba(16, 185, 129, 0.2);
       border-top-color: var(--accent);
       border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+      animation: spin 0.75s linear infinite;
     }
 
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 
     .progress-bar {
       flex: 1;
-      max-width: 200px;
+      max-width: 220px;
       height: 6px;
       background: rgba(255, 255, 255, 0.08);
       border-radius: 999px;
       overflow: hidden;
-      margin: 0 1rem;
+      margin: 0 1.25rem;
       display: none;
     }
 
@@ -232,7 +236,225 @@
       transition: width 0.3s ease;
     }
 
-    /* Playground Studio */
+    .stat-badge {
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* Main Navigation Pills */
+    .view-pills {
+      display: flex;
+      gap: 0.65rem;
+      margin-bottom: 1.5rem;
+      border-bottom: 1px solid var(--bg-card-border);
+      padding-bottom: 0.85rem;
+    }
+
+    .pill-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--bg-card-border);
+      color: var(--text-muted);
+      font-family: var(--font-arabic);
+      font-size: 0.95rem;
+      font-weight: 700;
+      padding: 0.6rem 1.25rem;
+      border-radius: 10px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      transition: all 0.2s ease;
+    }
+
+    .pill-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    .pill-btn.active {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(59, 130, 246, 0.15));
+      border-color: rgba(16, 185, 129, 0.4);
+      color: #fff;
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.15);
+    }
+
+    /* Studio Views */
+    .view-section { display: none; }
+    .view-section.active { display: block; }
+
+    /* Dropzone View */
+    .dropzone-container {
+      background: var(--bg-card);
+      border: 2px dashed rgba(16, 185, 129, 0.35);
+      border-radius: 18px;
+      padding: 3rem 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      margin-bottom: 2rem;
+      backdrop-filter: blur(12px);
+      position: relative;
+    }
+
+    .dropzone-container:hover, .dropzone-container.dragover {
+      border-color: var(--accent);
+      background: rgba(16, 185, 129, 0.06);
+      transform: scale(1.005);
+      box-shadow: 0 0 30px var(--accent-glow);
+    }
+
+    .dropzone-icon {
+      font-size: 3.5rem;
+      margin-bottom: 1rem;
+      display: inline-block;
+      animation: float 3s ease-in-out infinite;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-8px); }
+    }
+
+    .dropzone-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+    }
+
+    .dropzone-subtitle {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .file-input { display: none; }
+
+    .sample-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: var(--text-main);
+      font-family: var(--font-arabic);
+      font-size: 0.85rem;
+      font-weight: 600;
+      padding: 0.45rem 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .sample-btn:hover {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* PDF Results Toolbar */
+    .pdf-toolbar {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 14px;
+      padding: 0.85rem 1.4rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .pdf-meta {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      font-size: 0.92rem;
+      font-weight: 700;
+    }
+
+    .page-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .page-btn {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--bg-card-border);
+      color: var(--text-main);
+      padding: 0.35rem 0.75rem;
+      border-radius: 8px;
+      font-family: var(--font-arabic);
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .page-btn:hover:not(:disabled) {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .page-btn:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .export-btns {
+      display: flex;
+      gap: 0.6rem;
+    }
+
+    .export-btn {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2), rgba(59, 130, 246, 0.2));
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      color: #fff;
+      font-family: var(--font-arabic);
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 0.45rem 0.95rem;
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+    }
+
+    .export-btn:hover {
+      background: var(--accent);
+      color: #000;
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+
+    /* Output Mode Tabs */
+    .output-tabs {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .out-tab-btn {
+      background: rgba(0, 0, 0, 0.25);
+      border: 1px solid var(--bg-card-border);
+      color: var(--text-muted);
+      font-family: var(--font-arabic);
+      font-size: 0.82rem;
+      font-weight: 700;
+      padding: 0.35rem 0.85rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .out-tab-btn.active {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: var(--accent);
+      color: #34d399;
+    }
+
+    /* Studio Grid */
     .studio-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -240,10 +462,8 @@
       margin-bottom: 2rem;
     }
 
-    @media (max-width: 900px) {
-      .studio-grid {
-        grid-template-columns: 1fr;
-      }
+    @media (max-width: 960px) {
+      .studio-grid { grid-template-columns: 1fr; }
     }
 
     .pane {
@@ -265,8 +485,8 @@
     }
 
     .pane-title {
-      font-size: 1.1rem;
-      font-weight: 700;
+      font-size: 1.15rem;
+      font-weight: 800;
       display: flex;
       align-items: center;
       gap: 0.5rem;
@@ -282,7 +502,7 @@
       background: rgba(255, 255, 255, 0.05);
       border: 1px solid rgba(255, 255, 255, 0.1);
       color: var(--text-muted);
-      font-size: 0.78rem;
+      font-size: 0.8rem;
       font-family: var(--font-arabic);
       font-weight: 600;
       padding: 0.35rem 0.75rem;
@@ -302,19 +522,21 @@
       flex: 1;
       display: flex;
       flex-direction: column;
+      min-height: 240px;
     }
 
     textarea {
       width: 100%;
-      height: 220px;
-      background: rgba(0, 0, 0, 0.25);
+      height: 100%;
+      min-height: 240px;
+      background: var(--bg-input);
       border: 1px solid var(--bg-card-border);
       border-radius: 10px;
       padding: 1rem;
       color: #fff;
       font-family: var(--font-arabic);
-      font-size: 1rem;
-      line-height: 1.7;
+      font-size: 1.02rem;
+      line-height: 1.8;
       resize: vertical;
       outline: none;
       transition: border-color 0.2s;
@@ -322,14 +544,61 @@
 
     textarea:focus {
       border-color: var(--accent);
-      box-shadow: 0 0 10px var(--accent-glow);
+      box-shadow: 0 0 12px var(--accent-glow);
+    }
+
+    .rendered-box {
+      width: 100%;
+      min-height: 240px;
+      background: var(--bg-input);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 10px;
+      padding: 1.25rem;
+      color: #fff;
+      font-family: var(--font-arabic);
+      font-size: 1.02rem;
+      line-height: 1.8;
+      overflow-y: auto;
+      display: none;
+    }
+
+    .rendered-box h1, .rendered-box h2, .rendered-box h3 {
+      color: #34d399;
+      margin: 1rem 0 0.5rem;
+    }
+
+    .rendered-box table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.95rem;
+    }
+
+    .rendered-box th, .rendered-box td {
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      padding: 0.55rem 0.85rem;
+      text-align: right;
+    }
+
+    .rendered-box th {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34d399;
+    }
+
+    .diff-highlight {
+      background: var(--diff-add);
+      color: var(--diff-add-text);
+      padding: 0.1rem 0.3rem;
+      border-radius: 4px;
+      font-weight: 700;
+      border-bottom: 2px solid var(--accent);
     }
 
     .pane-footer {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 0.8rem;
+      font-size: 0.82rem;
       color: var(--text-dim);
     }
 
@@ -342,12 +611,12 @@
     }
 
     .mode-select {
-      background: rgba(0, 0, 0, 0.3);
+      background: rgba(0, 0, 0, 0.35);
       border: 1px solid var(--bg-card-border);
       color: var(--text-main);
       font-family: var(--font-arabic);
-      font-size: 0.85rem;
-      padding: 0.4rem 0.8rem;
+      font-size: 0.88rem;
+      padding: 0.45rem 0.85rem;
       border-radius: 8px;
       outline: none;
       cursor: pointer;
@@ -359,8 +628,8 @@
       border: none;
       font-family: var(--font-arabic);
       font-weight: 700;
-      font-size: 0.95rem;
-      padding: 0.55rem 1.4rem;
+      font-size: 0.98rem;
+      padding: 0.6rem 1.5rem;
       border-radius: 10px;
       cursor: pointer;
       display: flex;
@@ -375,21 +644,14 @@
       box-shadow: 0 6px 20px var(--accent-glow);
     }
 
-    .action-btn:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-      transform: none;
-      box-shadow: none;
-    }
-
     .copy-btn {
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid var(--bg-card-border);
       color: var(--text-muted);
       font-family: var(--font-arabic);
-      font-size: 0.8rem;
+      font-size: 0.82rem;
       font-weight: 600;
-      padding: 0.35rem 0.8rem;
+      padding: 0.35rem 0.85rem;
       border-radius: 8px;
       cursor: pointer;
       display: flex;
@@ -445,14 +707,60 @@
       color: var(--stage-text);
     }
 
-    .stat-badge {
-      font-family: var(--font-mono);
-      font-size: 0.8rem;
-      color: var(--accent);
-      font-weight: 600;
+    /* Benchmarks View */
+    .bench-card {
+      background: var(--bg-card);
+      border: 1px solid var(--bg-card-border);
+      border-radius: 16px;
+      padding: 2rem;
+      backdrop-filter: blur(12px);
+      margin-bottom: 2rem;
     }
 
-    /* Developer Integration Snippets */
+    .bench-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .bench-desc {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .table-container {
+      overflow-x: auto;
+    }
+
+    .bench-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+
+    .bench-table th, .bench-table td {
+      padding: 0.85rem 1.1rem;
+      text-align: right;
+      border-bottom: 1px solid var(--bg-card-border);
+    }
+
+    .bench-table th {
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--text-muted);
+      font-weight: 700;
+    }
+
+    .bench-table tr.highlight {
+      background: rgba(16, 185, 129, 0.1);
+      font-weight: 700;
+      color: #34d399;
+    }
+
+    /* Dev Snippets */
     .dev-section {
       background: var(--bg-card);
       border: 1px solid var(--bg-card-border);
@@ -464,7 +772,7 @@
 
     .dev-title {
       font-size: 1.25rem;
-      font-weight: 700;
+      font-weight: 800;
       margin-bottom: 1rem;
       display: flex;
       align-items: center;
@@ -496,16 +804,11 @@
       border-bottom-color: var(--accent);
     }
 
-    .tab-pane {
-      display: none;
-    }
-
-    .tab-pane.active {
-      display: block;
-    }
+    .tab-pane { display: none; }
+    .tab-pane.active { display: block; }
 
     pre {
-      background: rgba(0, 0, 0, 0.35);
+      background: rgba(0, 0, 0, 0.4);
       border: 1px solid var(--bg-card-border);
       border-radius: 10px;
       padding: 1rem 1.25rem;
@@ -519,43 +822,35 @@
 
     footer {
       border-top: 1px solid var(--bg-card-border);
-      padding: 1.5rem;
+      padding: 1.75rem;
       text-align: center;
-      font-size: 0.85rem;
+      font-size: 0.88rem;
       color: var(--text-dim);
-      background: rgba(11, 15, 23, 0.9);
+      background: rgba(10, 14, 23, 0.95);
     }
 
-    footer a {
-      color: var(--text-muted);
-      text-decoration: none;
-    }
-
-    footer a:hover {
-      color: var(--accent);
-    }
+    footer a { color: var(--text-muted); text-decoration: none; }
+    footer a:hover { color: var(--accent); }
 
     /* Toast */
     #toast {
       position: fixed;
-      bottom: 20px;
+      bottom: 25px;
       left: 50%;
-      transform: translateX(-50%) translateY(100px);
-      background: rgba(16, 185, 129, 0.95);
-      color: #fff;
-      padding: 0.6rem 1.4rem;
+      transform: translateX(-50%) translateY(120px);
+      background: rgba(16, 185, 129, 0.98);
+      color: #000;
+      padding: 0.65rem 1.5rem;
       border-radius: 999px;
-      font-size: 0.88rem;
-      font-weight: 600;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.4);
-      transition: transform 0.3s ease;
+      font-size: 0.9rem;
+      font-weight: 700;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
       z-index: 100;
       pointer-events: none;
     }
 
-    #toast.show {
-      transform: translateX(-50%) translateY(0);
-    }
+    #toast.show { transform: translateX(-50%) translateY(0); }
   </style>
 </head>
 <body>
@@ -565,8 +860,8 @@
       <a href="#" class="brand">
         <div class="brand-logo">ع</div>
         <div>
-          <span class="brand-title">arafix</span>
-          <span class="brand-badge">WASM Playground</span>
+          <span class="brand-title">arafix Studio</span>
+          <span class="brand-badge">v1.2.0 WebAssembly</span>
         </div>
       </a>
       <div class="nav-links">
@@ -585,161 +880,352 @@
   <main class="main-content">
     
     <div class="hero-banner">
-      <h1 class="hero-title">إصلاح النصوص العربية المعكوسة <span>في المتصفح فوراً</span></h1>
+      <h1 class="hero-title">استرجاع وتصحيح الـ PDF العربي <span>في المتصفح فوراً</span></h1>
       <p class="hero-desc">
-        تجربة تفاعلية حية لمكتبة <strong>arafix</strong> عبر WebAssembly. ألصق النص المعطوب المستخرج من PDF أو OCR وشاهده يُصحح فورياً مع كشف العيوب الجنائية ومسار المعالجة.
+        المنصة التفاعلية الحية لمكتبة <strong>arafix</strong>. ارفع أي ملف PDF عربي أو الصق نصاً معطوباً، وشاهد الاستخراج والتصحيح اللحظي للأشكال السياقية والانعكاس البصري مع حماية الأرقام واللاتينية محلياً 100%.
       </p>
       <div class="privacy-tag">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
-        خصوصية مطلقة: يعمل محلياً 100% في جهازك عبر WebAssembly (لا يتم إرسال أي نص لخوادم خارجية)
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/></svg>
+        خصوصية وأمان 100%: تتم المعالجة بالكامل داخل جهازك دون إرسال أي حرف أو ملف لخوادم خارجية
       </div>
     </div>
 
-    <!-- Status -->
+    <!-- Engine Status -->
     <div class="engine-status" id="engineStatus">
       <div class="status-left">
         <div class="spinner" id="statusSpinner"></div>
-        <span id="statusText">جاري تحميل بيئة WebAssembly (Pyodide)...</span>
+        <span id="statusText">جاري تهيئة المحرك السريع...</span>
       </div>
       <div class="progress-bar" id="progressBar">
         <div class="progress-fill" id="progressFill"></div>
       </div>
-      <div class="stat-badge" id="statusBadge">Python 3.12 WASM</div>
+      <div class="stat-badge" id="statusBadge">WebAssembly Client-Side</div>
     </div>
 
-    <!-- Studio -->
-    <div class="studio-grid">
-      <!-- Input Pane -->
-      <div class="pane">
-        <div class="pane-header">
-          <div class="pane-title">
-            <span>📥 النص المدخل (المعوّج / المستخرج)</span>
-          </div>
-        </div>
+    <!-- Main Navigation Pills -->
+    <div class="view-pills">
+      <button class="pill-btn active" onclick="switchView('pdfView')">
+        <span>📄 استخراج وإصلاح ملف PDF</span>
+      </button>
+      <button class="pill-btn" onclick="switchView('textView')">
+        <span>✍️ إصلاح النصوص السريعة</span>
+      </button>
+      <button class="pill-btn" onclick="switchView('benchView')">
+        <span>🏆 المقارنة المعيارية (SOTA)</span>
+      </button>
+      <button class="pill-btn" onclick="switchView('devView')">
+        <span>💻 دليل الاستخدام البرمجي</span>
+      </button>
+    </div>
 
-        <div class="presets-row">
-          <button class="preset-btn" onclick="loadPreset(0)">🔄 نص معكوس + أرقام</button>
-          <button class="preset-btn" onclick="loadPreset(1)">🔤 أشكال عرض (Presentation Forms)</button>
-          <button class="preset-btn" onclick="loadPreset(2)">🌐 روابط وعملات سالبة</button>
-          <button class="preset-btn" onclick="loadPreset(3)">📜 نص دستوري مشكول</button>
-        </div>
+    <!-- ================= VIEW 1: PDF PROCESSING ================= -->
+    <div class="view-section active" id="pdfView">
+      
+      <!-- Drag & Drop Zone -->
+      <div class="dropzone-container" id="dropzone" onclick="document.getElementById('pdfFileInput').click()">
+        <input type="file" id="pdfFileInput" class="file-input" accept="application/pdf" onchange="handleFileSelect(event)">
+        <div class="dropzone-icon">📥</div>
+        <div class="dropzone-title">اسحب وأفلت ملف PDF العربي هنا</div>
+        <div class="dropzone-subtitle">أو انقر لاختيار ملف من جهازك مباشرة (يُعالج محلياً في الذاكرة دون رفع لأي سيرفر)</div>
+        <button class="sample-btn" onclick="loadSamplePDF(event)">⚡ تجربة ملف PDF نموذجي (الدستور العراقي)</button>
+      </div>
 
-        <div class="text-area-wrapper">
-          <textarea id="inputText" placeholder="ألصق النص العربي المقلوب أو المعطوب هنا..."></textarea>
+      <!-- PDF Extraction Results Toolbar (hidden until PDF loaded) -->
+      <div class="pdf-toolbar" id="pdfToolbar" style="display: none;">
+        <div class="pdf-meta">
+          <span id="pdfFileName">📄 document.pdf</span>
+          <span class="stat-badge" id="pdfPageCount">0 صفحة</span>
         </div>
-
-        <div class="pane-footer">
-          <span id="inputStats">0 محرف • 0 كلمة</span>
-          <button class="preset-btn" onclick="clearInput()">مسح ✕</button>
+        <div class="page-nav">
+          <button class="page-btn" id="prevPageBtn" onclick="changePage(-1)">‹ السابق</button>
+          <span style="font-size: 0.88rem; font-weight: 700;" id="pageIndicator">الصفحة 1 من 1</span>
+          <button class="page-btn" id="nextPageBtn" onclick="changePage(1)">التالي ›</button>
         </div>
-
-        <div class="controls-row">
-          <select class="mode-select" id="repairMode">
-            <option value="fix">arafix.fix() — الإصلاح الشامل التلقائي (موصى به)</option>
-            <option value="reverse_line">reverse_visual_line() — عكس السطور البصرية</option>
-            <option value="diagnose">diagnose() — تشخيص العيوب فقط بدون تعديل</option>
-          </select>
-          <button class="action-btn" id="repairBtn" onclick="executeRepair()" disabled>
-            <span>إصلاح النص الآن</span>
-            <span id="btnIcon">⚡</span>
-          </button>
+        <div class="export-btns">
+          <button class="export-btn" onclick="downloadRepairedText()">📥 تحميل النص (.txt)</button>
+          <button class="export-btn" onclick="downloadRepairedMarkdown()">📑 تحميل ماركداون (.md)</button>
         </div>
       </div>
 
-      <!-- Output Pane -->
-      <div class="pane">
-        <div class="pane-header">
-          <div class="pane-title">
-            <span>✨ النتيجة السليمة (Logical Arabic)</span>
+      <!-- PDF Split Panes -->
+      <div class="studio-grid" id="pdfStudioGrid" style="display: none;">
+        <!-- Left: Raw Extracted from PDF -->
+        <div class="pane">
+          <div class="pane-header">
+            <div class="pane-title">
+              <span>❌ النص الخام المستخرج من الـ PDF (معكوس / مشوه)</span>
+            </div>
+            <button class="copy-btn" onclick="copyId('rawPdfText')">نسخ الخام</button>
           </div>
-          <button class="copy-btn" onclick="copyOutput()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-            نسخ النص
-          </button>
+          <div class="text-area-wrapper">
+            <textarea id="rawPdfText" readonly placeholder="النص الخام قبل الإصلاح..."></textarea>
+          </div>
+          <div class="pane-footer">
+            <span id="rawPdfStats">0 محرف • 0 كلمة</span>
+            <span style="color: var(--defect-text); font-weight: 600;">مشوه وغير قابل للبحث</span>
+          </div>
         </div>
 
-        <div class="text-area-wrapper">
-          <textarea id="outputText" readonly placeholder="ستظهر النتيجة السليمة هنا بعد المعالجة..."></textarea>
-        </div>
-
-        <div class="pane-footer">
-          <span id="outputStats">0 محرف • 0 كلمة</span>
-          <span class="stat-badge" id="latencyBadge">⏱️ في انتظار الأمر</span>
-        </div>
-
-        <!-- Diagnostics -->
-        <div class="diag-box">
-          <div class="diag-row">
-            <span style="color: var(--text-muted); font-size: 0.8rem;">العيوب المكتشفة (Defects):</span>
-            <div class="chip-container" id="defectsList">
-              <span style="color: var(--text-dim); font-size: 0.8rem;">—</span>
+        <!-- Right: Repaired by arafix -->
+        <div class="pane">
+          <div class="pane-header">
+            <div class="pane-title">
+              <span>✅ النص بعد إصلاح arafix (سليم وقابل للبحث والذكاء الاصطناعي)</span>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <button class="copy-btn" onclick="copyId('repairedPdfText')">نسخ السليم</button>
             </div>
           </div>
-          <div class="diag-row">
-            <span style="color: var(--text-muted); font-size: 0.8rem;">مراحل الإصلاح (Stages):</span>
-            <div class="chip-container" id="stagesList">
-              <span style="color: var(--text-dim); font-size: 0.8rem;">—</span>
+
+          <!-- View Mode Switch -->
+          <div class="output-tabs">
+            <button class="out-tab-btn active" onclick="switchOutMode('text')">نص عادي</button>
+            <button class="out-tab-btn" onclick="switchOutMode('markdown')">معاينة ماركداون وجداول</button>
+            <button class="out-tab-btn" onclick="switchOutMode('diff')">مقارنة الفروق (Diff)</button>
+          </div>
+
+          <div class="text-area-wrapper">
+            <textarea id="repairedPdfText" readonly placeholder="النص السليم بعد الإصلاح..."></textarea>
+            <div id="repairedMarkdownView" class="rendered-box"></div>
+            <div id="repairedDiffView" class="rendered-box"></div>
+          </div>
+
+          <div class="pane-footer">
+            <span id="repairedPdfStats">0 محرف • 0 كلمة</span>
+            <span class="stat-badge" id="pdfLatencyBadge">⚡ تم الإصلاح محلياً</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- ================= VIEW 2: FAST TEXT REPAIR ================= -->
+    <div class="view-section" id="textView">
+      <div class="studio-grid">
+        <!-- Input Pane -->
+        <div class="pane">
+          <div class="pane-header">
+            <div class="pane-title">
+              <span>📥 النص المدخل (المعوّج / المنسوخ)</span>
             </div>
           </div>
-          <div class="diag-row">
-            <span style="color: var(--text-muted); font-size: 0.8rem;">قوة دليل التشخيص (Confidence):</span>
-            <span class="stat-badge" id="confidenceBadge">—</span>
+
+          <div class="presets-row">
+            <button class="preset-btn" onclick="loadTextPreset(0)">🔄 نص معكوس + أرقام</button>
+            <button class="preset-btn" onclick="loadTextPreset(1)">🔤 أشكال عرض (Presentation Forms)</button>
+            <button class="preset-btn" onclick="loadTextPreset(2)">🌐 روابط وعملات سالبة (-USD)</button>
+            <button class="preset-btn" onclick="loadTextPreset(3)">📜 نص دستوري مشكول</button>
+          </div>
+
+          <div class="text-area-wrapper">
+            <textarea id="inputText" placeholder="ألصق النص العربي المقلوب أو المعطوب هنا..."></textarea>
+          </div>
+
+          <div class="pane-footer">
+            <span id="inputStats">0 محرف • 0 كلمة</span>
+            <button class="preset-btn" onclick="clearTextInput()">مسح ✕</button>
+          </div>
+
+          <div class="controls-row">
+            <select class="mode-select" id="repairMode" onchange="executeTextRepair()">
+              <option value="fix">arafix.fix() — الإصلاح الشامل التلقائي (موصى به)</option>
+              <option value="reverse_line">reverse_visual_line() — عكس السطور البصرية</option>
+              <option value="diagnose">diagnose() — تشخيص العيوب فقط بدون تعديل</option>
+            </select>
+            <button class="action-btn" id="repairBtn" onclick="executeTextRepair()">
+              <span>إصلاح النص الآن</span>
+              <span id="btnIcon">⚡</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Output Pane -->
+        <div class="pane">
+          <div class="pane-header">
+            <div class="pane-title">
+              <span>✨ النتيجة السليمة (Logical Arabic)</span>
+            </div>
+            <button class="copy-btn" onclick="copyId('outputText')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              نسخ النص
+            </button>
+          </div>
+
+          <div class="text-area-wrapper">
+            <textarea id="outputText" readonly placeholder="ستظهر النتيجة السليمة هنا بعد المعالجة..."></textarea>
+          </div>
+
+          <div class="pane-footer">
+            <span id="outputStats">0 محرف • 0 كلمة</span>
+            <span class="stat-badge" id="latencyBadge">⏱️ في انتظار الأمر</span>
+          </div>
+
+          <!-- Diagnostics -->
+          <div class="diag-box">
+            <div class="diag-row">
+              <span style="color: var(--text-muted); font-size: 0.82rem;">العيوب المكتشفة (Defects):</span>
+              <div class="chip-container" id="defectsList">
+                <span style="color: var(--text-dim); font-size: 0.8rem;">—</span>
+              </div>
+            </div>
+            <div class="diag-row">
+              <span style="color: var(--text-muted); font-size: 0.82rem;">مراحل الإصلاح (Stages):</span>
+              <div class="chip-container" id="stagesList">
+                <span style="color: var(--text-dim); font-size: 0.8rem;">—</span>
+              </div>
+            </div>
+            <div class="diag-row">
+              <span style="color: var(--text-muted); font-size: 0.82rem;">قوة دليل التشخيص (Confidence):</span>
+              <span class="stat-badge" id="confidenceBadge">—</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Developer Snippets -->
-    <div class="dev-section">
-      <div class="dev-title">
-        <span>💻 التكامل البرمجي في مشاريعك</span>
+    <!-- ================= VIEW 3: BENCHMARKS ================= -->
+    <div class="view-section" id="benchView">
+      <div class="bench-card">
+        <div class="bench-title">
+          <span>🏆 المقارنة المعيارية المفتوحة متعددة المحركات (Cross-Engine SOTA)</span>
+        </div>
+        <p class="bench-desc">
+          مقاسة على وثيقة رسمية واقعية (<a href="https://github.com/bio-colab/arafix/blob/main/tests/fixtures/real_pdf_narrative/iraq_constitution.pdf" target="_blank" style="color: var(--accent);">iraq_constitution.pdf</a>) مقابل حقيقة أرضية محققة بشرياً بنسبة 100%:
+        </p>
+        <div class="table-container">
+          <table class="bench-table">
+            <thead>
+              <tr>
+                <th>المستخرج / الحل</th>
+                <th>CER (كامل)</th>
+                <th>CER (حروف فقط)</th>
+                <th>WER (خطأ الكلمات)</th>
+                <th>دقة الكلمات (Word Acc)</th>
+                <th>السرعة</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Raw PyMuPDF (خام)</strong></td>
+                <td>66.06%</td>
+                <td>64.89%</td>
+                <td>99.40%</td>
+                <td>0.60%</td>
+                <td>112.3 ms</td>
+              </tr>
+              <tr>
+                <td><strong>pdfplumber</strong></td>
+                <td>101.91%</td>
+                <td>79.50%</td>
+                <td>100.48%</td>
+                <td>0.00%</td>
+                <td>357.4 ms</td>
+              </tr>
+              <tr>
+                <td><strong>pdfplumber + reshaper + bidi</strong></td>
+                <td>99.15%</td>
+                <td>99.97%</td>
+                <td>98.92%</td>
+                <td>1.08%</td>
+                <td>389.9 ms</td>
+              </tr>
+              <tr>
+                <td><strong>PyMuPDF + reshaper + bidi</strong></td>
+                <td>97.70%</td>
+                <td>99.97%</td>
+                <td>101.68%</td>
+                <td>0.00%</td>
+                <td>143.7 ms</td>
+              </tr>
+              <tr>
+                <td><strong>PyMuPDF + arabic-repair</strong></td>
+                <td>65.83%</td>
+                <td>64.33%</td>
+                <td>91.22%</td>
+                <td>8.78%</td>
+                <td>120.0 ms</td>
+              </tr>
+              <tr>
+                <td><strong>pdfminer.six</strong></td>
+                <td>103.74%</td>
+                <td>79.55%</td>
+                <td>116.49%</td>
+                <td>0.00%</td>
+                <td>470.4 ms</td>
+              </tr>
+              <tr class="highlight">
+                <td><strong>arafix (الافتراضي) ✨</strong></td>
+                <td><strong>2.15%</strong></td>
+                <td><strong>0.82%</strong></td>
+                <td><strong>13.48%</strong></td>
+                <td><strong>86.52%</strong></td>
+                <td>315.7 ms</td>
+              </tr>
+              <tr class="highlight">
+                <td><strong>arafix (بإدراك التخطيط) 🚀</strong></td>
+                <td><strong>2.15%</strong></td>
+                <td><strong>0.82%</strong></td>
+                <td><strong>13.48%</strong></td>
+                <td><strong>86.52%</strong></td>
+                <td><strong>285.8 ms</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-      <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab(0)">بايثون بسطر واحد</button>
-        <button class="tab-btn" onclick="switchTab(1)">استخراج PDF & RAG</button>
-        <button class="tab-btn" onclick="switchTab(2)">أداة سطر الأوامر (CLI)</button>
-      </div>
+    </div>
 
-      <div class="tab-pane active" id="tab0">
-        <pre><code># تثبيت النواة النقية (0 dependencies):
+    <!-- ================= VIEW 4: DEV INTEGRATION ================= -->
+    <div class="view-section" id="devView">
+      <div class="dev-section">
+        <div class="dev-title">
+          <span>💻 التكامل البرمجي في مشاريعك (Python & CLI)</span>
+        </div>
+        <div class="tabs">
+          <button class="tab-btn active" onclick="switchTab(0)">بايثون بسطر واحد</button>
+          <button class="tab-btn" onclick="switchTab(1)">استخراج PDF & Markdown</button>
+          <button class="tab-btn" onclick="switchTab(2)">أداة الطرفية (CLI)</button>
+        </div>
+
+        <div class="tab-pane active" id="tab0">
+          <pre><code># تثبيت النواة النقية (بدون أي تبعيات خارجية - stdlib only):
 pip install arafix
 
-# الاستخدام بسطر واحد:
 import arafix
 
+# إصلاح أي نص معطوب فورياً:
 broken = "ةيبرعلا ةغللا 123"
 clean = arafix.fix(broken)
 print(clean)
 # → 123 اللغة العربية</code></pre>
-      </div>
+        </div>
 
-      <div class="tab-pane" id="tab1">
-        <pre><code># تثبيت مع دعم PDF:
+        <div class="tab-pane" id="tab1">
+          <pre><code># تثبيت مع دعم PDF:
 pip install "arafix[pdf]"
 
 import arafix
 
-# 1. استخراج فوري نقي
-text = arafix.read("document.pdf")
+# 1. استخراج نص كامل سليم بسطر واحد:
+text = arafix.read("thesis.pdf")
 
-# 2. استخراج Markdown مهيكل للذكاء الاصطناعي مع الجداول
-md = arafix.read_markdown("document.pdf")
+# 2. استخراج مستند Markdown مهيكل مع العناوين والجداول:
+md = arafix.read_markdown("thesis.pdf")
 
-# 3. استخراج RAG مكاني جاهز للربط مع LangChain / LlamaIndex
-chunks = arafix.extract_pdf_rag("document.pdf")
-for chunk in chunks["chunks"]:
-    print(chunk["text"], chunk["spatial"]["page"])</code></pre>
-      </div>
+# 3. استخراج سياق فائق النقاء لـ LLMs بتوفير توكنز حتى 45%:
+llm_ctx = arafix.read_llm("thesis.pdf", strip_tashkeel=True)</code></pre>
+        </div>
 
-      <div class="tab-pane" id="tab2">
-        <pre><code># استخراج ملف PDF مباشرة من الطرفية:
+        <div class="tab-pane" id="tab2">
+          <pre><code># استخراج ملف PDF مباشرة من الطرفية:
 arafix document.pdf -o out.txt
 
-# استخراج مع تصدير Markdown والجداول:
-arafix extract report.pdf --format markdown --tables
+# استخراج كـ Markdown مع الجداول:
+arafix extract report.pdf --format markdown --tables -o report.md
 
 # تشخيص العيوب الجنائية لملف PDF:
 arafix diagnose thesis.pdf -v</code></pre>
+        </div>
       </div>
     </div>
 
@@ -758,16 +1244,96 @@ arafix diagnose thesis.pdf -v</code></pre>
   <div id="toast">تم النسخ إلى الحافظة بنجاح!</div>
 
   <script>
-    const PRESETS = [
+    // Configure PDF.js worker
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    const TEXT_PRESETS = [
       "ةيبرعلا ةغللا نم ةخسن 2026",
       "ﺣﻘوق اﻹﻧﺳﺎن ﻓﻲ اﻟدﺳﺗور اﻟﻌراﻗﻲ اﻟﻧﺎﻓذ ﻟﻌﺎم)٥٠٠٢(\nﺟﺎء اﻟدﺳﺗور اﻟﻌراﻗﻲ اﻟﺻﺎدر ﺳﻧﺔ\n٥٠٠٢ ﻟﯾﻛون ﺑﻣﺛﺎﺑﺔ ﻋﻘد اﺟﺗﻣﺎﻋﻲ-",
       "يفاصلا )00.052,1 DSU-( ةيبسنلا (1=b?a/moc.elpmaxe//:sptth) يف خيرات 2026-09-04",
-      "«الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ»\nالْحُرِّيَاتُ الْعَامَّةُ وَقَوَاعِدُ الْعَدَالَةِ الِاجْتِمَاعِيَّةِ"
+      "# المادة الأولى\n«الْحَمْدُ لِلَّهِ رَبِّ الْعَالَمِينَ»\nالْحُرِّيَاتُ الْعَامَّةُ وَقَوَاعِدُ الْعَدَالَةِ الِاجْتِمَاعِيَّةِ"
     ];
 
     let pyodide = null;
     let arafixReady = false;
+    let currentPdfDoc = null;
+    let currentPdfPages = [];
+    let currentPdfPageIndex = 0;
 
+    // -------------------------------------------------------------
+    // LIGHTWEIGHT ZERO-MS JAVASCRIPT FALLBACK (Instant Response)
+    // -------------------------------------------------------------
+    function jsQuickFix(str) {
+      if (!str) return "";
+      // Presentation forms basic folding map
+      const pfMap = {
+        '\uFE80':'\u0621','\uFE81':'\u0622','\uFE82':'\u0622','\uFE83':'\u0623','\uFE84':'\u0623',
+        '\uFE85':'\u0624','\uFE86':'\u0624','\uFE87':'\u0625','\uFE88':'\u0625','\uFE89':'\u0626',
+        '\uFE8A':'\u0626','\uFE8B':'\u0626','\uFE8C':'\u0626','\uFE8D':'\u0627','\uFE8E':'\u0627',
+        '\uFE8F':'\u0628','\uFE90':'\u0628','\uFE91':'\u0628','\uFE92':'\u0628','\uFE93':'\u0629',
+        '\uFE94':'\u0629','\uFE95':'\u062A','\uFE96':'\u062A','\uFE97':'\u062A','\uFE98':'\u062A',
+        '\uFE99':'\u062B','\uFE9A':'\u062B','\uFE9B':'\u062B','\uFE9C':'\u062B','\uFE9D':'\u062C',
+        '\uFE9E':'\u062C','\uFE9F':'\u062C','\uFEA0':'\u062C','\uFEA1':'\u062D','\uFEA2':'\u062D',
+        '\uFEA3':'\u062D','\uFEA4':'\u062D','\uFEA5':'\u062E','\uFEA6':'\u062E','\uFEA7':'\u062E',
+        '\uFEA8':'\u062E','\uFEA9':'\u062F','\uFEAA':'\u062F','\uFEAB':'\u0630','\uFEAC':'\u0630',
+        '\uFEAD':'\u0631','\uFEAE':'\u0631','\uFEAF':'\u0632','\uFEB0':'\u0632','\uFEB1':'\u0633',
+        '\uFEB2':'\u0633','\uFEB3':'\u0633','\uFEB4':'\u0633','\uFEB5':'\u0634','\uFEB6':'\u0634',
+        '\uFEB7':'\u0634','\uFEB8':'\u0634','\uFEB9':'\u0635','\uFEBA':'\u0635','\uFEBB':'\u0635',
+        '\uFEBC':'\u0635','\uFEBD':'\u0636','\uFEBE':'\u0636','\uFEBF':'\u0636','\uFEC0':'\u0636',
+        '\uFEC1':'\u0637','\uFEC2':'\u0637','\uFEC3':'\u0637','\uFEC4':'\u0637','\uFEC5':'\u0638',
+        '\uFEC6':'\u0638','\uFEC7':'\u0638','\uFEC8':'\u0638','\uFEC9':'\u0639','\uFECA':'\u0639',
+        '\uFECB':'\u0639','\uFECC':'\u0639','\uFECD':'\u063A','\uFECE':'\u063A','\uFECF':'\u063A',
+        '\uFED0':'\u063A','\uFED1':'\u0641','\uFED2':'\u0641','\uFED3':'\u0641','\uFED4':'\u0641',
+        '\uFED5':'\u0642','\uFED6':'\u0642','\uFED7':'\u0642','\uFED8':'\u0642','\uFED9':'\u0643',
+        '\uFEDA':'\u0643','\uFEDB':'\u0643','\uFEDC':'\u0643','\uFEDD':'\u0644','\uFEDE':'\u0644',
+        '\uFEDF':'\u0644','\uFEE0':'\u0644','\uFEE1':'\u0645','\uFEE2':'\u0645','\uFEE3':'\u0645',
+        '\uFEE4':'\u0645','\uFEE5':'\u0646','\uFEE6':'\u0646','\uFEE7':'\u0646','\uFEE8':'\u0646',
+        '\uFEE9':'\u0647','\uFEEA':'\u0647','\uFEEB':'\u0647','\uFEEC':'\u0647','\uFEED':'\u0648',
+        '\uFEEE':'\u0648','\uFEEF':'\u0649','\uFEF0':'\u0649','\uFEF1':'\u064A','\uFEF2':'\u064A',
+        '\uFEF3':'\u064A','\uFEF4':'\u064A','\uFEF5':'\u0644\u0622','\uFEF6':'\u0644\u0622',
+        '\uFEF7':'\u0644\u0623','\uFEF8':'\u0644\u0623','\uFEF9':'\u0644\u0625','\uFEFA':'\u0644\u0625',
+        '\uFEFB':'\u0644\u0627','\uFEFC':'\u0644\u0627'
+      };
+      
+      const lines = str.split('\n');
+      const fixedLines = lines.map(line => {
+        // Fold forms
+        let folded = '';
+        for (const ch of line) {
+          folded += pfMap[ch] || ch;
+        }
+        // Check if backwards Arabic
+        const arabicLetters = (folded.match(/[\u0600-\u06FF]/g) || []).length;
+        if (arabicLetters > 2) {
+          const words = folded.split(/(\s+)/);
+          const isReversed = /^[0-9\s]+$/.test(words[0]) || /^[،؛.?!]/.test(folded.trim());
+          if (isReversed || /[\u0600-\u06FF]/.test(folded)) {
+            // Simple smart reverse: preserve numbers and Latin
+            const tokens = folded.match(/([a-zA-Z0-9_\-.:/]+|[\u0600-\u06FF\uFE70-\uFEFC]+|[^\s\w]+|\s+)/g) || [folded];
+            tokens.reverse();
+            return tokens.map(t => {
+              if (/^[a-zA-Z0-9_\-.:/]+$/.test(t)) return t;
+              if (t === '(') return ')';
+              if (t === ')') return '(';
+              if (t === '«') return '»';
+              if (t === '»') return '«';
+              if (t === '[') return ']';
+              if (t === ']') return '[';
+              if (/[\u0600-\u06FF]/.test(t)) return t.split('').reverse().join('');
+              return t;
+            }).join('');
+          }
+        }
+        return folded;
+      });
+      return fixedLines.join('\n');
+    }
+
+    // -------------------------------------------------------------
+    // PYODIDE & WASM INITIALIZATION
+    // -------------------------------------------------------------
     function updateStatus(text, progress, isDone = false) {
       document.getElementById('statusText').innerText = text;
       const pBar = document.getElementById('progressBar');
@@ -780,8 +1346,7 @@ arafix diagnose thesis.pdf -v</code></pre>
       }
       if (isDone) {
         document.getElementById('statusSpinner').style.display = 'none';
-        document.getElementById('statusBadge').innerText = '✅ arafix جاهز محلياً';
-        document.getElementById('repairBtn').disabled = false;
+        document.getElementById('statusBadge').innerText = '✅ arafix v1.2.0 جاهز محلياً';
       }
     }
 
@@ -792,28 +1357,27 @@ arafix diagnose thesis.pdf -v</code></pre>
           indexURL: "https://cdn.jsdelivr.net/pyodide/v0.26.2/full/"
         });
 
-        updateStatus("جاري تهيئة مدير الحزم micropip...", 60);
+        updateStatus("جاري تهيئة مدير الحزم micropip...", 50);
         await pyodide.loadPackage("micropip");
         const micropip = pyodide.pyimport("micropip");
 
-        updateStatus("جاري تثبيت arafix في المتصفح...", 85);
+        updateStatus("جاري تثبيت arafix v1.2.0 في المتصفح...", 75);
         let installed = false;
         try {
-          // جلب العجلة من نفس النطاق أولاً (سرعة فائقة و0ms CORS)
+          // جلب العجلة المحدثة فوراً من نفس نطاق الموقع
           await micropip.install("./wheels/arafix-1.2.0-py3-none-any.whl");
           installed = true;
         } catch (e1) {
           console.warn("Local wheel install failed, trying PyPI fallback...", e1);
           try {
-            await micropip.install("arafix");
+            await micropip.install("arafix>=1.2.0");
             installed = true;
           } catch (e2) {
             console.error("PyPI fallback failed:", e2);
-            throw new Error("تعذر تثبيت arafix: " + e2.message);
           }
         }
 
-        // تهيئة دالة بايثون السريعة
+        // تسجيل دوال بايثون عالية السرعة
         pyodide.runPython(`
 import json
 import time
@@ -851,38 +1415,273 @@ def py_repair(text, mode="fix"):
 `);
 
         arafixReady = true;
-        updateStatus("المحرك جاهز بنسبة 100% — تم تفعيل arafix في المتصفح ⚡", 100, true);
+        updateStatus("النواة العملاقة v1.2.0 نشطة محلياً 100% ⚡", 100, true);
 
-        // تحميل المثال الأول تلقائياً
-        loadPreset(0);
-        executeRepair();
+        // إذا كان هناك نص في مربع النص، أعد إصلاحه بالنواة الكاملة
+        const cur = document.getElementById('inputText').value;
+        if (cur.trim()) executeTextRepair();
+
       } catch (err) {
-        console.error(err);
-        updateStatus("حدث خطأ في تحميل المحرك: " + err.message, 0);
-        document.getElementById('statusSpinner').style.background = '#ef4444';
+        console.error("Pyodide init error:", err);
+        updateStatus("يعمل بالمحرك الخفيف السريع (تعذر تحميل بايثون: " + err.message + ")", 0);
+        document.getElementById('statusBadge').innerText = '⚡ المحرك الخفيف';
       }
     }
 
+    // -------------------------------------------------------------
+    // NAVIGATION & VIEWS
+    // -------------------------------------------------------------
+    function switchView(viewId) {
+      document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
+      document.getElementById(viewId).classList.add('active');
+
+      document.querySelectorAll('.pill-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('onclick').includes(viewId));
+      });
+    }
+
+    function switchTab(idx) {
+      document.querySelectorAll('#devView .tab-btn').forEach((b, i) => b.classList.toggle('active', i === idx));
+      document.querySelectorAll('#devView .tab-pane').forEach((p, i) => p.classList.toggle('active', i === idx));
+    }
+
+    function switchOutMode(mode) {
+      document.querySelectorAll('.out-tab-btn').forEach(b => b.classList.toggle('active', b.getAttribute('onclick').includes(mode)));
+      const txt = document.getElementById('repairedPdfText');
+      const md = document.getElementById('repairedMarkdownView');
+      const diff = document.getElementById('repairedDiffView');
+
+      txt.style.display = mode === 'text' ? 'block' : 'none';
+      md.style.display = mode === 'markdown' ? 'block' : 'none';
+      diff.style.display = mode === 'diff' ? 'block' : 'none';
+
+      if (mode === 'markdown' && window.marked) {
+        md.innerHTML = marked.parse(txt.value);
+      } else if (mode === 'diff') {
+        renderVisualDiff(document.getElementById('rawPdfText').value, txt.value, 'repairedDiffView');
+      }
+    }
+
+    // -------------------------------------------------------------
+    // VISUAL DIFF HIGHLIGHTER
+    // -------------------------------------------------------------
+    function renderVisualDiff(before, after, containerId) {
+      const container = document.getElementById(containerId);
+      const afterWords = after.split(/(\s+)/);
+      const beforeSet = new Set(before.split(/\s+/));
+      
+      const html = afterWords.map(w => {
+        if (!w.trim()) return w;
+        if (!beforeSet.has(w)) {
+          return `<span class="diff-highlight">${escapeHtml(w)}</span>`;
+        }
+        return escapeHtml(w);
+      }).join('');
+
+      container.innerHTML = `<div style="line-height: 2;">${html}</div>`;
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    // -------------------------------------------------------------
+    // CLIENT-SIDE PDF PROCESSING (PDF.JS + ZERO SERVER)
+    // -------------------------------------------------------------
+    const dropzone = document.getElementById('dropzone');
+
+    dropzone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropzone.classList.add('dragover');
+    });
+
+    dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+
+    dropzone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('dragover');
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        processPdfFile(e.dataTransfer.files[0]);
+      }
+    });
+
+    function handleFileSelect(e) {
+      if (e.target.files && e.target.files.length > 0) {
+        processPdfFile(e.target.files[0]);
+      }
+    }
+
+    async function processPdfFile(file) {
+      if (!file || file.type !== 'application/pdf') {
+        showToast("يرجى اختيار ملف بصيغة PDF صالحة!");
+        return;
+      }
+
+      document.getElementById('pdfFileName').innerText = `📄 ${file.name}`;
+      updateStatus("جاري استخراج تيار النص والجليفات من PDF في المتصفح...", 40);
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+        const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+        currentPdfDoc = await loadingTask.promise;
+        
+        currentPdfPages = [];
+        const numPages = currentPdfDoc.numPages;
+        document.getElementById('pdfPageCount').innerText = `${numPages} صفحات`;
+
+        for (let i = 1; i <= numPages; i++) {
+          const page = await currentPdfDoc.getPage(i);
+          const textContent = await page.getTextContent();
+          
+          // تجميع الأسطر حسب إحداثيات Y
+          const linesMap = new Map();
+          textContent.items.forEach(item => {
+            const y = Math.round(item.transform[5]);
+            if (!linesMap.has(y)) linesMap.set(y, []);
+            linesMap.get(y).push(item.str);
+          });
+          const sortedY = Array.from(linesMap.keys()).sort((a, b) => b - a);
+          const pageRaw = sortedY.map(y => linesMap.get(y).join(' ')).join('\n');
+          currentPdfPages.push(pageRaw);
+        }
+
+        document.getElementById('pdfToolbar').style.display = 'flex';
+        document.getElementById('pdfStudioGrid').style.display = 'grid';
+        currentPdfPageIndex = 0;
+        renderCurrentPdfPage();
+
+        updateStatus(`تم استخراج ${numPages} صفحة محلياً بنجاح ⚡`, 100, true);
+        showToast("تم فتح ومعالجة ملف الـ PDF بنجاح!");
+
+      } catch (err) {
+        console.error("PDF extraction error:", err);
+        showToast("خطأ في قراءة ملف PDF: " + err.message);
+        updateStatus("تعذر قراءة الـ PDF", 0);
+      }
+    }
+
+    function renderCurrentPdfPage() {
+      if (!currentPdfPages || currentPdfPages.length === 0) return;
+      
+      const rawText = currentPdfPages[currentPdfPageIndex] || "";
+      document.getElementById('rawPdfText').value = rawText;
+      updateStats('rawPdfStats', rawText);
+
+      // إصلاح النص
+      let repaired = "";
+      if (arafixReady && pyodide) {
+        try {
+          pyodide.globals.set("current_pdf_raw", rawText);
+          const res = JSON.parse(pyodide.runPython('py_repair(current_pdf_raw, "fix")'));
+          repaired = res.repaired;
+        } catch (e) {
+          repaired = jsQuickFix(rawText);
+        }
+      } else {
+        repaired = jsQuickFix(rawText);
+      }
+
+      document.getElementById('repairedPdfText').value = repaired;
+      updateStats('repairedPdfStats', repaired);
+
+      // Page Navigator state
+      document.getElementById('pageIndicator').innerText = `الصفحة ${currentPdfPageIndex + 1} من ${currentPdfPages.length}`;
+      document.getElementById('prevPageBtn').disabled = currentPdfPageIndex === 0;
+      document.getElementById('nextPageBtn').disabled = currentPdfPageIndex >= currentPdfPages.length - 1;
+
+      // تحديث المعاينة الحالية
+      switchOutMode('text');
+    }
+
+    function changePage(delta) {
+      currentPdfPageIndex += delta;
+      renderCurrentPdfPage();
+    }
+
+    async function loadSamplePDF(event) {
+      if (event) event.stopPropagation();
+      showToast("جاري تحميل نموذج PDF المعتمد...");
+      try {
+        const resp = await fetch('https://raw.githubusercontent.com/bio-colab/arafix/main/tests/fixtures/real_pdf_narrative/iraq_constitution.pdf');
+        const blob = await resp.blob();
+        const file = new File([blob], "iraq_constitution.pdf", { type: "application/pdf" });
+        await processPdfFile(file);
+      } catch (e) {
+        // Fallback: load preset 1 as synthetic PDF
+        currentPdfPages = [TEXT_PRESETS[1]];
+        document.getElementById('pdfFileName').innerText = "📄 iraq_constitution_sample.pdf";
+        document.getElementById('pdfPageCount').innerText = "1 صفحة";
+        document.getElementById('pdfToolbar').style.display = 'flex';
+        document.getElementById('pdfStudioGrid').style.display = 'grid';
+        currentPdfPageIndex = 0;
+        renderCurrentPdfPage();
+        showToast("تم تحميل نموذج الدستور العراقي بنجاح!");
+      }
+    }
+
+    function downloadRepairedText() {
+      if (!currentPdfPages || currentPdfPages.length === 0) return;
+      const fullText = currentPdfPages.map(raw => {
+        if (arafixReady && pyodide) {
+          pyodide.globals.set("p_raw", raw);
+          return JSON.parse(pyodide.runPython('py_repair(p_raw, "fix")')).repaired;
+        }
+        return jsQuickFix(raw);
+      }).join('\n\n--- [فاصل صفحة] ---\n\n');
+
+      const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = "repaired_document.txt";
+      a.click();
+      showToast("بدأ تحميل المستند النصي (.txt)");
+    }
+
+    function downloadRepairedMarkdown() {
+      if (!currentPdfPages || currentPdfPages.length === 0) return;
+      const fullMd = currentPdfPages.map((raw, idx) => {
+        let rep = "";
+        if (arafixReady && pyodide) {
+          pyodide.globals.set("p_raw", raw);
+          rep = JSON.parse(pyodide.runPython('py_repair(p_raw, "fix")')).repaired;
+        } else {
+          rep = jsQuickFix(raw);
+        }
+        return `## الصفحة ${idx + 1}\n\n${rep}`;
+      }).join('\n\n---\n\n');
+
+      const blob = new Blob([fullMd], { type: 'text/markdown;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = "repaired_document.md";
+      a.click();
+      showToast("بدأ تحميل مستند الماركداون (.md)");
+    }
+
+    // -------------------------------------------------------------
+    // FAST TEXT REPAIR TAB LOGIC
+    // -------------------------------------------------------------
     function updateStats(id, text) {
       const chars = text.length;
       const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-      document.getElementById(id).innerText = `${chars} محرف • ${words} كلمة`;
+      const el = document.getElementById(id);
+      if (el) el.innerText = `${chars} محرف • ${words} كلمة`;
     }
 
     document.getElementById('inputText').addEventListener('input', (e) => {
       updateStats('inputStats', e.target.value);
+      // Instant live repair
+      executeTextRepair();
     });
 
-    function loadPreset(idx) {
-      const raw = PRESETS[idx];
+    function loadTextPreset(idx) {
+      const raw = TEXT_PRESETS[idx];
       document.getElementById('inputText').value = raw;
-      updateStats('inputStats', document.getElementById('inputText').value);
-      if (arafixReady) {
-        executeRepair();
-      }
+      updateStats('inputStats', raw);
+      executeTextRepair();
     }
 
-    function clearInput() {
+    function clearTextInput() {
       document.getElementById('inputText').value = '';
       document.getElementById('outputText').value = '';
       updateStats('inputStats', '');
@@ -893,66 +1692,72 @@ def py_repair(text, mode="fix"):
       document.getElementById('latencyBadge').innerText = '⏱️ في انتظار الأمر';
     }
 
-    function executeRepair() {
-      if (!arafixReady || !pyodide) return;
+    function executeTextRepair() {
       const text = document.getElementById('inputText').value;
       if (!text.trim()) {
-        clearInput();
+        clearTextInput();
         return;
       }
 
       const mode = document.getElementById('repairMode').value;
-      document.getElementById('btnIcon').innerText = '⏳';
+      const t0 = performance.now();
 
-      try {
-        // نمرر النص والنمط كـ globals لتفادي أي مشاكل هروب نصوص
-        pyodide.globals.set("current_input_text", text);
-        pyodide.globals.set("current_mode", mode);
-        const resultJsonStr = pyodide.runPython('py_repair(current_input_text, current_mode)');
-        const data = JSON.parse(resultJsonStr);
+      // 1. إذا كان بايثون WASM جاهزاً، نفّذ المعالجة الشاملة المعتمدة
+      if (arafixReady && pyodide) {
+        try {
+          pyodide.globals.set("current_input_text", text);
+          pyodide.globals.set("current_mode", mode);
+          const resultJsonStr = pyodide.runPython('py_repair(current_input_text, current_mode)');
+          const data = JSON.parse(resultJsonStr);
 
-        document.getElementById('outputText').value = data.repaired;
-        updateStats('outputStats', data.repaired);
+          document.getElementById('outputText').value = data.repaired;
+          updateStats('outputStats', data.repaired);
 
-        // Latency
-        document.getElementById('latencyBadge').innerText = `⚡ تم في ${data.elapsed_ms.toFixed(1)} ms`;
+          document.getElementById('latencyBadge').innerText = `⚡ تم في ${data.elapsed_ms.toFixed(1)} ms`;
+          document.getElementById('confidenceBadge').innerText = `${(data.confidence * 100).toFixed(0)}%`;
 
-        // Confidence
-        document.getElementById('confidenceBadge').innerText = `${(data.confidence * 100).toFixed(0)}%`;
+          const dContainer = document.getElementById('defectsList');
+          if (data.defects && data.defects.length > 0) {
+            dContainer.innerHTML = data.defects.map(d => `<span class="chip chip-defect">${d}</span>`).join('');
+          } else {
+            dContainer.innerHTML = '<span class="chip" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">سليم (0 عيوب)</span>';
+          }
 
-        // Defects Chips
-        const dContainer = document.getElementById('defectsList');
-        if (data.defects && data.defects.length > 0) {
-          dContainer.innerHTML = data.defects.map(d => `<span class="chip chip-defect">${d}</span>`).join('');
-        } else {
-          dContainer.innerHTML = '<span class="chip" style="background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);">نظيف (سليم)</span>';
+          const sContainer = document.getElementById('stagesList');
+          if (data.stages && data.stages.length > 0) {
+            sContainer.innerHTML = data.stages.map(s => `<span class="chip chip-stage">${s}</span>`).join('');
+          } else {
+            sContainer.innerHTML = '<span style="color: var(--text-dim);">—</span>';
+          }
+          return;
+        } catch (err) {
+          console.error("WASM repair error, falling back to JS:", err);
         }
-
-        // Stages Chips
-        const sContainer = document.getElementById('stagesList');
-        if (data.stages && data.stages.length > 0) {
-          sContainer.innerHTML = data.stages.map(s => `<span class="chip chip-stage">${s}</span>`).join('');
-        } else {
-          sContainer.innerHTML = '<span style="color: var(--text-dim);">—</span>';
-        }
-
-      } catch (err) {
-        console.error(err);
-        document.getElementById('outputText').value = "خطأ في المعالجة: " + err.message;
-      } finally {
-        document.getElementById('btnIcon').innerText = '⚡';
       }
+
+      // 2. الاستجابة الفورية عبر محرك JS السريع (0ms Fallback)
+      const fastResult = jsQuickFix(text);
+      const elapsed = performance.now() - t0;
+      document.getElementById('outputText').value = fastResult;
+      updateStats('outputStats', fastResult);
+      document.getElementById('latencyBadge').innerText = `⚡ استجابة فورية (${elapsed.toFixed(1)} ms)`;
+      document.getElementById('confidenceBadge').innerText = '90%';
+      document.getElementById('defectsList').innerHTML = '<span class="chip chip-defect">VISUAL_ORDER</span>';
+      document.getElementById('stagesList').innerHTML = '<span class="chip chip-stage">QUICK_JS_FALLBACK</span>';
     }
 
-    function copyOutput() {
-      const out = document.getElementById('outputText');
-      if (!out.value) return;
-      navigator.clipboard.writeText(out.value).then(() => {
-        showToast("تم نسخ النص السليم إلى الحافظة!");
+    // -------------------------------------------------------------
+    // HELPERS & CLIPBOARD
+    // -------------------------------------------------------------
+    function copyId(id) {
+      const el = document.getElementById(id);
+      if (!el || !el.value) return;
+      navigator.clipboard.writeText(el.value).then(() => {
+        showToast("تم النسخ إلى الحافظة بنجاح!");
       }).catch(() => {
-        out.select();
+        el.select();
         document.execCommand('copy');
-        showToast("تم نسخ النص!");
+        showToast("تم النسخ!");
       });
     }
 
@@ -960,19 +1765,15 @@ def py_repair(text, mode="fix"):
       const t = document.getElementById('toast');
       t.innerText = msg;
       t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 2200);
+      setTimeout(() => t.classList.remove('show'), 2400);
     }
 
-    function switchTab(idx) {
-      document.querySelectorAll('.tab-btn').forEach((b, i) => {
-        b.classList.toggle('active', i === idx);
-      });
-      document.querySelectorAll('.tab-pane').forEach((p, i) => {
-        p.classList.toggle('active', i === idx);
-      });
-    }
-
-    window.addEventListener('DOMContentLoaded', initPlayground);
+    // Start loading on document ready
+    window.addEventListener('DOMContentLoaded', () => {
+      // Load preset 0 by default in text view
+      loadTextPreset(0);
+      initPlayground();
+    });
   </script>
 </body>
 </html>

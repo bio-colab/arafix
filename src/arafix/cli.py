@@ -211,6 +211,7 @@ def _cmd_eval(args: argparse.Namespace) -> int:
     cfg = EvalConfig(
         ignore_diacritics=args.ignore_diacritics,
         ignore_punctuation=args.ignore_punctuation,
+        include_scientific=getattr(args, "scientific", False),
     )
     reports = (
         compare_extractors(args.path, args.truth, cfg)
@@ -235,14 +236,9 @@ def _cmd_eval(args: argparse.Namespace) -> int:
             print(f"    المرجع : {ref[:70]!r}")
             print(f"    الناتج : {hyp[:70]!r}")
 
-    if getattr(args, "scientific", False):
-        from .pipeline import extract_pdf
-        from .scientific import scientific_audit
-
-        truth = Path(args.truth).read_text(encoding="utf-8-sig")
-        hyp = extract_pdf(args.path).text
+    if getattr(args, "scientific", False) and best.scientific is not None:
         print("\n── scientific (MCS / DBR / BFE / SHDR) ──")
-        print(scientific_audit(truth, hyp, label=best.label))
+        print(best.scientific)
 
     if len(reports) > 1:
         gap = reports[-1].cer.rate - best.cer.rate

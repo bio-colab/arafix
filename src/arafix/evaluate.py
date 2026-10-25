@@ -24,8 +24,12 @@ from __future__ import annotations
 import re
 import sys
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from .normalize import NormalizeConfig, normalize_text
+
+if TYPE_CHECKING:
+    from .scientific import ScientificReport
 
 __all__ = [
     "EditDistance",
@@ -66,6 +70,9 @@ class EvalConfig:
     #: تجاهل الترقيم. **لا تفعّله لتقييم هذه المكتبة**: المحايدات أهشُّ
     #: ما فيها، وإخفاؤها يمحو أصدق ما يقيسه هذا الاختبار.
     ignore_punctuation: bool = False
+
+    #: تضمين تدقيق الطبقة العلمية (MCS, DBR, BFE, SHDR) في التقرير.
+    include_scientific: bool = False
 
 
 @dataclass
@@ -285,16 +292,20 @@ class EvalReport:
     ref_chars: int = 0
     hyp_chars: int = 0
     worst_lines: list[tuple[int, str, str]] = field(default_factory=list)
+    scientific: ScientificReport | None = None
 
     @property
     def word_accuracy(self) -> float:
         return self.wer.accuracy
 
     def __str__(self) -> str:  # pragma: no cover - عرض
-        return (
+        base = (
             f"{self.label:22s} CER {self.cer.rate:6.2%}  (حروف {self.cer_letters.rate:6.2%})  "
             f"WER {self.wer.rate:6.2%}  (دقة كلمات {self.word_accuracy:6.2%})"
         )
+        if self.scientific is not None:
+            base += f"\n{self.scientific}"
+        return base
 
 
 def evaluate_text(
@@ -319,6 +330,11 @@ def evaluate_text(
         ref_chars=len(reference),
         hyp_chars=len(hypothesis),
     )
+
+    if cfg.include_scientific:
+        from .scientific import scientific_audit
+
+        rep.scientific = scientific_audit(reference, hypothesis, label=label)
 
     ref_lines = [ln for ln in reference.split("\n") if ln.strip()]
     hyp_lines = [ln for ln in hypothesis.split("\n") if ln.strip()]

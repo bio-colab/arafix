@@ -10,7 +10,7 @@
 [![Live Web Demo](https://img.shields.io/badge/Playground-Live%20WASM%20Demo-10b981?style=flat&logo=webassembly&logoColor=white)](https://bio-colab.github.io/arafix/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen)
-![Tests](https://img.shields.io/badge/tests-954%20passed-success)
+![Tests](https://img.shields.io/badge/tests-955%20passed-success)
 ![Typing](https://img.shields.io/badge/typing-py.typed-blue)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21733978.svg)](https://doi.org/10.5281/zenodo.21733978)
 
@@ -840,7 +840,7 @@ result = repair_text(broken_text, config)
 | safe corpus | 0/18 false repairs في التشغيلة الكاملة¹، وFPR = 0% |
 | Latin/Bidi adversarial corpus | 1000/1000 حالة ناجحة |
 | PDF الدستور الحقيقي | تحسن CER/WER الموثق إلى **2.15% / 13.48%** (دقة حروف **99.18%**، ودقة كلمات **86.52%**) |
-| اختبارات الحزمة والاعتمادية | 954 فحصاً آلياً واختباراً تراجعياً ناجحاً 100% عبر بيئات Linux و Windows و macOS |
+| اختبارات الحزمة والاعتمادية | 955 فحصاً آلياً واختباراً تراجعياً ناجحاً 100% عبر بيئات Linux و Windows و macOS |
 | المسار الافتراضي | لا يتلقى كلفة Context أو RAG أو audit إلا عند تفعيلها |
 
 ¹ **سياق العدّاد:** corpus الإجهاد يحتوي 18 حالة must-not-change بينها حالة

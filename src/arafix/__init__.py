@@ -33,13 +33,6 @@ from pathlib import Path
 __version__ = "1.2.0"
 __license__ = "MIT"
 
-from .adapters import (
-    as_blocks,
-    fix_any,
-    fix_table,
-    repair_extracted,
-    wrap_callable,
-)
 from .audit import (
     AuditEvent,
     AuditMode,
@@ -166,6 +159,8 @@ from .types import (
     Stage,
     TableResult,
     TextBlock,
+    as_blocks,
+    fix_table,
 )
 from .unicode_tables import (
     DEFERRED_PF_TO_BASE,
@@ -285,12 +280,9 @@ __all__ = [
     "GlyphEvidence",
     "NegativeEvidence",
     "NegativeEvidenceModel",
-    # مهايئات
-    "fix_any",
+    # معالجة الجداول
     "fix_table",
     "as_blocks",
-    "repair_extracted",
-    "wrap_callable",
     # نظافة الاستخراج
     "sanitize_extraction",
     "count_artifacts",

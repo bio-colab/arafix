@@ -28,6 +28,8 @@ __all__ = [
     "TextBlock",
     "BlockResult",
     "BlocksResult",
+    "as_blocks",
+    "fix_table",
 ]
 
 
@@ -667,6 +669,21 @@ class TableResult:
             return pd.DataFrame()
         return pd.DataFrame(self.data, columns=self.headers or None)
 
+    def repair(self, config: Any = None) -> TableResult:
+        """يصلح نصوص خلايا الجدول باستخدام خط الأنابيب القياسي."""
+        from .pipeline import repair_text
+
+        new_rows = [
+            [repair_text(cell, config).text for cell in row]
+            for row in self.rows
+        ]
+        return TableResult(
+            rows=new_rows,
+            page=self.page,
+            index=self.index,
+            bbox=self.bbox,
+        )
+
     def __str__(self) -> str:
         return self.to_markdown()
 
@@ -723,3 +740,48 @@ class BlocksResult:
 
     def __str__(self) -> str:
         return self.join()
+
+
+def as_blocks(
+    rows: list[list[str]],
+    *,
+    id_prefix: str = "r",
+) -> list[TextBlock]:
+    """تحول جدولاً (قائمة صفوف) إلى كتل TextBlock خلايا مستقلة."""
+    blocks: list[TextBlock] = []
+    for i, row in enumerate(rows):
+        for j, cell in enumerate(row):
+            blocks.append(
+                TextBlock(
+                    text=cell or "",
+                    id=f"{id_prefix}{i}c{j}",
+                    role="cell",
+                    meta={"row": i, "col": j},
+                )
+            )
+    return blocks
+
+
+def fix_table(
+    rows: list[list[str]],
+    config: Any = None,
+) -> list[list[str]]:
+    """
+    يصلح خلايا جدولٍ خليةً على حدة وبنفس الهيكل الأصلي.
+    """
+    if not rows:
+        return []
+    from .pipeline import repair_blocks
+
+    blocks = as_blocks(rows)
+    repaired: BlocksResult = repair_blocks(blocks, config)
+    by_id = repaired.by_id()
+    out: list[list[str]] = []
+    for i, row in enumerate(rows):
+        new_row = []
+        for j, _ in enumerate(row):
+            key = f"r{i}c{j}"
+            new_row.append(by_id[key].text if key in by_id else "")
+        out.append(new_row)
+    return out
+

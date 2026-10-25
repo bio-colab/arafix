@@ -12,14 +12,12 @@ from arafix import (
     TextBlock,
     as_blocks,
     count_artifacts,
-    fix_any,
     fix_table,
     harvest_document_lexicon,
     repair_blocks,
     repair_text,
     sanitize_extraction,
 )
-from arafix.adapters import repair_extracted, wrap_callable
 
 
 class TestHygiene:
@@ -172,21 +170,18 @@ class TestDocumentLexicon:
         assert "المجالت" not in out.by_id()["bad"].text
 
 
-class TestAdapters:
-    def test_fix_any(self):
-        assert fix_any("\ufee3\ufeae\ufea3\ufe92\ufe8e").text == "مرحبا"
+class TestTableRepair:
+    def test_fix_table(self):
+        rows = [["\ufee3\ufeae\ufea3\ufe92\ufe8e", "OK"]]
+        res = fix_table(rows)
+        assert res == [["مرحبا", "OK"]]
 
+    def test_table_result_repair(self):
+        from arafix.types import TableResult
 
-
-    def test_wrap_callable(self):
-        def extractor(path: str) -> str:
-            return "\ufee3\ufeae\ufea3\ufe92\ufe8e"
-
-        wrapped = wrap_callable(extractor)
-        assert wrapped("x.pdf").text == "مرحبا"
-
-    def test_repair_extracted(self):
-        assert repair_extracted("مرحبا\u00a0بكم").text == "مرحبا بكم"
+        table = TableResult(rows=[["\ufee3\ufeae\ufea3\ufe92\ufe8e", "2024"]])
+        repaired = table.repair()
+        assert repaired.rows == [["مرحبا", "2024"]]
 
 
 class TestP0HygieneAndOrderFixes:

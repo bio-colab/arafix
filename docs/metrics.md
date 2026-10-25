@@ -85,6 +85,7 @@ accuracy = max(0, 1 − rate)               ← EditDistance.accuracy
 | `ignore_diacritics` | `False` | تجاهل الحركات (يرفع الدرجة كذباً إن كان مرجعك مشكولاً) |
 | `ignore_orthographic_variants` | `False` | توحيد صور الألف والتاء المربوطة |
 | `ignore_punctuation` | `False` | تجاهل الترقيم — **لا تفعّله لتقييم arafix** |
+| `include_scientific` | `False` | تضمين تقرير الطبقة العلمية (MCS / DBR / BFE / SHDR) ضمن `EvalReport.scientific` |
 
 ### 1.3 البوابات وقيم اليوم (v1.2.0+)
 

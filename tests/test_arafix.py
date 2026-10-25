@@ -694,6 +694,15 @@ class TestEvalReport:
     def test_accuracy_never_negative(self):
         assert evaluate_text("نص", "نصٌّ طويلٌ جداً مختلفٌ كلياً").cer.accuracy >= 0.0
 
+    def test_include_scientific_report(self):
+        ref = "كتابٌ جديدٌ ومفيدٌ في النحو العربي"
+        hyp = "كتابٌ جديدٌ ومفيدٌ في النحو العربي"
+        rep = evaluate_text(ref, hyp, config=EvalConfig(include_scientific=True))
+        assert rep.scientific is not None
+        assert rep.scientific.mcs.score == 1.0
+        assert rep.scientific.dbr.n_marks_ref == 3
+        assert "MCS" in str(rep)
+
 
 # ── مراجعةُ 0.5.0: ما صحّ من ملاحظات مراجعٍ خارجيّ ────────────────────
 

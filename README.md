@@ -10,7 +10,7 @@
 [![Live Web Demo](https://img.shields.io/badge/Playground-Live%20WASM%20Demo-10b981?style=flat&logo=webassembly&logoColor=white)](https://bio-colab.github.io/arafix/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen)
-![Tests](https://img.shields.io/badge/tests-957%20passed-success)
+![Tests](https://img.shields.io/badge/tests-961%20passed-success)
 ![Typing](https://img.shields.io/badge/typing-py.typed-blue)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21733978.svg)](https://doi.org/10.5281/zenodo.21733978)
 
@@ -139,8 +139,9 @@ Measured on official real-world publication ([`iraq_constitution.pdf`](tests/fix
 | **pdfplumber + arabic-repair** | 79.04% | 71.73% | 93.50% | 6.50% | 363.9 ms |
 | **PyMuPDF + arabic-repair** | 65.83% | 64.33% | 91.22% | 8.78% | 120.0 ms |
 | **pdfminer.six** | 103.74% | 79.55% | 116.49% | 0.00% | 470.4 ms |
-| **arafix (default)** | **2.15%** | **0.82%** | **13.48%** | **86.52%** | 315.7 ms |
-| **arafix (layout-aware)** | **2.15%** | **0.82%** | **13.48%** | **86.52%** | 285.8 ms |
+| **arafix (default)** | **2.07%** | **0.82%** | **12.52%** | **87.48%** | 267.1 ms |
+| **arafix (layout-aware)** | **2.07%** | **0.82%** | **12.52%** | **87.48%** | 226.5 ms |
+| **arafix (pypdf pure-python)** | **2.07%** | **0.82%** | **12.52%** | **87.48%** | 342.4 ms |
 
 > **Reproduce locally:**
 > ```bash

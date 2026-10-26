@@ -1000,6 +1000,11 @@ class TestCMapGlyphRecovery:
         from arafix.cmap import build_glyph_map
 
         candidates = (
+            Path("C:/Windows/Fonts/arial.ttf"),
+            Path("C:/Windows/Fonts/tahoma.ttf"),
+            Path("C:/Windows/Fonts/segoeui.ttf"),
+            Path("/Library/Fonts/Arial.ttf"),
+            Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
             Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
             Path("/usr/share/fonts/truetype/freefont/FreeSerif.ttf"),
         )

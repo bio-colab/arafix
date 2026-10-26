@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -74,10 +75,22 @@ def _cmd_text_pair(args: argparse.Namespace) -> int:
         ignore_punctuation=args.ignore_punctuation,
     )
     report = evaluate_text(truth, hyp, config=ecfg, label=args.label or "text")
-    print("── metrics ──")
+    print("── metrics (three-tier) ──")
     print(f"  {report}")
-    print(f"  CER={_pct(report.cer.rate)} (letters-only: {_pct(report.cer_letters.rate)})")
-    print(f"  WER={_pct(report.wer.rate)} (word-accuracy: {_pct(report.word_accuracy)})")
+    let_acc = _pct(1 - report.cer_letters.rate)
+    word_acc = _pct(report.word_accuracy)
+    print(f"  Tier 1 - CER (raw strict): {_pct(report.cer.rate)}")
+    print(f"  Tier 2 - CER (letters-only): {_pct(report.cer_letters.rate)} (acc: {let_acc})")
+    print(f"  Tier 1 - WER (raw strict): {_pct(report.wer.rate)} (acc: {word_acc})")
+    from arafix.evaluate import levenshtein
+
+    truth_words = re.findall(r"[\u0621-\u064A\u0671-\u06D30-9\u0660-\u0669]+", truth)
+    hyp_words = re.findall(r"[\u0621-\u064A\u0671-\u06D30-9\u0660-\u0669]+", hyp)
+    clean_wer = None
+    if truth_words:
+        clean_dist = levenshtein(hyp_words, truth_words)
+        clean_wer = clean_dist / len(truth_words)
+        print(f"  Tier 3 - WER (clean words): {_pct(clean_wer)} (acc: {_pct(1 - clean_wer)})")
     print(f"  chars ref={report.cer.length}  hyp_len={len(hyp)}  truth_len={len(truth)}")
 
     if args.scientific:
@@ -162,10 +175,22 @@ def _cmd_pdf(args: argparse.Namespace) -> int:
     truth = _read(args.truth)
     hyp = doc.text
 
-    print("── metrics vs truth ──")
+    print("── metrics vs truth (three-tier) ──")
     print(f"  {report}")
-    print(f"  CER={_pct(report.cer.rate)} (letters-only: {_pct(report.cer_letters.rate)})")
-    print(f"  WER={_pct(report.wer.rate)} (word-accuracy: {_pct(report.word_accuracy)})")
+    let_acc = _pct(1 - report.cer_letters.rate)
+    word_acc = _pct(report.word_accuracy)
+    print(f"  Tier 1 - CER (raw strict): {_pct(report.cer.rate)}")
+    print(f"  Tier 2 - CER (letters-only): {_pct(report.cer_letters.rate)} (acc: {let_acc})")
+    print(f"  Tier 1 - WER (raw strict): {_pct(report.wer.rate)} (acc: {word_acc})")
+    from arafix.evaluate import levenshtein
+
+    truth_words = re.findall(r"[\u0621-\u064A\u0671-\u06D30-9\u0660-\u0669]+", truth)
+    hyp_words = re.findall(r"[\u0621-\u064A\u0671-\u06D30-9\u0660-\u0669]+", hyp)
+    clean_wer = None
+    if truth_words:
+        clean_dist = levenshtein(hyp_words, truth_words)
+        clean_wer = clean_dist / len(truth_words)
+        print(f"  Tier 3 - WER (clean words): {_pct(clean_wer)} (acc: {_pct(1 - clean_wer)})")
     if doc.metadata:
         prod = doc.metadata.get("producer") or "None"
         creat = doc.metadata.get("creator") or "None"

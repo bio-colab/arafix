@@ -213,6 +213,20 @@ def run_benchmark(pdf_path: str, truth_path: str) -> list[EngineMetric]:
     t_layout = (time.perf_counter() - t0) * 1000.0
     metrics.append(evaluate_extracted("arafix (layout-aware)", doc_layout.text, truth, t_layout))
 
+    # 8. arafix (pypdf pure-python)
+    try:
+        from arafix.extractors.pypdf_extractor import PyPDFExtractor
+
+        if PyPDFExtractor.available():
+            t0 = time.perf_counter()
+            doc_pypdf = extract_pdf(pdf_path, PipelineConfig(extractor="pypdf"))
+            t_pypdf = (time.perf_counter() - t0) * 1000.0
+            metrics.append(
+                evaluate_extracted("arafix (pypdf pure-python)", doc_pypdf.text, truth, t_pypdf)
+            )
+    except Exception:
+        pass
+
     return metrics
 
 

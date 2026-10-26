@@ -91,6 +91,10 @@ class ContextDecision:
     candidates: tuple[ContextCandidate, ...] = ()
     evidence: dict[str, object] = field(default_factory=dict)
 
+    @property
+    def decision(self) -> RepairDecision:
+        return RepairDecision.SAFE if self.accepted else RepairDecision.UNCERTAIN
+
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
         payload["candidates"] = [candidate.to_dict() for candidate in self.candidates]

@@ -124,6 +124,7 @@ class TestNonSafeNeverMutates:
     def test_context_never_applies_non_safe(self):
         model = self._model()
         result = model.repair(self.CONTEXT_TEXT)
+        assert not result.changed
         for decision in result.decisions:
             if decision.decision is not RepairDecision.SAFE:
                 assert decision.replacement is None
@@ -131,15 +132,28 @@ class TestNonSafeNeverMutates:
                 assert decision.replacement is not None
 
     def test_text_changes_only_where_safe_decisions_exist(self):
+        from arafix.evidence import GlyphEvidence
+
         model = self._model()
-        result = model.repair(self.CONTEXT_TEXT)
-        if not result.changed:
-            pytest.skip("لا تغييرات في هذه العينة")
+        corrupted_text = "درس الطالب في المكتية العامة"
+        evidence = [
+            GlyphEvidence(
+                observed="المكتية",
+                candidate="المكتبة",
+                score=0.95,
+                source="glyph",
+            )
+        ]
+        result = model.repair(corrupted_text, glyph_evidence=evidence)
+        assert result.changed
         safe_spans = {
-            d.observed for d in model.repair(self.CONTEXT_TEXT).decisions
+            d.observed
+            for d in result.decisions
             if d.decision is RepairDecision.SAFE and d.replacement
         }
-        assert safe_spans  # يوجد قرارٌ مفعّل على الأقل
+        assert safe_spans == {"المكتية"}
+        assert "المكتبة" in result.text
+        assert "المكتية" not in result.text
 
     def test_unsafe_negative_veto_dominates_candidate_strength(self):
         """G5: مرشّح مثالي + نفي قوي = UNSAFE لا نقاش."""

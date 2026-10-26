@@ -114,7 +114,7 @@ class TestHonorificLigatures:
 
 
 class TestYaseenRoundTrip:
-    GOLD_DIR = Path(__file__).parents[2] / "benchmarks" / "wiki_eval" / "quran"
+    GOLD_DIR = Path(__file__).parents[1] / "benchmarks" / "wiki_eval" / "quran"
 
     @pytest.mark.parametrize(
         "fname",

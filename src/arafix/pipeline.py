@@ -95,20 +95,24 @@ __all__ = [
 _ARABIC_WORD = re.compile(r"[\u0621-\u064A\u0671-\u06D3]{3,}")
 
 
-def _effective_lexicon(cfg: PipelineConfig) -> set[str] | None:
+def _effective_lexicon(cfg: PipelineConfig) -> set[str] | frozenset[str] | None:
     """
     يبني معجم الإصلاح الفعّال: نواة مضمَّنة ∪ lexicon المستعمل.
 
     يُرجع ``None`` إن لم يتوفّر أي مصدر — عندها يُصلَح القاطع فقط
     داخل ``repair_lam_alef_transposition``.
     """
-    vocab: set[str] = set()
+    if cfg.lexicon is None:
+        if cfg.use_core_lexicon:
+            from .lexicon.core import get_core_lexicon
+
+            return get_core_lexicon()
+        return None
+    vocab: set[str] = set(cfg.lexicon)
     if cfg.use_core_lexicon:
         from .lexicon.core import get_core_lexicon
 
-        vocab |= set(get_core_lexicon())
-    if cfg.lexicon is not None:
-        vocab |= set(cfg.lexicon)
+        vocab |= get_core_lexicon()
     return vocab or None
 
 
@@ -354,7 +358,16 @@ def _rescue_mixed_direction_lines(
         target_line = (
             fold_simple_forms(line) if any(is_presentation_form(c) for c in line) else line
         )
-        out[i] = fix_order(target_line, rcfg)
+        line_rcfg = rcfg
+        if (
+            line_rcfg is not None
+            and not line_rcfg.forward_flank_marks
+            and re.search(
+                r"[\u064B-\u0650\u0652]\u0651|(?:^|\s)[\u064B-\u0652]", target_line
+            )
+        ):
+            line_rcfg = replace(line_rcfg, forward_flank_marks=True)
+        out[i] = fix_order(target_line, line_rcfg)
         if out[i] == before_line:
             continue  # لا شيء تغيّر فعلاً — لا نشاهد إنقاذاً وهمياً
         fixed_count += 1
@@ -1559,7 +1572,27 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
                     else 0,
                 },
             )
-            notes = list(dict.fromkeys([*final.notes, *layout.notes]))  # فريد مع حفظ الترتيب
+            agg_stages: list[Stage] = []
+            for st in (
+                Stage.HYGIENE,
+                Stage.DIAGNOSE,
+                Stage.NORMALIZE,
+                Stage.REORDER,
+                Stage.EXPAND_LIGATURES,
+                Stage.REPAIR_LAM_ALEF,
+                Stage.REBUILD_CMAP,
+                Stage.REPAIR_SPACING,
+                Stage.REPAIR_PDF_CONFUSIONS,
+                Stage.CONTEXT,
+            ):
+                if st in final.stages_applied or any(
+                    st in b.repair.stages_applied for b in repaired.blocks
+                ):
+                    agg_stages.append(st)
+
+            raw_dg = diagnose(raw.text, {**DEFAULT_THRESHOLDS, **cfg.thresholds})
+            block_notes = [n for b in repaired.blocks for n in b.repair.notes]
+            notes = list(dict.fromkeys([*block_notes, *final.notes, *layout.notes]))
             notes.append(
                 f"بنيويّ: {layout.n_columns} عمود، "
                 f"{len(layout.tables)} جدول، "
@@ -1568,8 +1601,8 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
             result = RepairResult(
                 text=final.text,
                 original=raw.text,
-                diagnosis=final.diagnosis,
-                stages_applied=final.stages_applied,
+                diagnosis=raw_dg if raw_dg.defects else final.diagnosis,
+                stages_applied=agg_stages,
                 confidence=min(repaired.confidence, final.confidence),
                 notes=notes,
                 audit=page_audit.finalize(final.text),
@@ -1618,7 +1651,7 @@ def _extract_one_page(raw, cfg: PipelineConfig) -> PageResult:
         n_columns=layout.n_columns if layout else 1,
         width=raw.width,
         height=raw.height,
-        tables=_raw_tables(layout) if layout else [],
+        tables=_raw_tables(layout, cfg) if layout else [],
     )
 
 
@@ -1636,8 +1669,11 @@ def _repaired_tables(layout, by_id: dict[str, str], page_number: int) -> list[li
     return out
 
 
-def _raw_tables(layout) -> list[list[list[str]]]:
-    return [t.rows for t in layout.tables]
+def _raw_tables(layout, cfg: PipelineConfig | None = None) -> list[list[list[str]]]:
+    return [
+        [[repair_text(cell, cfg).text for cell in row] for row in t.rows]
+        for t in layout.tables
+    ]
 
 
 def _parallel_page_worker(args: tuple[Any, PipelineConfig]) -> PageResult:

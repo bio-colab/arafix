@@ -95,10 +95,11 @@ class CharacterConfusionModel:
         """Return word candidates formed by the configured substitutions."""
         output: dict[tuple[str, str], Confusion] = {}
         for old, confusions in self._by_observed.items():
-            for index, char in enumerate(observed):
-                if char != old:
-                    continue
-                for confusion in confusions:
+            positions = [index for index, char in enumerate(observed) if char == old]
+            if not positions:
+                continue
+            for confusion in confusions:
+                for index in positions:
                     candidate = observed[:index] + confusion.candidate + observed[index + 1 :]
                     output[(candidate, confusion.source)] = Confusion(
                         observed=observed,
@@ -106,6 +107,15 @@ class CharacterConfusionModel:
                         source=confusion.source,
                         cost=confusion.cost,
                         detail=confusion.detail,
+                    )
+                if len(positions) > 1:
+                    multi_candidate = observed.replace(old, confusion.candidate)
+                    output[(multi_candidate, confusion.source)] = Confusion(
+                        observed=observed,
+                        candidate=multi_candidate,
+                        source=confusion.source,
+                        cost=min(1.0, confusion.cost * 1.15),
+                        detail=f"{confusion.detail} (multi-site ×{len(positions)})",
                     )
         return tuple(output.values())
 
@@ -306,9 +316,22 @@ class CandidateGenerator:
         glyph_evidence: Iterable[GlyphEvidence] = (),
     ) -> tuple[Candidate, ...]:
         bucket: dict[str, dict[str, object]] = {}
+        glyph_evidence_tuple = tuple(glyph_evidence)
+        extra_vocab_cands = [
+            *(glyph_candidates.keys() if glyph_candidates else ()),
+            *(
+                item.candidate
+                for item in glyph_evidence_tuple
+                if item.observed == observed
+            ),
+        ]
         if document_context is not None:
             for context_candidate in document_context.rank(
-                observed, left, right, paragraph_index=paragraph_index
+                observed,
+                left,
+                right,
+                paragraph_index=paragraph_index,
+                extra_candidates=extra_vocab_cands,
             ):
                 frequency_score = float(getattr(context_candidate, "frequency_score", 0.0))
                 phrase_score = float(getattr(context_candidate, "phrase_score", 0.0))

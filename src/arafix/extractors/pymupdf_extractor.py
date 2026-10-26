@@ -52,10 +52,20 @@ class PyMuPDFExtractor(Extractor):
         )
 
     @classmethod
-    @cache
-    def available(cls) -> bool:
+    def _has_fitz(cls) -> bool:
         try:
             import fitz  # noqa: F401
+            return True
+        except ImportError:
+            return False
+
+    @classmethod
+    @cache
+    def available(cls) -> bool:
+        if cls._has_fitz():
+            return True
+        try:
+            import pypdf  # noqa: F401
             return True
         except ImportError:
             return False
@@ -69,8 +79,21 @@ class PyMuPDFExtractor(Extractor):
             ) from exc
         return fitz.open(path)
 
+    def _pypdf_fallback(self):
+        from .pypdf_extractor import PyPDFExtractor
+        return PyPDFExtractor(
+            sort=self.sort,
+            bidi=self.bidi,
+            layout_mode=self.layout_mode,
+            geometric_noise=self.noise_filter.config if self.noise_filter else None,
+            preserve_spatial_bboxes=self.preserve_spatial_bboxes,
+            layout_config=self.layout_config,
+        )
+
     def metadata(self, path: str) -> dict[str, str]:
         """يقرأ Producer/Creator من PDF دون أن يجعلها قراراً علاجياً."""
+        if not self._has_fitz():
+            return self._pypdf_fallback().metadata(path)
         doc = self._open(path)
         try:
             raw = doc.metadata or {}
@@ -253,6 +276,9 @@ class PyMuPDFExtractor(Extractor):
         )
 
     def pages(self, path: str) -> Iterator[RawPage]:
+        if not self._has_fitz():
+            yield from self._pypdf_fallback().pages(path)
+            return
         doc = self._open(path)
         try:
             repeated_keys: set[tuple] = set()
@@ -315,6 +341,8 @@ class PyMuPDFExtractor(Extractor):
 
     def font_bytes(self, path: str) -> dict[str, bytes]:
         """يستخرج الخطوط المضمَّنة فعلاً (المرجعية منها لا تُضمَّن فتُتخطّى)."""
+        if not self._has_fitz():
+            return self._pypdf_fallback().font_bytes(path)
         doc = self._open(path)
         out: dict[str, bytes] = {}
         try:

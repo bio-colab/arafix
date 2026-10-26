@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from functools import cache
 
 from .lamalef import detect_lam_alef_transposition
 from .types import DETERMINISTIC_DEFECTS, Defect, Diagnosis, Evidence
@@ -28,6 +29,8 @@ from .unicode_tables import (
     PF_TO_BASE,
     TATWEEL,
     JoiningForm,
+    has_presentation_form,
+    has_pua,
     is_arabic,
     is_presentation_form,
     is_pua,
@@ -57,6 +60,7 @@ _ARABIC_TOKEN = re.compile(r"[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFD
 #: توقيع الموجيبيك: بايتات UTF-8 عربية (0xD8/0xD9) مقروءة كـ Latin-1/CP1252.
 #: النطاق \u2000–\u206F يلتقط «…» و«„» حين فُكّت بايتات الاستمرار عبر CP1252.
 _MOJIBAKE_SIGNATURE = re.compile(r"[ØÙÚÛ][\u0080-\u00BF\u2000-\u206F]")
+_HIGH_LATIN_OR_LEAD_RE = re.compile(r"[\u0080-\u00FF]")
 
 #: رؤوس UTF-8 العربية الشائعة كما تظهر بعد فكّ خاطئ.
 _MOJIBAKE_LEAD = frozenset("ØÙÚÛ")
@@ -252,17 +256,17 @@ def detect_mojibake(text: str) -> tuple[bool, str | None, Evidence]:
     if not text:
         return False, None, Evidence("mojibake", 0.0, "نص فارغ")
 
+    # فحص C-level سريع: إن لم يوجد أي محرف في نطاق 0x80..0xFF، يستحيل وجود موجيبيك
+    if not _HIGH_LATIN_OR_LEAD_RE.search(text):
+        return False, None, Evidence("mojibake", 0.0, "لا توقيع لبايتات UTF-8 مفكوكة خطأً")
+
     has_sig = bool(_MOJIBAKE_SIGNATURE.search(text))
-    has_high_latin = any(0x80 <= ord(c) <= 0xFF for c in text)
+    has_high_latin = True
     # ØÙÚÛ قد تظهر في CP1256 المُساء فهمه أيضاً — لا نجعلها مانعاً للمسار الموروث.
-    has_utf8_mojibake_hint = has_sig or bool(
-        _MOJIBAKE_SIGNATURE.search(text)
-    ) or (
+    has_utf8_mojibake_hint = has_sig or (
         any(c in _MOJIBAKE_LEAD for c in text)
         and any(0x80 <= ord(c) <= 0xFF or 0x2000 <= ord(c) <= 0x206F for c in text)
     )
-    if not has_sig and not has_high_latin and not any(c in _MOJIBAKE_LEAD for c in text):
-        return False, None, Evidence("mojibake", 0.0, "لا توقيع لبايتات UTF-8 مفكوكة خطأً")
 
     before = _count_arabic(text)
     mode = ""
@@ -316,8 +320,13 @@ def detect_mojibake(text: str) -> tuple[bool, str | None, Evidence]:
 
 def detect_presentation_forms(text: str) -> tuple[float, Evidence]:
     """نسبة الحروف المطبوخة (U+FB50–FEFF) إلى مجموع الحروف العربية."""
+    if not text or not has_presentation_form(text):
+        total = sum(1 for c in text if is_arabic(c))
+        return 0.0, Evidence(
+            "presentation_forms", 0.0, f"0 شكلاً رسومياً من {total} حرفاً عربياً"
+        )
     pf = sum(1 for c in text if is_presentation_form(c))
-    total = sum(1 for c in text if is_arabic(c) or is_presentation_form(c))
+    total = pf + sum(1 for c in text if is_arabic(c))
     ratio = pf / total if total else 0.0
     return ratio, Evidence(
         "presentation_forms", ratio, f"{pf} شكلاً رسومياً من {total} حرفاً عربياً"
@@ -332,8 +341,10 @@ def detect_pua(text: str) -> tuple[float, Evidence]:
     والملف يخزّن أرقاماً بلا معنى قياسي. هذه هي الحالة الوحيدة التي
     لا يُنجيك منها إلا الدرجة ٣ (إعادة بناء الخريطة من الخط نفسه).
     """
-    pua = sum(1 for c in text if is_pua(c))
     total = len(text) or 1
+    if not text or not has_pua(text):
+        return 0.0, Evidence("pua", 0.0, f"0 محرفاً في منطقة الاستعمال الخاص من {total}")
+    pua = sum(1 for c in text if is_pua(c))
     ratio = pua / total
     return ratio, Evidence("pua", ratio, f"{pua} محرفاً في منطقة الاستعمال الخاص من {total}")
 
@@ -351,6 +362,10 @@ def detect_tatweel(text: str) -> tuple[float, Evidence]:
 
 _EDGE_PUNCT = re.compile(
     r"^[\s،؛؟!.\(\)«»\"':\-_–—/\\[\]{}]+|[\s،؛؟!.\(\)«»\"':\-_–—/\\[\]{}]+$"
+)
+_EDGE_MARKS_AND_PUNCT = re.compile(
+    r"^[\s،؛؟!.\(\)«»\"':\-_–—/\\[\]{}\u0640\u064B-\u065F\u0670\u06D6-\u06ED]+|"
+    r"[\s،؛؟!.\(\)«»\"':\-_–—/\\[\]{}\u0640\u064B-\u065F\u0670\u06D6-\u06ED]+$"
 )
 
 
@@ -394,6 +409,15 @@ _COMMON_ARABIC_WORDS: frozenset[str] = frozenset({
 })
 
 
+@cache
+def _direction_vocab() -> frozenset[str]:
+    try:
+        from .lexicon.core import get_core_lexicon
+
+        return _COMMON_ARABIC_WORDS | get_core_lexicon()
+    except Exception:
+        return _COMMON_ARABIC_WORDS
+
 
 def _signal_lexicon_direction(tokens: list[str]) -> tuple[float, str] | None:
     """
@@ -406,13 +430,7 @@ def _signal_lexicon_direction(tokens: list[str]) -> tuple[float, str] | None:
     """
     if not tokens:
         return None
-    vocab = _COMMON_ARABIC_WORDS
-    try:
-        from .lexicon.core import get_core_lexicon
-
-        vocab = vocab | get_core_lexicon()
-    except Exception:
-        pass
+    vocab = _direction_vocab()
 
     clean = [_clean_punct_only(t) for t in tokens]
     words = [
@@ -449,12 +467,14 @@ _NON_INITIAL_ARABIC_LETTERS = frozenset("ةىئؤ")
 
 def _clean_final_letters_token(token: str) -> str:
     """Strip edge punctuation, tatweel, and edge marks for final_only_letters."""
-    t = _clean_punct_only(token)
-    while t and unicodedata.category(t[0]) == "Mn":
-        t = t[1:]
-    while t and unicodedata.category(t[-1]) == "Mn":
-        t = t[:-1]
-    return t.strip("\u0640")
+    t = _EDGE_MARKS_AND_PUNCT.sub("", token)
+    if t and (unicodedata.category(t[0]) == "Mn" or unicodedata.category(t[-1]) == "Mn"):
+        while t and unicodedata.category(t[0]) == "Mn":
+            t = t[1:]
+        while t and unicodedata.category(t[-1]) == "Mn":
+            t = t[:-1]
+        t = t.strip("\u0640")
+    return t
 
 
 def _signal_final_only_letters(tokens: list[str]) -> tuple[float, str] | None:
@@ -513,6 +533,8 @@ def _signal_joining_forms(text: str) -> tuple[float, str] | None:
     ونستثني التشكيل: أشكاله (U+FE70–FE7F) تحمل وسوماً لا تصف وصلاً
     فتكسر السلسلة كذباً.
     """
+    if not text or not has_presentation_form(text):
+        return None
     correct = wrong = 0
     for token in _ARABIC_TOKEN.findall(text):
         forms = []
@@ -680,7 +702,11 @@ def diagnose(text: str, thresholds: dict[str, float] | None = None) -> Diagnosis
     # وإنما يفتح عينه على طبقتين معاً كما يفعل الأنبوب.
     from .normalize import fold_pdf_homoglyphs, fold_simple_forms
 
-    inspected_text = fold_pdf_homoglyphs(fold_simple_forms(text))
+    inspected_text = (
+        fold_pdf_homoglyphs(fold_simple_forms(text))
+        if pf_ratio > 0.0
+        else fold_pdf_homoglyphs(text)
+    )
     order_score, order_ev = detect_visual_order(
         inspected_text, shaped_source=text
     )

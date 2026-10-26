@@ -237,8 +237,21 @@ def join_glyphs_preserving_ltr(
             gap = cur_first.x - prev_last.x
             prev_t = prev_last.text
             cur_t = cur_first.text
+            # Cursive Joining Lock: Presentation forms carry explicit joining state.
+            # In visual left-to-right order (ordered by x), cur_first is to the RIGHT of prev_last.
+            # If cur_first (right letter) is INITIAL or MEDIAL (joins to its left), or
+            # prev_last (left letter) is MEDIAL or FINAL (joins to its right), they are
+            # cursively connected within the same word and cannot have a space between them.
+            from .unicode_tables import PF_JOINING_FORM, JoiningForm
+            cur_form = PF_JOINING_FORM.get(cur_t[0]) if cur_t else None
+            prev_form = PF_JOINING_FORM.get(prev_t[-1]) if prev_t else None
+            cursively_locked = (
+                cur_form in (JoiningForm.INITIAL, JoiningForm.MEDIAL)
+                or prev_form in (JoiningForm.MEDIAL, JoiningForm.FINAL)
+            )
             if (
                 gap > th
+                and not cursively_locked
                 and prev_t
                 and cur_t
                 and not prev_t[-1].isspace()

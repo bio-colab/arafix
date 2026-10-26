@@ -10,7 +10,7 @@
 [![Live Web Demo](https://img.shields.io/badge/Playground-Live%20WASM%20Demo-10b981?style=flat&logo=webassembly&logoColor=white)](https://bio-colab.github.io/arafix/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 ![Status: Stable](https://img.shields.io/badge/status-stable-brightgreen)
-![Tests](https://img.shields.io/badge/tests-955%20passed-success)
+![Tests](https://img.shields.io/badge/tests-957%20passed-success)
 ![Typing](https://img.shields.io/badge/typing-py.typed-blue)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21733978.svg)](https://doi.org/10.5281/zenodo.21733978)
 
@@ -151,7 +151,9 @@ Measured on official real-world publication ([`iraq_constitution.pdf`](tests/fix
 arafix diagnose thesis.pdf -v
 arafix extract  thesis.pdf -o out.txt
 arafix extract  paper.pdf --layout full -v --tables
+arafix explain  thesis.pdf -p 1
 arafix eval     thesis.pdf --truth thesis.txt --scientific
+arafix fonts    thesis.pdf
 python scripts/bench_cross_engine.py --pdf doc.pdf --truth truth.txt
 python scripts/eval_unified.py --pdf thesis.pdf --truth thesis.txt -v
 ```
@@ -162,9 +164,10 @@ The current `main` branch includes the following measured improvements. Detailed
 
 | Area | What is shipped | Evidence |
 |---|---|---|
-| Level 3 OpenType GSUB Inversion | Bidirectional OpenType GSUB tree inversion (ligature type 4, single type 1, multiple type 2) + `glyph_id → Unicode` CMap fallback | Resolves +1,057 contextual & ligature glyphs (Amiri resolved glyphs jumped from 872 to 1,929) |
-| Accelerated Audit Engine | 56x faster linear diff opcode generation (`_diff_opcodes`) with caching and line partitioning | Eliminates audit bottleneck; full reversible audit runs in milliseconds |
-| Arabic spacing & hygiene | Explicit PDF spaces take precedence over geometric gaps; safe particle splits; punctuation spacing leaves Latin and decimal contexts alone | Constitution CER/WER improved to **2.15% / 13.48%** (Letters-only CER **0.82%**, Word Accuracy **86.52%**) |
+| Level 3 OpenType GSUB Inversion | Pure-stdlib SFNT binary parser (zero dependencies) + bidirectional OpenType GSUB tree inversion (ligature type 4, single type 1, multiple type 2) + `glyph_id → Unicode` CMap fallback | Resolves 2,679 glyphs on Amiri without requiring fontTools |
+| Pure-Python Extractor (`PyPDFExtractor`) | Full geometric extraction engine with ContentStream and ToUnicode decoding as a pure-Python fallback when PyMuPDF is absent | 1.35% CER on narrative book, 2.07% CER on Iraq Constitution |
+| Accelerated Audit & Fast Gates | C-level pre-filtering and 56x faster linear diff opcode generation (`_diff_opcodes`) with caching and line partitioning | Throughput up to 5,000+ lines/sec; full reversible audit runs in milliseconds |
+| Arabic spacing & hygiene | Explicit PDF spaces take precedence over geometric gaps; cursive joining lock; safe particle splits; punctuation spacing leaves Latin and decimal contexts alone | Constitution CER/WER improved to **2.07% / 12.52%** (Letters-only CER **0.82%**, Word Accuracy **87.48%**) |
 | Multi-column RTL Layout | Asymmetric column gutter analysis, spanning header/footer isolation, and hierarchical heading classification (H1/H2/H3) | Zero line cross-talk on multi-column pages; clean structured Markdown export |
 | Latin/Bidi islands | Solid-block protection for dates, versions, phone numbers, email, hybrid terms, and page ranges | **1000/1000** adversarial cases pass: dates, versions, hybrid terms, and phones |
 | Geometric noise | Conservative light-gray rotated watermark filtering from text-trace metadata | Three watermark spans removed while table count stayed 3/3; repeated multi-page filtering remains opt-in |
@@ -522,6 +525,8 @@ for tbl in doc.tables:
 arafix diagnose thesis.pdf -v
 arafix extract thesis.pdf -o thesis.txt
 arafix extract thesis.pdf --layout full --tables -o thesis.md
+arafix explain "ﺎﺒﺣﺮﻣ"
+arafix explain thesis.pdf -p 1 --json
 arafix eval thesis.pdf --truth thesis.txt --scientific
 ```
 
@@ -840,7 +845,7 @@ result = repair_text(broken_text, config)
 | safe corpus | 0/18 false repairs في التشغيلة الكاملة¹، وFPR = 0% |
 | Latin/Bidi adversarial corpus | 1000/1000 حالة ناجحة |
 | PDF الدستور الحقيقي | تحسن CER/WER الموثق إلى **2.15% / 13.48%** (دقة حروف **99.18%**، ودقة كلمات **86.52%**) |
-| اختبارات الحزمة والاعتمادية | 955 فحصاً آلياً واختباراً تراجعياً ناجحاً 100% عبر بيئات Linux و Windows و macOS |
+| اختبارات الحزمة والاعتمادية | 957 فحصاً آلياً واختباراً تراجعياً ناجحاً 100% عبر بيئات Linux و Windows و macOS |
 | المسار الافتراضي | لا يتلقى كلفة Context أو RAG أو audit إلا عند تفعيلها |
 
 ¹ **سياق العدّاد:** corpus الإجهاد يحتوي 18 حالة must-not-change بينها حالة

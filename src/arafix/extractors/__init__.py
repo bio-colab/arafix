@@ -10,12 +10,22 @@ from __future__ import annotations
 
 from .base import Extractor, RawPage
 from .pymupdf_extractor import PyMuPDFExtractor
+from .pypdf_extractor import PyPDFExtractor
 
-__all__ = ["Extractor", "RawPage", "PyMuPDFExtractor", "REGISTRY", "get_extractor", "register"]
+__all__ = [
+    "Extractor",
+    "RawPage",
+    "PyMuPDFExtractor",
+    "PyPDFExtractor",
+    "REGISTRY",
+    "get_extractor",
+    "register",
+]
 
 
 REGISTRY: dict[str, type[Extractor]] = {
     PyMuPDFExtractor.name: PyMuPDFExtractor,
+    PyPDFExtractor.name: PyPDFExtractor,
 }
 
 
@@ -41,5 +51,7 @@ def get_extractor(name: str = "auto") -> Extractor:
         raise KeyError(f"محرّك مجهول: {name}. المتاح: {', '.join(REGISTRY)}")
     cls = REGISTRY[name]
     if not cls.available():
+        if name == "pymupdf" and PyPDFExtractor.available():
+            return PyPDFExtractor()
         raise RuntimeError(f"المحرّك {name} مسجَّل لكن تبعيّاته غير مثبَّتة")
     return cls()

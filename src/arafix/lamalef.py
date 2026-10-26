@@ -124,8 +124,18 @@ def detect_lam_alef_transposition(text: str) -> tuple[int, int, Evidence]:
     >>> n_sure
     1
     """
-    decisive = len(_DECISIVE.findall(text))
-    ambiguous = len(_AMBIGUOUS.findall(text))
+    if LAM not in text:
+        return (
+            0,
+            0,
+            Evidence(
+                "lam_alef_transposed",
+                0.0,
+                "0 ألفاً مزدوجةً قاطعة، و0 موضعاً مُبهَماً «ال» وسط الكلمة",
+            ),
+        )
+    decisive = sum(1 for _ in _DECISIVE.finditer(text))
+    ambiguous = sum(1 for _ in _AMBIGUOUS.finditer(text))
     ev = Evidence(
         "lam_alef_transposed",
         1.0 if decisive else 0.0,
@@ -157,17 +167,24 @@ def repair_lam_alef_transposition(
     'المجلات'
     """
     report = LamAlefReport(text=text)
+    if not text or LAM not in text:
+        return report
 
     # --- القاطع: نكرّر حتى الاستقرار، فقد تتلاصق شواهد في كلمةٍ واحدة ---
     out = text
-    for _ in range(8):  # سقفٌ يقي من دورةٍ لا تنتهي مهما شذّ المُدخَل
-        new, n_sub = _DECISIVE.subn(
-            lambda m: m.group(1) + m.group(3) + m.group(2) + m.group(4), out
-        )
-        if n_sub == 0:
-            break
-        report.fixed_decisive += n_sub
-        out = new
+    if _DECISIVE.search(out):
+        for _ in range(8):  # سقفٌ يقي من دورةٍ لا تنتهي مهما شذّ المُدخَل
+            new, n_sub = _DECISIVE.subn(
+                lambda m: m.group(1) + m.group(3) + m.group(2) + m.group(4), out
+            )
+            if n_sub == 0:
+                break
+            report.fixed_decisive += n_sub
+            out = new
+
+    if not _AMBIGUOUS.search(out):
+        report.text = out
+        return report
 
     # --- المُبهَم ---
     suspects, article_like = _collect_suspects(out)
@@ -182,7 +199,9 @@ def repair_lam_alef_transposition(
         report.suspect_words = sorted({w for w, _ in suspects})
         return report
 
-    vocab: set[str] = set(lexicon)
+    vocab: set[str] | frozenset[str] = (
+        lexicon if isinstance(lexicon, (set, frozenset)) else set(lexicon)
+    )
     out, fixed, left = _apply_lexicon(out, vocab)
     report.text = out
     report.fixed_by_lexicon = fixed
@@ -201,6 +220,8 @@ def _collect_suspects(text: str) -> tuple[list[tuple[str, int]], int]:
     article_like = 0
     for m in _WORD.finditer(text):
         word = m.group(0)
+        if LAM not in word:
+            continue
         for hit in _AMBIGUOUS.finditer(word):
             if _looks_like_article(word, hit.start()):
                 article_like += 1
@@ -214,13 +235,17 @@ def _swap_at(word: str, i: int) -> str:
     return word[:i] + word[i + 1] + word[i] + word[i + 2 :]
 
 
-def _apply_lexicon(text: str, vocab: set[str]) -> tuple[str, int, list[str]]:
+def _apply_lexicon(
+    text: str, vocab: set[str] | frozenset[str]
+) -> tuple[str, int, list[str]]:
     fixed = 0
     left: list[str] = []
 
     def repl(m: re.Match) -> str:
         nonlocal fixed
         word = m.group(0)
+        if LAM not in word:
+            return word
         hits = list(_AMBIGUOUS.finditer(word))
         if not hits:
             return word

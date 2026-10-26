@@ -52,12 +52,14 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
-pdf = ["pymupdf>=1.23"]
+pdf = ["pymupdf>=1.23", "pypdf>=3.0"]
+pypdf = ["pypdf>=3.0"]
 cmap = ["fonttools>=4.40"]
 # No fake ``ocr`` extra: stage 4 is not implemented.
-all = ["pymupdf>=1.23", "fonttools>=4.40"]
+all = ["pymupdf>=1.23", "pypdf>=3.0", "fonttools>=4.40"]
 dev = [
     "pymupdf>=1.23",
+    "pypdf>=3.0",
     "fonttools>=4.40",
     "pytest>=7",
     "ruff>=0.8",

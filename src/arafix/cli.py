@@ -266,6 +266,89 @@ def _cmd_fonts(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_explain(args: argparse.Namespace) -> int:
+    """يعرض سجلّ التدقيق (Provenance Audit & Abstentions) لنصّ أو ملف PDF."""
+    from .audit import AuditMode
+
+    raw_target = args.target if getattr(args, "target", None) else sys.stdin.read()
+    target = str(raw_target)
+    is_pdf = (
+        bool(getattr(args, "target", None))
+        and (target.lower().endswith(".pdf") or Path(target).suffix.lower() == ".pdf")
+        and Path(target).exists()
+    )
+
+    cfg = PipelineConfig(audit_mode=AuditMode.FULL)
+    if is_pdf:
+        doc = extract_pdf(target, cfg)
+        pages = [
+            p for p in doc.pages if not args.page or p.page_number == args.page
+        ]
+        page_payloads: list[dict[str, Any]] = [
+            {
+                "page": p.page_number,
+                "confidence": p.repair.confidence,
+                "stages_applied": [s.value for s in p.repair.stages_applied],
+                "notes": p.repair.notes,
+                "audit": p.repair.audit.to_dict() if p.repair.audit else None,
+            }
+            for p in pages
+        ]
+        payload: dict[str, Any] = {
+            "path": target,
+            "confidence": doc.confidence,
+            "pages": page_payloads,
+        }
+        if args.json:
+            print(json.dumps(payload, ensure_ascii=False, indent=2))
+            return 0
+        for p_info in page_payloads:
+            p_conf = p_info["confidence"]
+            conf_display = f"{p_conf:.2f}" if isinstance(p_conf, (int, float)) else str(p_conf)
+            print(f"── صفحة {p_info['page']} (ثقة {conf_display}) " + "─" * 32)
+            stages_list: list[str] = p_info["stages_applied"]
+            print(f"   المراحل : {'، '.join(stages_list)}")
+            audit_dict: dict[str, Any] = p_info["audit"] or {}
+            for ev in audit_dict.get("events", []):
+                ev_conf = ev.get("confidence")
+                conf_s = f" (ثقة {ev_conf:.2f})" if ev_conf is not None else ""
+                print(f"   ✓ [{ev['stage']}] {ev['rule']}{conf_s}")
+            for ab in audit_dict.get("abstentions", []):
+                print(
+                    f"   ⊘ [{ab['stage']}] {ab['rule']} ← امتناع ({ab['decision']})"
+                )
+            notes_list: list[str] = p_info["notes"]
+            for note in notes_list:
+                print(f"   · {note}")
+        return 0
+
+    res = repair_text(target, cfg)
+    stages_applied_str: list[str] = [s.value for s in res.stages_applied]
+    payload_text: dict[str, Any] = {
+        "original": res.original,
+        "text": res.text,
+        "confidence": res.confidence,
+        "stages_applied": stages_applied_str,
+        "notes": res.notes,
+        "audit": res.audit.to_dict() if res.audit else None,
+    }
+    if args.json:
+        print(json.dumps(payload_text, ensure_ascii=False, indent=2))
+        return 0
+    print(f"النص بعد الإصلاح: {res.text}")
+    print(f"الثقة           : {res.confidence}")
+    print(f"المراحل المطبّقة : {'، '.join(stages_applied_str)}")
+    if res.audit:
+        for ev_obj in res.audit.events:
+            conf_s = f" (ثقة {ev_obj.confidence:.2f})" if ev_obj.confidence is not None else ""
+            print(f"  ✓ [{ev_obj.stage}] {ev_obj.rule}{conf_s}")
+        for ab_obj in res.audit.abstentions:
+            print(f"  ⊘ [{ab_obj.stage}] {ab_obj.rule} ← امتناع ({ab_obj.decision.value})")
+    for note in res.notes:
+        print(f"  · {note}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="arafix", description="استرجاع النص العربي من ملفات PDF المعطوبة"
@@ -351,6 +434,12 @@ def build_parser() -> argparse.ArgumentParser:
     f.add_argument("path")
     f.set_defaults(func=_cmd_fonts)
 
+    ex = sub.add_parser("explain", help="اشرح قرارات الإصلاح والامتناع بالتفصيل (Audit Trail)")
+    ex.add_argument("target", nargs="?", help="ملف PDF أو نص مباشر (أو من stdin)")
+    ex.add_argument("-p", "--page", type=_nonneg_int, default=0, help="رقم صفحة محددة في PDF")
+    ex.add_argument("--json", action="store_true", help="إخراج سجل التدقيق بصيغة JSON")
+    ex.set_defaults(func=_cmd_explain)
+
     return p
 
 
@@ -371,6 +460,7 @@ def _normalize_argv(argv: list[str]) -> list[str]:
         "blocks",
         "eval",
         "fonts",
+        "explain",
         "-h",
         "--help",
         "-v",

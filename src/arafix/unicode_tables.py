@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 import unicodedata
 from collections.abc import Iterable
@@ -42,6 +43,8 @@ __all__ = [
     "is_presentation_form",
     "is_pua",
     "is_arabic_diacritic",
+    "has_presentation_form",
+    "has_pua",
     "in_ranges",
     "unicode_version",
 ]
@@ -125,25 +128,44 @@ _ARABIC_CPS = _cps(ARABIC_RANGES)
 # زائفاً عن نصٍّ ليس إلا BOM مكرراً.
 _PRESENTATION_CPS = _cps(PRESENTATION_RANGES) - {0xFEFF}
 
+# مجموعات نصية مباشرة (Character Sets) لتجنب استدعاء ord() في كل حرف
+_ARABIC_CHARS: frozenset[str] = frozenset(chr(cp) for cp in _ARABIC_CPS)
+_PRESENTATION_CHARS: frozenset[str] = frozenset(chr(cp) for cp in _PRESENTATION_CPS)
+
+# تعابير C-level فائقة السرعة للفحص الفوري عن وجود أشكال العرض أو محارف PUA
+_PF_SEARCH_RE = re.compile(r"[\uFB50-\uFDFF\uFE70-\uFEFE]")
+_PUA_SEARCH_RE = re.compile(r"[\uE000-\uF8FF\U000F0000-\U000FFFFD\U00100000-\U0010FFFD]")
+
+
+def has_presentation_form(text: str) -> bool:
+    """فحص C-level سريع لوجود أي شكل عرض عربي في النص."""
+    return bool(text and _PF_SEARCH_RE.search(text))
+
+
+def has_pua(text: str) -> bool:
+    """فحص C-level سريع لوجود أي محرف في منطقة الاستعمال الخاص (PUA)."""
+    return bool(text and _PUA_SEARCH_RE.search(text))
+
 
 def is_arabic(ch: str) -> bool:
     """حرف عربي اسمي (لا شكل رسومي)."""
-    return ord(ch) in _ARABIC_CPS
+    return ch in _ARABIC_CHARS
 
 
 def is_presentation_form(ch: str) -> bool:
     """شكل رسومي «مطبوخ» يحتاج تطبيعاً."""
-    return ord(ch) in _PRESENTATION_CPS
+    return ch in _PRESENTATION_CHARS
 
 
 def is_pua(ch: str) -> bool:
     """محرف في منطقة الاستعمال الخاص — لا معنى قياسياً له."""
-    return in_ranges(ord(ch), PUA_RANGES)
+    cp = ord(ch)
+    return (0xE000 <= cp <= 0xF8FF) or (0xF0000 <= cp <= 0xFFFFD) or (0x100000 <= cp <= 0x10FFFD)
 
 
 def is_arabic_diacritic(ch: str) -> bool:
     """تشكيل أو علامة تُركَّب فوق/تحت الحرف (فئة Mn)."""
-    return unicodedata.category(ch) == "Mn" and is_arabic(ch)
+    return ch in _ARABIC_CHARS and unicodedata.category(ch) == "Mn"
 
 
 # ---------------------------------------------------------------------------

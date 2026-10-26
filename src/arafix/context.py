@@ -23,6 +23,7 @@ if TYPE_CHECKING:
         CandidateGenerator,
         EvidenceDecision,
         EvidenceFusion,
+        GlyphEvidence,
         NegativeEvidenceModel,
     )
 
@@ -299,12 +300,34 @@ class DocumentContext:
             return 0
         return self._paragraph_counts[paragraph_index][word]
 
-    def _candidates(self, observed: str) -> list[str]:
+    def _candidates(
+        self,
+        observed: str,
+        *,
+        extra_candidates: Iterable[str] = (),
+    ) -> list[str]:
         candidates: list[str] = []
+        seen: set[str] = set()
         for length in range(max(3, len(observed) - 1), len(observed) + 2):
             for candidate in self._words_by_length.get(length, ()):
                 if candidate != observed and self._edit_distance(observed, candidate) <= 1:
                     candidates.append(candidate)
+                    seen.add(candidate)
+        gen = getattr(self, "candidate_generator", None)
+        cmodel = getattr(gen, "confusion_model", None) if gen is not None else None
+        if cmodel is not None:
+            for item in cmodel.candidates(observed):
+                if (
+                    item.candidate != observed
+                    and item.candidate in self.vocabulary
+                    and item.candidate not in seen
+                ):
+                    candidates.append(item.candidate)
+                    seen.add(item.candidate)
+        for cand in extra_candidates:
+            if cand != observed and cand in self.vocabulary and cand not in seen:
+                candidates.append(cand)
+                seen.add(cand)
         return candidates
 
     def rank(
@@ -314,9 +337,10 @@ class DocumentContext:
         right: str | None = None,
         *,
         paragraph_index: int | None = None,
+        extra_candidates: Iterable[str] = (),
     ) -> tuple[ContextCandidate, ...]:
         """Rank document-vocabulary candidates without changing the text."""
-        candidates = self._candidates(observed)
+        candidates = self._candidates(observed, extra_candidates=extra_candidates)
         if not candidates:
             return ()
         observed_phrase = self._phrase_score(left, observed, right)
@@ -367,11 +391,18 @@ class DocumentContext:
         )
         return tuple(ranked)
 
-    def repair(self, text: str, *, min_margin: float = 0.12) -> ContextRepair:
+    def repair(
+        self,
+        text: str,
+        *,
+        min_margin: float = 0.12,
+        glyph_evidence: Iterable[GlyphEvidence] = (),
+    ) -> ContextRepair:
         """Generate and fuse evidence; apply only SAFE decisions."""
         matches = list(_WORD_RE.finditer(text))
         if not matches:
             return ContextRepair(text=text)
+        glyph_items = tuple(glyph_evidence)
         tokens = [match.group(0) for match in matches]
         decisions: list[ContextDecision] = []
         fusion_decisions: list[EvidenceDecision] = []
@@ -386,10 +417,18 @@ class DocumentContext:
             left = tokens[index - 1] if index else None
             right = tokens[index + 1] if index + 1 < len(tokens) else None
             paragraph_index = text.count("\n\n", 0, match.start())
+            glyph_candidates: dict[str, float] = {
+                item.candidate: item.score
+                for item in glyph_items
+                if item.observed == observed and item.candidate != observed
+            }
             ranked = self.rank(
-                observed, left, right, paragraph_index=paragraph_index
+                observed,
+                left,
+                right,
+                paragraph_index=paragraph_index,
+                extra_candidates=glyph_candidates.keys(),
             )
-            glyph_candidates: dict[str, float] = {}
             if not ranked and not glyph_candidates:
                 continue
             candidates = self.candidate_generator.generate(

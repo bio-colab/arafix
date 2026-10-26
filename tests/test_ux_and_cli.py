@@ -97,3 +97,70 @@ class TestSmartCLIRouting:
         assert code_llm == 0
         captured_llm = capsys.readouterr()
         assert "َ" not in captured_llm.out
+
+
+def test_cli_explain_text_and_json(capsys):
+    import json
+
+    from arafix.cli import main
+
+    # 1. Text with --json
+    code = main(["explain", "\ufee3\ufeae\ufea3\ufe92\ufe8e", "--json"])
+    assert code == 0
+    out = capsys.readouterr().out
+    payload = json.loads(out)
+    assert payload["text"] == "مرحبا"
+    assert "normalize" in payload["stages_applied"]
+    assert payload["audit"] is not None
+
+    # 2. Text without --json (human-readable formatting)
+    code_text = main(["explain", "\ufee3\ufeae\ufea3\ufe92\ufe8e"])
+    assert code_text == 0
+    out_text = capsys.readouterr().out
+    assert "النص بعد الإصلاح: مرحبا" in out_text
+    assert "المراحل المطبّقة" in out_text
+
+
+def test_cli_explain_pdf(capsys):
+    from pathlib import Path
+
+    from arafix.cli import main
+
+    pdf_path = Path("tests/fixtures/real_pdf_narrative/file.pdf")
+    if not pdf_path.exists():
+        return
+
+    # PDF human-readable format
+    code = main(["explain", str(pdf_path), "-p", "1"])
+    assert code == 0
+    out = capsys.readouterr().out
+    assert "صفحة 1" in out
+
+
+def test_multisite_confusion_and_glyph_evidence_in_context():
+    from arafix.context import DocumentContext
+    from arafix.evidence import (
+        CandidateGenerator,
+        CharacterConfusionModel,
+        Confusion,
+        GlyphEvidence,
+    )
+
+    # 1. Multi-site character confusion: جذيذ -> جديد
+    gen = CandidateGenerator(
+        confusion_model=CharacterConfusionModel(
+            [Confusion("ذ", "د", source="ocr-dot", cost=0.25)]
+        )
+    )
+    corpus = ("هذا كتاب جديد ومفيد " * 6) + "هذا كتاب جذيذ ومفيد"
+    ctx = DocumentContext(corpus, candidate_generator=gen)
+    rep = ctx.repair("هذا كتاب جذيذ ومفيد")
+    assert rep.text == "هذا كتاب جديد ومفيد"
+    assert rep.changed
+
+    # 2. GlyphEvidence passed directly to DocumentContext.repair
+    rep_glyph = ctx.repair(
+        "هذا كتاب خذيذ ومفيد",
+        glyph_evidence=[GlyphEvidence(observed="خذيذ", candidate="جديد", score=0.95)],
+    )
+    assert rep_glyph.text == "هذا كتاب جديد ومفيد"

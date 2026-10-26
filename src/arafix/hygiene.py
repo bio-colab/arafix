@@ -287,8 +287,18 @@ def collapse_midword_spaces(text: str) -> str:
         # 2-letter standalone words:
         if len(left) == 2:
             if left in ("ال", "لل"):
-                return left
+                return left_cluster
             if len(right) > 2:
+                from .lexicon.core import get_core_lexicon
+                _NON_RIGHT_JOINING = frozenset('أإآادذرزوؤءةىٱ')
+                vocab = get_core_lexicon()
+                if (
+                    left[-1] not in _NON_RIGHT_JOINING
+                    and left not in _VALID_2_LETTER_WORDS
+                    and left not in vocab
+                    and (left + right) in vocab
+                ):
+                    return left_cluster
                 return m.group(0)
             if (left in _KEEP_SPACE_AFTER or left in _VALID_2_LETTER_WORDS) and (
                 right in _KEEP_SPACE_AFTER or right in _VALID_2_LETTER_WORDS
@@ -299,10 +309,21 @@ def collapse_midword_spaces(text: str) -> str:
             return m.group(0)
         # Article-like prefixes always glue (الع صور → العصور, الد ستور → الدستور)
         if left in _ARTICLE_3_PREFIXES:
-            return left
-        # 3-letter left: do NOT collapse if right is 2+ letters (e.g. ذهب به, كتب له, قلت له)
-        # Only collapse if right is a genuine single-letter tail fragment (e.g. عاد ي -> عادي)
+            return left_cluster
+        # 3-letter left: only collapse if right is a single-letter tail fragment OR
+        # a non-standalone fragment whose concatenation with left is in the core lexicon.
         if len(left) >= 3 and len(right) >= 2:
+            from .lexicon.core import get_core_lexicon
+            _NON_RIGHT_JOINING = frozenset('أإآادذرزوؤءةىٱ')
+            vocab = get_core_lexicon()
+            if (
+                left[-1] not in _NON_RIGHT_JOINING
+                and left not in vocab
+                and right not in _VALID_2_LETTER_WORDS
+                and right not in vocab
+                and (left + right) in vocab
+            ):
+                return left_cluster
             return m.group(0)
         if len(left) == 3 and len(right) == 1 and right not in "يىة":
             return m.group(0)

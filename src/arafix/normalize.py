@@ -34,6 +34,7 @@ from .unicode_tables import (
     ZWJ,
     ZWNJ,
     JoiningForm,
+    has_presentation_form,
     is_arabic_diacritic,
     is_presentation_form,
 )
@@ -109,6 +110,7 @@ def _build_presentation_punctuation_table() -> dict[int, str]:
 
 
 _PRESENTATION_PUNCTUATION_TABLE = _build_presentation_punctuation_table()
+_PRESENTATION_PUNCT_RE = re.compile(r"[\uFE10-\uFE6B]")
 _ZERO_WIDTH = (ZWJ, ZWNJ, "\u200b", "\u200e", "\u200f", "\ufeff")
 
 # PDF fonts often map Arabic yeh/heh to Farsi / Doachashmee codepoints.
@@ -125,11 +127,14 @@ _PDF_HOMOGLYPH_TABLE = str.maketrans(
         "\u06c3": "\u0629",  # TEH MARBUTA GOAL → TEH MARBUTA
     }
 )
+_PDF_HOMOGLYPH_RE = re.compile(r"[\u06A9\u06BE\u06C0-\u06C3\u06CC\u06CD\u06D5]")
 
 
 def fold_presentation_punctuation(text: str) -> str:
     """Fold only Unicode punctuation presentation forms to base marks."""
-    return text.translate(_PRESENTATION_PUNCTUATION_TABLE) if text else text
+    if not text or not _PRESENTATION_PUNCT_RE.search(text):
+        return text
+    return text.translate(_PRESENTATION_PUNCTUATION_TABLE)
 
 
 def fold_pdf_homoglyphs(text: str) -> str:
@@ -145,7 +150,9 @@ def fold_pdf_homoglyphs(text: str) -> str:
     >>> fold_pdf_homoglyphs("ھل")
     'هل'
     """
-    return text.translate(_PDF_HOMOGLYPH_TABLE) if text else text
+    if not text or not _PDF_HOMOGLYPH_RE.search(text):
+        return text
+    return text.translate(_PDF_HOMOGLYPH_TABLE)
 
 
 _SIMPLE_TABLE = {ord(k): v for k, v in SIMPLE_PF_TO_BASE.items()}
@@ -167,7 +174,7 @@ def strip_tatweel_among_presentation_forms(text: str) -> str:
 
         "مـر" تبقى "مـر"
     """
-    if not text or TATWEEL not in text:
+    if not text or TATWEEL not in text or not has_presentation_form(text):
         return text
     out: list[str] = []
     n = len(text)
@@ -185,6 +192,7 @@ def strip_tatweel_among_presentation_forms(text: str) -> str:
 
 _DUAL_JOINING_BASES = frozenset("بتثجحخسشصضطظعغفقكلمنهي")
 _PF_TA_MARBUTA = frozenset({"\ufe93", "\ufe94"})
+_WS_SPLIT_RE = re.compile(r"(\s+)")
 
 
 def _is_visual_pf_token(chars: list[str]) -> bool:
@@ -220,14 +228,14 @@ def separate_fused_presentation_forms(text: str) -> str:
     الختامي (JoiningForm.FINAL)، أو التاء المربوطة، يستحيل صرفياً ولغوياً
     أن يتلوها حرف في نفس الكلمة.
     """
-    if not text:
+    if not text or not has_presentation_form(text):
         return text
 
-    tokens = re.split(r"(\s+)", text)
+    tokens = _WS_SPLIT_RE.split(text)
     out_tokens: list[str] = []
 
     for token in tokens:
-        if not token or token.isspace():
+        if not token or token.isspace() or not has_presentation_form(token):
             out_tokens.append(token)
             continue
 
@@ -303,7 +311,7 @@ def fold_simple_forms(
     >>> fold_simple_forms("\ufefb") == "\ufefb"
     True
     """
-    if not text:
+    if not text or not has_presentation_form(text):
         return text
     if strip_pf_tatweel:
         text = strip_tatweel_among_presentation_forms(text)
@@ -326,7 +334,9 @@ def expand_deferred_forms(text: str) -> str:
     >>> expand_deferred_forms("\ufe79")   # ضمّةٌ فاصلة ← علامةٌ لاصقة
     'ُ'
     """
-    return text.translate(_DEFERRED_TABLE) if text else text
+    if not text or not has_presentation_form(text):
+        return text
+    return text.translate(_DEFERRED_TABLE)
 
 
 #: اسمٌ قديم أُبقي للتوافق. المظلّة أوسع من الرباطات، فالاسم الأدقّ أعلاه.
@@ -351,7 +361,7 @@ def fold_presentation_forms(
     >>> fold_presentation_forms("\ufefb")
     'لا'
     """
-    if not text:
+    if not text or not has_presentation_form(text):
         return text
     if strip_pf_tatweel:
         text = strip_tatweel_among_presentation_forms(text)
@@ -375,22 +385,24 @@ def normalize_text(text: str, config: NormalizeConfig | None = None) -> str:
         if cfg.expand_ligatures:
             out = expand_deferred_forms(out)
 
-    if cfg.strip_tatweel:
+    if cfg.strip_tatweel and TATWEEL in out:
         out = out.replace(TATWEEL, "")
 
     if cfg.strip_zero_width:
         for ch in _ZERO_WIDTH:
-            out = out.replace(ch, "")
+            if ch in out:
+                out = out.replace(ch, "")
 
     if cfg.strip_diacritics:
         out = "".join(c for c in out if not is_arabic_diacritic(c))
 
     if cfg.unify_alef:
         for v in _ALEF_VARIANTS:
-            out = out.replace(v, "ا")
-    if cfg.unify_taa_marbuta:
+            if v in out:
+                out = out.replace(v, "ا")
+    if cfg.unify_taa_marbuta and "ة" in out:
         out = out.replace("ة", "ه")
-    if cfg.unify_alef_maqsura:
+    if cfg.unify_alef_maqsura and "ى" in out:
         out = out.replace("ى", "ي")
 
     if cfg.fold_pdf_homoglyphs:

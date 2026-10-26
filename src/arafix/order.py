@@ -47,6 +47,8 @@ MIRROR_PAIRS = {
     "{": "}", "}": "{",
     "<": ">", ">": "<",
 }
+_MIRROR_TABLE = str.maketrans(MIRROR_PAIRS)
+_MIRROR_CHARS_RE = re.compile(r"[()\[\]{}<>]")
 
 #: LTR atom + continuers (digits, Latin, hyphen/slash inside dates & codes, URL params).
 _LTR_ATOM = r"[0-9\u0660-\u0669\u06F0-\u06F9A-Za-z\u00C0-\u024F]"
@@ -68,6 +70,7 @@ _LTR_RUN = re.compile(
     rf"(?:[ \t]+{_LTR_EDGE}{_EDGE_REPS}{_LTR_ATOM}{_LTR_CONT}*)*"
     rf"{_LTR_EDGE}{_EDGE_REPS}"
 )
+_HAS_LTR_ATOM_RE = re.compile(_LTR_ATOM)
 
 #: فرق الدرجة الذي يبرّر الإبقاء على الجزيرة بدل إعادة عكسها التقليدية.
 _LTR_SCORE_MARGIN = 2.0
@@ -109,6 +112,23 @@ _SOLID_URL = re.compile(
     r"^(?:https?|ftp)://[^\s()<>]+(?:\([^\s()<>]+\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’])?$"
     r"|^www\.[A-Za-z0-9.-]+\.[A-Za-z]{2,}[^\s()<>]*$",
     re.IGNORECASE,
+)
+
+# Precompiled regexes for _ltr_wellformed_score and mirror_brackets
+_SUSPICIOUS_LEADING_ZERO_RE = re.compile(r"(?:^|[^0-9.])0\d")
+_THOUSANDS_GROUP_RE = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?")
+_DECIMAL_CENTS_RE = re.compile(r"\d+\.\d{2}\b")
+_TRAILING_PERCENT_RE = re.compile(r"\d(?:\.\d+)?%\s*$")
+_YEAR_19_20_RE = re.compile(r"(?:19|20)\d{2}")
+_SIMPLE_NUM_RANGE_RE = re.compile(r"(\d+)\s*([-–—])\s*(\d+)")
+_LATIN_WORDS_RE = re.compile(r"[A-Za-z]+")
+_REV_URL_HINT_RE = re.compile(r"//:sptth\b|//:ptth\b|\.www\b", re.I)
+_VERSION_PREFIX_RE = re.compile(r"^(?:v|[A-Za-z]+-)")
+_ENUM_HYPHEN_RE = re.compile(
+    r"(^|[\s(«]|(?<=[وفبكل]))-([٠-٩]+|[0-9]{1,2})(?=[\s\u0621-\u064A])"
+)
+_ENUM_COLON_RE = re.compile(
+    r"(^|[\s(«]):\s*([0-9\u0660-\u0669\u06F0-\u06F9]+)(?=[\s\u0621-\u064A])"
 )
 
 
@@ -171,7 +191,7 @@ def _solid_ltr_quality(run: str) -> float:
     score = 0.0
     if _SOLID_URL.fullmatch(candidate):
         score += 35.0
-    if re.search(r"//:sptth\b|//:ptth\b|\.www\b", candidate, re.I):
+    if _REV_URL_HINT_RE.search(candidate):
         score -= 35.0
     date = _SOLID_DATE.fullmatch(candidate)
     if date:
@@ -220,7 +240,7 @@ def _solid_ltr_quality(run: str) -> float:
     if percent:
         score += 4.0 if candidate.endswith("%") else 0.0
         score -= 4.0 if candidate.startswith("%") else 0.0
-    if _SOLID_VERSION.fullmatch(candidate) and re.match(r"^(?:v|[A-Za-z]+-)", candidate):
+    if _SOLID_VERSION.fullmatch(candidate) and _VERSION_PREFIX_RE.match(candidate):
         score += 6.0
     if _SOLID_EMAIL.fullmatch(candidate):
         score += 10.0
@@ -295,6 +315,28 @@ def _fix_unbalanced_pairs(
 ATTACHABLE_SMALL_LETTERS = frozenset("\u06e5\u06e6")
 
 
+def _build_attachable_regex() -> re.Pattern[str]:
+    cps = [
+        cp
+        for cp in range(0x110000)
+        if unicodedata.category(chr(cp)) == "Mn" or chr(cp) in ATTACHABLE_SMALL_LETTERS
+    ]
+    ranges: list[list[int]] = []
+    for cp in cps:
+        if not ranges or cp > ranges[-1][1] + 1:
+            ranges.append([cp, cp])
+        else:
+            ranges[-1][1] = cp
+    parts = [
+        re.escape(chr(a)) if a == b else f"{re.escape(chr(a))}-{re.escape(chr(b))}"
+        for a, b in ranges
+    ]
+    return re.compile("[" + "".join(parts) + "]")
+
+
+_ATTACHABLE_RE = _build_attachable_regex()
+
+
 def _is_attachable(ch: str) -> bool:
     """هل يلزم هذا المحرف قاعدته في العناقيد (علامة أو حرف صغير علوي)؟"""
     return unicodedata.category(ch) == "Mn" or ch in ATTACHABLE_SMALL_LETTERS
@@ -313,7 +355,7 @@ def order_combining_marks(marks: str) -> str:
     >>> order_combining_marks("\u0651\u064e")  # already shadda + fatha
     '\u0651\u064e'
     """
-    if not marks or len(marks) == 1:
+    if not marks or len(marks) == 1 or _SHADDA not in marks:
         return marks
     shadda = [c for c in marks if c == _SHADDA]
     rest = [c for c in marks if c != _SHADDA]
@@ -379,6 +421,13 @@ def grapheme_clusters(
     >>> grapheme_clusters(" \\u064e\\u0628")  # mark after space, before letter
     [' ', 'بَ']
     """
+    if not text:
+        return []
+    # مسار سريع: إذا خلا السطر من أي علامة تشكيل أو حرف صغير علوي،
+    # فكل محرف هو عنقود مستقل بذاته — توفير 4x في نصوص PDF غير المشكولة.
+    if not _ATTACHABLE_RE.search(text):
+        return list(text)
+
     out: list[str] = []
     pending: list[str] = []
     n = len(text)
@@ -409,8 +458,11 @@ def grapheme_clusters(
             i = j
             continue
         if _is_markable_base(ch):
-            out.append(_with_ordered_marks(ch + "".join(pending)))
-            pending.clear()
+            if pending:
+                out.append(_with_ordered_marks(ch + "".join(pending)))
+                pending.clear()
+            else:
+                out.append(ch)
         else:
             out.append(ch)
         i += 1
@@ -475,12 +527,12 @@ def _ltr_wellformed_score(s: str) -> float:
     t = s.strip()
 
     # أصفار بادئة مشبوهة (041، 00.052) لا في الكسور العشرية السليمة.
-    if re.search(r"(?:^|[^0-9.])0\d", t):
+    if _SUSPICIOUS_LEADING_ZERO_RE.search(t):
         score -= 5.0
 
-    if re.search(r"\d{1,3}(?:,\d{3})+(?:\.\d+)?", t):
+    if _THOUSANDS_GROUP_RE.search(t):
         score += 6.0
-    if re.search(r"\d+\.\d{2}\b", t):
+    if _DECIMAL_CENTS_RE.search(t):
         score += 3.0
     if _CURRENCY_CODE.search(t):
         score += 5.0
@@ -488,16 +540,16 @@ def _ltr_wellformed_score(s: str) -> float:
         score += 2.0
 
     # نسبة مئوية: الرقم ثم % لا العكس.
-    if re.search(r"\d(?:\.\d+)?%\s*$", t):
+    if _TRAILING_PERCENT_RE.search(t):
         score += 3.0
     if t.startswith("%"):
         score -= 1.5
 
     core = t.strip(".,;:%")
-    if re.fullmatch(r"(?:19|20)\d{2}", core):
+    if _YEAR_19_20_RE.fullmatch(core):
         score += 6.0
 
-    m = re.fullmatch(r"(\d+)\s*([-–—])\s*(\d+)", t)
+    m = _SIMPLE_NUM_RANGE_RE.fullmatch(t)
     if m:
         left, right = m.group(1), m.group(3)
         if left.startswith("0") or right.startswith("0"):
@@ -514,7 +566,7 @@ def _ltr_wellformed_score(s: str) -> float:
     if t.startswith(".") and not re.match(r"\.\d+$", t):
         score -= 2.0
 
-    for w in re.findall(r"[A-Za-z]+", t):
+    for w in _LATIN_WORDS_RE.findall(t):
         if w.isupper() and 2 <= len(w) <= 5:
             score += 2.0
         elif len(w) >= 3:
@@ -554,6 +606,9 @@ _PAGE_RANGE_CONTEXT = re.compile(
 
 
 def _restore_ltr_runs(text: str, *, smart: bool) -> str:
+    if not _HAS_LTR_ATOM_RE.search(text):
+        return text
+
     def repl(match: re.Match[str]) -> str:
         run = match.group(0)
         candidate = _solid_ltr_candidate(run)
@@ -562,7 +617,7 @@ def _restore_ltr_runs(text: str, *, smart: bool) -> str:
             # The range or page number is adjacent to an explicit page marker.
             if _SOLID_RANGE.fullmatch(candidate):
                 return run[::-1]
-            if re.fullmatch(r"\d+", candidate):
+            if candidate.isdigit():
                 return run
         return _restore_one_ltr_run(run, smart=smart)
 
@@ -615,7 +670,7 @@ def normalize_page_ranges(text: str) -> str:
     >>> normalize_page_ranges("مرجع البحث (ص. 140-125)")
     'مرجع البحث (ص. 125-140)'
     """
-    if not text:
+    if not text or ("-" not in text and "–" not in text and "—" not in text):
         return text
 
     def sad(m: re.Match[str]) -> str:
@@ -670,6 +725,8 @@ def reverse_visual_line(line: str, config: ReorderConfig | None = None) -> str:
     """
     cfg = config or ReorderConfig()
     line = line.rstrip(" \t")
+    if not line:
+        return line
 
     units = (
         grapheme_clusters(line, forward_flank_marks=cfg.forward_flank_marks)
@@ -683,20 +740,16 @@ def reverse_visual_line(line: str, config: ReorderConfig | None = None) -> str:
         out = _restore_ltr_runs(out, smart=cfg.smart_ltr_restore)
 
     if cfg.mirror_brackets:
-        out = "".join(_mirror(c) for c in out)
+        if _MIRROR_CHARS_RE.search(out):
+            out = out.translate(_MIRROR_TABLE)
         # Inverted quotation marks from visual reversal: »نص« -> «نص»
-        out = _fix_unbalanced_pairs(out, "«", "»")
+        if "«" in out and "»" in out:
+            out = _fix_unbalanced_pairs(out, "«", "»")
         # Inverted Arabic item enumeration markers from visual reversal: -١ -> ١-, : ٢ -> ٢:
-        out = re.sub(
-            r"(^|[\s(«])-([٠-٩]+|[1-9])(?=[\s\u0621-\u064A])",
-            r"\g<1>\g<2>-",
-            out,
-        )
-        out = re.sub(
-            r"(^|[\s(«]):\s*([0-9\u0660-\u0669\u06F0-\u06F9]+)(?=[\s\u0621-\u064A])",
-            r"\g<1>\g<2>:",
-            out,
-        )
+        if "-" in out:
+            out = _ENUM_HYPHEN_RE.sub(r"\g<1>\g<2>-", out)
+        if ":" in out:
+            out = _ENUM_COLON_RE.sub(r"\g<1>\g<2>:", out)
 
     if cfg.repair_ltr_parens:
         out = repair_inverted_ltr_parens(out)
@@ -713,6 +766,6 @@ def reverse_visual_line(line: str, config: ReorderConfig | None = None) -> str:
 def fix_order(text: str, config: ReorderConfig | None = None) -> str:
     """يطبّق `reverse_visual_line` على النص، سطراً سطراً افتراضياً."""
     cfg = config or ReorderConfig()
-    if not cfg.per_line:
+    if not cfg.per_line or "\n" not in text:
         return reverse_visual_line(text, cfg)
     return "\n".join(reverse_visual_line(ln, cfg) for ln in text.split("\n"))

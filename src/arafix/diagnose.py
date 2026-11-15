@@ -406,6 +406,13 @@ _COMMON_ARABIC_WORDS: frozenset[str] = frozenset({
     "ملاحظات", "صفحة", "مجموع", "نسبة", "نتيجة", "حالة", "وصف", "سعر", "كمية",
     "إجمالي", "مبلغ", "رصيد", "حساب", "فرع", "قسم", "إدارة", "ملف", "مستند",
     "توقيع", "ختم", "مرجع", "كود", "بند", "سم",
+    # مفردات إسلامية وقرآنية
+    "بسم", "رحمن", "رحيم", "صراط", "مستقيم", "العالمين", "الدين", "إياك", "نعبد", "نستعين",
+    "اهدنا", "المغضوب", "الضالين", "سلام", "قرآن", "كريم", "عظيم", "حكيم", "مبين",
+    # مفردات وأدوات فارسية وإقليمية
+    "است", "این", "یک", "برای", "شد", "بود", "کند", "کرد", "نیست", "گربه",
+    "دارد", "های", "اند", "می", "کیک", "شما", "ایشان", "خیلی", "بسیار", "چون",
+    "اگر", "ولی", "اما", "کدام", "کجا", "باید", "شاید", "رفت", "آمد", "خوب",
 })
 
 
@@ -442,7 +449,16 @@ def _signal_lexicon_direction(tokens: list[str]) -> tuple[float, str] | None:
         return None
 
     def _in_vocab(w: str) -> bool:
-        return w in vocab or (len(w) > 4 and w.startswith("ال") and w[2:] in vocab)
+        w_norm = (
+            w.replace("\u0671", "\u0627")
+            .replace("\u06a9", "\u0643")
+            .replace("\u06cc", "\u064a")
+        )
+        return (
+            w in vocab
+            or w_norm in vocab
+            or (len(w_norm) > 4 and w_norm.startswith("ال") and w_norm[2:] in vocab)
+        )
 
     forward_hits = 0
     reversed_hits = 0
@@ -474,6 +490,8 @@ def _clean_final_letters_token(token: str) -> str:
         while t and unicodedata.category(t[-1]) == "Mn":
             t = t[:-1]
         t = t.strip("\u0640")
+    # تطبيع همزة الوصل \u0671 وحروف الأبجديات الإقليمية (ك/ي) لسلامة فحص الأطراف
+    t = t.replace("\u0671", "\u0627").replace("\u06a9", "\u0643").replace("\u06cc", "\u064a")
     return t
 
 
@@ -483,11 +501,17 @@ def _signal_final_only_letters(tokens: list[str]) -> tuple[float, str] | None:
 
     التاء المربوطة، الألف المقصورة، الهمزة على واو، الهمزة على نبرة/ياء:
     كلها قواعد إملائية وصرفية صلبة لا استثناء لها في العربية.
+    كذلك علامات التشكيل التراكبية (Mn): لا تبدأ بها كلمة عربية في اليونيكود إطلاقاً.
     فإن وجدناها في أوائل الكلمات، فالنص مخزَّن معكوساً قطعاً.
     وإن غابت كلها، احتكمنا إلى فحص المعجم الاتجاهي للكلمات المجردة.
     """
     head = tail = 0
+    leading_marks = 0
     for raw_t in tokens:
+        t_clean = _clean_punct_only(raw_t)
+        if t_clean and unicodedata.category(t_clean[0]) == "Mn":
+            leading_marks += 1
+            head += 1
         t = _clean_final_letters_token(raw_t)
         if len(t) < 2:
             continue
@@ -501,7 +525,10 @@ def _signal_final_only_letters(tokens: list[str]) -> tuple[float, str] | None:
         return _signal_lexicon_direction(tokens)
 
     score = (head - tail) / (head + tail)
-    return score, f"أحرف طرفية في أول {head} كلمة مقابل آخر {tail} كلمة"
+    detail = f"أحرف طرفية في أول {head} كلمة مقابل آخر {tail} كلمة"
+    if leading_marks > 0:
+        detail += f" (مع {leading_marks} حركات تراكبية في الصدارة)"
+    return score, detail
 
 
 def _joins_forward(f: JoiningForm) -> bool:
@@ -565,17 +592,26 @@ def _signal_joining_forms(text: str) -> tuple[float, str] | None:
 def _signal_definite_article(tokens: list[str]) -> tuple[float, str] | None:
     """
     الشاهد الثالث: «ال» التعريف أشيع بادئة في العربية. معكوسةً تصير «لا» لاحقة.
-
-    أضعف الشواهد الثلاثة — فـ«لا» النافية موجودة، و«ال» قد تكون أصلية.
-    ولذلك وزنه أخفّ، ولا يُعتمد وحده أبداً.
+    يشمل أيضاً همزة الوصل القرآنية «ٱل» (معكوسة «لٱ»).
     """
     clean_tokens = [_clean_punct_only(t) for t in tokens]
-    pre = sum(1 for t in clean_tokens if len(t) > 3 and t.startswith("ال"))
-    post = sum(1 for t in clean_tokens if len(t) > 3 and t.endswith("لا"))
+    pre = sum(1 for t in clean_tokens if len(t) > 3 and (t.startswith("ال") or t.startswith("ٱل")))
+    post = sum(
+        1
+        for t in clean_tokens
+        if len(t) > 3
+        and (
+            t.endswith("لا")
+            or t.endswith("لٱ")
+            or t.endswith("لأ")
+            or t.endswith("لإ")
+            or t.endswith("لآ")
+        )
+    )
     if pre + post == 0:
         return None
     score = (post - pre) / (pre + post)
-    return score, f"«ال» بادئةً في {pre} كلمة، «لا» لاحقةً في {post}"
+    return score, f"«ال» بادئةً في {pre} كلمة، «لا/لٱ» لاحقةً في {post}"
 
 
 #: أوزان التصويت — مرتّبة بحسب صلابة القاعدة اللغوية خلف كل شاهد.

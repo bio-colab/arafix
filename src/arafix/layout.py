@@ -23,7 +23,7 @@ import statistics
 from dataclasses import dataclass, field
 from typing import Literal
 
-from .types import TextBlock
+from .types import TextBlock, table_to_markdown
 
 __all__ = [
     "Glyph",
@@ -521,22 +521,6 @@ class PageLayout:
             parts.append("\n".join(f))
 
         return "\n\n".join(p for p in parts if p.strip())
-
-
-def table_to_markdown(rows: list[list[str]]) -> str:
-    if not rows:
-        return ""
-    n = max(len(r) for r in rows)
-    norm = [list(r) + [""] * (n - len(r)) for r in rows]
-
-    def esc(c: str) -> str:
-        return c.replace("|", "\\|")
-
-    lines = ["| " + " | ".join(esc(c) for c in norm[0]) + " |"]
-    lines.append("| " + " | ".join("---" for _ in range(n)) + " |")
-    for row in norm[1:]:
-        lines.append("| " + " | ".join(esc(c) for c in row) + " |")
-    return "\n".join(lines)
 
 
 def glyphs_from_triples(

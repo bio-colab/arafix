@@ -24,7 +24,7 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from .types import RepairResult, Stage
+from .types import Diagnosis, RepairResult, Stage
 from .unicode_tables import (
     DEFERRED_PF_TO_BASE,
     PF_JOINING_FORM,
@@ -416,13 +416,17 @@ def normalize_text(text: str, config: NormalizeConfig | None = None) -> str:
 
 def normalize_result(text: str, config: NormalizeConfig | None = None) -> RepairResult:
     """غلافٌ يُرجع `RepairResult` بدل نصٍّ عارٍ — للاستعمال داخل الأنبوب."""
-    from .diagnose import diagnose
+    import sys
+
+    diag_mod = sys.modules.get("arafix.diagnose")
+    diag_fn = getattr(diag_mod, "diagnose", None) if diag_mod else None
+    diag = diag_fn(text) if diag_fn else Diagnosis(defects=[])
 
     out = normalize_text(text, config)
     return RepairResult(
         text=out,
         original=text,
-        diagnosis=diagnose(text),
+        diagnosis=diag,
         stages_applied=[Stage.NORMALIZE],
         confidence=1.0,
         notes=["تطبيع موجَّه لنطاق الأشكال العربية وحده (لا NFKC عام)"],

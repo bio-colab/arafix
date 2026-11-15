@@ -10,12 +10,9 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import asdict, dataclass
-from typing import TYPE_CHECKING, Optional, cast
+from typing import Any, Optional, cast
 
 from .audit import RepairDecision
-
-if TYPE_CHECKING:
-    from .context import DocumentContext
 
 __all__ = [
     "Candidate",
@@ -308,7 +305,7 @@ class CandidateGenerator:
         self,
         observed: str,
         *,
-        document_context: DocumentContext | None = None,
+        document_context: Any = None,
         left: str | None = None,
         right: str | None = None,
         paragraph_index: int | None = None,

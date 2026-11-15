@@ -191,6 +191,28 @@ def _joining_integrity(text: str) -> tuple[float, int, int]:
     return correct / pairs, pairs, wrong
 
 
+def _levenshtein_distance(s1: str, s2: str) -> int:
+    if s1 == s2:
+        return 0
+    if not s1:
+        return len(s2)
+    if not s2:
+        return len(s1)
+    prev = list(range(len(s2) + 1))
+    for i, c1 in enumerate(s1):
+        curr = [i + 1] * (len(s2) + 1)
+        for j, c2 in enumerate(s2):
+            curr[j + 1] = prev[j] if c1 == c2 else 1 + min(prev[j + 1], curr[j], prev[j])
+        prev = curr
+    return prev[len(s2)]
+
+
+def _cer_rate(ref: str, hyp: str) -> float:
+    if not ref:
+        return 0.0
+    return _levenshtein_distance(ref, hyp) / len(ref)
+
+
 def morphological_continuity(reference: str, hypothesis: str) -> MCSReport:
     """
     MCS ∈ [0, 1], higher is better.
@@ -201,11 +223,9 @@ def morphological_continuity(reference: str, hypothesis: str) -> MCSReport:
     * token_continuity — SequenceMatcher ratio on letter-only tokens
     * joining_integrity — PF joining-identity hold rate (1.0 if no PF left)
     """
-    from .evaluate import cer
-
     ref_l = _canon_letters(reference)
     hyp_l = _canon_letters(hypothesis)
-    letter_fid = 1.0 - cer(ref_l, hyp_l).rate if ref_l else 1.0
+    letter_fid = 1.0 - _cer_rate(ref_l, hyp_l) if ref_l else 1.0
     letter_fid = max(0.0, min(1.0, letter_fid))
 
     ref_tok = [w for w in _canon_letters(" ".join(reference.split())).split() if w]
@@ -502,8 +522,6 @@ class SHDRReport:
 
 
 def homoglyph_drift(reference: str, hypothesis: str) -> SHDRReport:
-    from .evaluate import cer
-
     letters = _arabic_letters(hypothesis)
     n_h = sum(1 for c in letters if c in _HOMOGLYPHS)
     n_l = len(letters) or 1
@@ -511,12 +529,12 @@ def homoglyph_drift(reference: str, hypothesis: str) -> SHDRReport:
 
     ref_raw = _arabic_letters(reference)
     hyp_raw = letters
-    raw_err = cer(ref_raw, hyp_raw).rate if ref_raw else 0.0
+    raw_err = _cer_rate(ref_raw, hyp_raw) if ref_raw else 0.0
     if ref_raw:
-        true_err = cer(
+        true_err = _cer_rate(
             fold_pdf_homoglyphs(ref_raw),
             fold_pdf_homoglyphs(hyp_raw),
-        ).rate
+        )
     else:
         true_err = 0.0
 

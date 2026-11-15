@@ -6,14 +6,13 @@ embedding model or external vector store is involved.
 """
 from __future__ import annotations
 
-import json
 import re
 import statistics
 from collections.abc import Iterable
-from dataclasses import dataclass, field, replace
+from dataclasses import replace
 from typing import Any
 
-from .types import DocumentResult, PageResult
+from .types import DocumentResult, PageResult, RAGChunk
 
 __all__ = ["RAGChunk", "extract_pdf_rag", "spatial_rag_chunks"]
 
@@ -23,35 +22,6 @@ _HEADING_PREFIX = re.compile(
     re.IGNORECASE,
 )
 _TERMINAL = set(".,:;!?،؛؟.!؟")
-
-
-@dataclass(frozen=True)
-class RAGChunk:
-    """A citation-ready chunk with page coordinates and structural ancestry."""
-
-    id: str
-    text: str
-    page: int
-    bbox: tuple[float, float, float, float]
-    role: str = "paragraph"
-    parent_context: tuple[str, ...] = ()
-    source: str = ""
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "id": self.id,
-            "text": self.text,
-            "page": self.page,
-            "bbox": [round(float(value), 3) for value in self.bbox],
-            "role": self.role,
-            "parent_context": list(self.parent_context),
-            "source": self.source,
-            "metadata": dict(self.metadata),
-        }
-
-    def to_json(self, *, indent: int | None = None) -> str:
-        return json.dumps(self.to_dict(), ensure_ascii=False, indent=indent)
 
 
 def _normalise_bbox(

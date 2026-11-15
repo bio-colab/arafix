@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from .audit import Patch, RepairAudit
-    from .rag import RAGChunk
 
 __all__ = [
     "Defect",
@@ -30,7 +29,41 @@ __all__ = [
     "BlocksResult",
     "as_blocks",
     "fix_table",
+    "table_to_markdown",
+    "RAGChunk",
+    "set_repair_handlers",
 ]
+
+_repair_text_handler: Any = None
+_repair_blocks_handler: Any = None
+
+
+def set_repair_handlers(text_fn: Any, blocks_fn: Any) -> None:
+    global _repair_text_handler, _repair_blocks_handler
+    _repair_text_handler = text_fn
+    _repair_blocks_handler = blocks_fn
+
+
+def _dispatch_repair_text(text: str, config: Any = None) -> Any:
+    global _repair_text_handler
+    if _repair_text_handler is None:
+        import importlib
+        import sys
+
+        mod = sys.modules.get("arafix.pipeline") or importlib.import_module("arafix.pipeline")
+        _repair_text_handler = mod.repair_text
+    return _repair_text_handler(text, config)
+
+
+def _dispatch_repair_blocks(blocks: list[TextBlock], config: Any = None) -> BlocksResult:
+    global _repair_blocks_handler
+    if _repair_blocks_handler is None:
+        import importlib
+        import sys
+
+        mod = sys.modules.get("arafix.pipeline") or importlib.import_module("arafix.pipeline")
+        _repair_blocks_handler = mod.repair_blocks
+    return _repair_blocks_handler(blocks, config)
 
 
 class Defect(str, Enum):
@@ -195,9 +228,7 @@ class PageResult:
                     if use_rep:
                         repaired = rep_lines[idx].strip()
                     else:
-                        from .pipeline import repair_text
-
-                        repaired = repair_text(ln.text).text.strip()
+                        repaired = _dispatch_repair_text(ln.text).text.strip()
                     out.append((repaired, getattr(ln, "heading_level", 1) or 1))
         return out
 
@@ -208,10 +239,8 @@ class PageResult:
             parts = [b.text for b in self.blocks.blocks if b.block.role == "header"]
             return "\n".join(p.strip() for p in parts if p.strip())
         if self.layout is not None and getattr(self.layout, "headers", None):
-            from .pipeline import repair_text
-
             return "\n".join(
-                repair_text(ln.text).text.strip()
+                _dispatch_repair_text(ln.text).text.strip()
                 for ln in self.layout.headers
                 if ln.text.strip()
             )
@@ -224,10 +253,8 @@ class PageResult:
             parts = [b.text for b in self.blocks.blocks if b.block.role == "footer"]
             return "\n".join(p.strip() for p in parts if p.strip())
         if self.layout is not None and getattr(self.layout, "footers", None):
-            from .pipeline import repair_text
-
             return "\n".join(
-                repair_text(ln.text).text.strip()
+                _dispatch_repair_text(ln.text).text.strip()
                 for ln in self.layout.footers
                 if ln.text.strip()
             )
@@ -292,15 +319,13 @@ class PageResult:
             all_lines = [ln for col in getattr(self.layout, "columns", []) for ln in col.lines]
             rep_lines = [ln for ln in self.text.splitlines() if ln.strip()]
             use_rep = len(all_lines) == len(rep_lines)
-            from .pipeline import repair_text
-
             for idx, ln in enumerate(all_lines):
                 if ln.role in ("header", "footer") and not include_headers_footers:
                     continue
                 rep = (
                     rep_lines[idx].strip()
                     if use_rep
-                    else repair_text(ln.text).text.strip()
+                    else _dispatch_repair_text(ln.text).text.strip()
                 )
                 if rep:
                     lines.append((rep, ln.role, ln.heading_level))
@@ -345,6 +370,37 @@ class PageResult:
 
     def __str__(self) -> str:
         return self.text
+
+
+@dataclass(frozen=True)
+class RAGChunk:
+    """A citation-ready chunk with page coordinates and structural ancestry."""
+
+    id: str
+    text: str
+    page: int
+    bbox: tuple[float, float, float, float]
+    role: str = "paragraph"
+    parent_context: tuple[str, ...] = ()
+    source: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "text": self.text,
+            "page": self.page,
+            "bbox": [round(float(value), 3) for value in self.bbox],
+            "role": self.role,
+            "parent_context": list(self.parent_context),
+            "source": self.source,
+            "metadata": dict(self.metadata),
+        }
+
+    def to_json(self, *, indent: int | None = None) -> str:
+        import json
+
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=indent)
 
 
 @dataclass
@@ -487,9 +543,12 @@ class DocumentResult:
 
     def to_rag_chunks(self, *, max_chars: int = 1200) -> list[RAGChunk]:
         """Return deterministic citation-ready spatial chunks for this document."""
-        from .rag import spatial_rag_chunks
+        import importlib
+        import sys
 
-        return spatial_rag_chunks(self, max_chars=max_chars)
+        rag_mod = sys.modules.get("arafix.rag") or importlib.import_module("arafix.rag")
+        fn = rag_mod.spatial_rag_chunks
+        return fn(self, max_chars=max_chars)
 
     def to_rag_json(self, *, max_chars: int = 1200, indent: int | None = 2) -> str:
         """Serialize citation-ready spatial chunks as the native RAG JSON format."""
@@ -607,6 +666,22 @@ class DocumentResult:
         return out
 
 
+def table_to_markdown(rows: list[list[str]]) -> str:
+    if not rows:
+        return ""
+    n = max(len(r) for r in rows)
+    norm = [list(r) + [""] * (n - len(r)) for r in rows]
+
+    def esc(c: str) -> str:
+        return c.replace("|", "\\|")
+
+    lines = ["| " + " | ".join(esc(c) for c in norm[0]) + " |"]
+    lines.append("| " + " | ".join("---" for _ in range(n)) + " |")
+    for row in norm[1:]:
+        lines.append("| " + " | ".join(esc(c) for c in row) + " |")
+    return "\n".join(lines)
+
+
 @dataclass
 class TableResult:
     """
@@ -627,8 +702,6 @@ class TableResult:
         return [list(r) for r in self.rows[1:]] if len(self.rows) > 1 else []
 
     def to_markdown(self) -> str:
-        from .layout import table_to_markdown
-
         return table_to_markdown(self.rows)
 
     def to_csv(self) -> str:
@@ -671,10 +744,8 @@ class TableResult:
 
     def repair(self, config: Any = None) -> TableResult:
         """يصلح نصوص خلايا الجدول باستخدام خط الأنابيب القياسي."""
-        from .pipeline import repair_text
-
         new_rows = [
-            [repair_text(cell, config).text for cell in row]
+            [_dispatch_repair_text(cell, config).text for cell in row]
             for row in self.rows
         ]
         return TableResult(
@@ -771,10 +842,8 @@ def fix_table(
     """
     if not rows:
         return []
-    from .pipeline import repair_blocks
-
     blocks = as_blocks(rows)
-    repaired: BlocksResult = repair_blocks(blocks, config)
+    repaired: BlocksResult = _dispatch_repair_blocks(blocks, config)
     by_id = repaired.by_id()
     out: list[list[str]] = []
     for i, row in enumerate(rows):

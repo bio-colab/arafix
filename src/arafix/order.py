@@ -94,19 +94,19 @@ _SOLID_PHONE = re.compile(
     rf"^\+?{_LTR_DIGIT}(?:[{_LTR_DIGIT_CHARS} ()-]){{5,}}{_LTR_DIGIT}$"
 )
 _SOLID_VERSION = re.compile(
-    r"^(?:[A-Za-z]+-)?v?[0-9]+(?:\.[0-9]+)+(?:-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+)*)?$"
-    r"|^[A-Za-z]+-v?[0-9]+(?:\.[0-9]+)+(?:-[A-Za-z0-9.]+)*$"
+    r"^(?:[A-Za-z]+-)?v?[0-9]+(?:\.[0-9]+){1,5}(?:-[A-Za-z0-9]+(?:\.[A-Za-z0-9]+){0,4})?$"
+    r"|^[A-Za-z]+-v?[0-9]+(?:\.[0-9]+){1,5}(?:-[A-Za-z0-9.]+){0,4}$"
 )
 _SOLID_EMAIL = re.compile(
-    r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
+    r"^[A-Za-z0-9._%\x2B-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
 )
 _SOLID_TIME = re.compile(r"^\d{1,2}:\d{2}$")
 _SOLID_PERCENT = re.compile(r"^(?:%\d+(?:\.\d+)?|\d+(?:\.\d+)?%)$")
 _SOLID_HYBRID = re.compile(
-    r"^(?=.*[A-Za-z])[0-9A-Za-z][0-9A-Za-z._/@+%-]*"
-    r"(?:[ \t]+[0-9A-Za-z][0-9A-Za-z._/@+%-]*)+$"
-    r"|^(?=.*[A-Za-z])(?=.*[0-9])[0-9A-Za-z][0-9A-Za-z._/@+%-]*$"
-    r"|^(?=.*[A-Za-z])(?=.*[/_@+-])[0-9A-Za-z][0-9A-Za-z._/@+%-]*$"
+    r"^(?=.*[A-Za-z])[0-9A-Za-z][0-9A-Za-z._/@\x25\x2B-]*"
+    r"(?:[ \t]+[0-9A-Za-z][0-9A-Za-z._/@\x25\x2B-]*){1,8}$"
+    r"|^(?=.*[A-Za-z])(?=.*[0-9])[0-9A-Za-z][0-9A-Za-z._/@\x25\x2B-]*$"
+    r"|^(?=.*[A-Za-z])(?=.*[/_@\x2B-])[0-9A-Za-z][0-9A-Za-z._/@\x25\x2B-]*$"
 )
 _SOLID_URL = re.compile(
     r"^(?:https?|ftp)://[^\s()<>]+(?:\([^\s()<>]+\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’])?$"
@@ -445,19 +445,19 @@ def grapheme_clusters(
                 # الانعكاس الخام قلب تسلسل العلامات هو أيضاً؛ نعيده
                 # أينما ذهب هذا الجريان — للقاعدة السابقة أو التالية.
                 run = run[::-1]
-            prev_base = bool(out) and _is_markable_base(out[-1][0])
-            next_base = j < n and _is_markable_base(text[j])
+            prev_base = bool(out) and (_is_markable_base(out[-1][0]) or out[-1][0] == "\u0640")
+            next_base = j < n and (_is_markable_base(text[j]) or text[j] == "\u0640")
             if forward_flank_marks and prev_base and next_base:
                 # برهان الانعكاس قائم: العلامات تعود للقاعدة التالية،
                 # وبترتيبها الأصلي — فالانعكاس الخام قلب تسلسلها هو أيضاً.
-                pending.extend(run[::-1])
+                pending.extend(run)
             elif prev_base:
                 out[-1] = _with_ordered_marks(out[-1] + run)
             else:
                 pending.extend(run)
             i = j
             continue
-        if _is_markable_base(ch):
+        if _is_markable_base(ch) or ch == "\u0640":
             if pending:
                 out.append(_with_ordered_marks(ch + "".join(pending)))
                 pending.clear()
@@ -470,7 +470,7 @@ def grapheme_clusters(
     if pending:
         marks = "".join(pending)
         for i in range(len(out) - 1, -1, -1):
-            if out[i] and _is_markable_base(out[i][0]):
+            if out[i] and (_is_markable_base(out[i][0]) or out[i][0] == "\u0640"):
                 out[i] = _with_ordered_marks(out[i] + marks)
                 break
         else:
@@ -548,6 +548,15 @@ def _ltr_wellformed_score(s: str) -> float:
     core = t.strip(".,;:%")
     if _YEAR_19_20_RE.fullmatch(core):
         score += 6.0
+
+    # كسور اعتيادية: كسر حقيقي (بسط < مقام <= 100) يفضّل على المقلوب
+    m_frac = re.fullmatch(r"(\d+)/(\d+)", core)
+    if m_frac:
+        fa, fb = int(m_frac.group(1)), int(m_frac.group(2))
+        if 0 < fa < fb <= 100:
+            score += 6.0
+        elif fa > fb and fb > 0:
+            score -= 6.0
 
     m = _SIMPLE_NUM_RANGE_RE.fullmatch(t)
     if m:
@@ -691,6 +700,120 @@ def normalize_page_ranges(text: str) -> str:
     return out
 
 
+_CURRENCY_INVERTED_MAP: dict[str, str] = {
+    "ع.د": "د.ع",
+    "ع. د": "د.ع",
+    "س.ر": "ر.س",
+    "س. ر": "ر.س",
+    "م.ج": "ج.م",
+    "م. ج": "ج.م",
+    "ك.د": "د.ك",
+    "ك. د": "د.ك",
+    "إ.د": "د.إ",
+    "إ. د": "د.إ",
+    "ع.ر": "ر.ع",
+    "ع. ر": "ر.ع",
+    "ق.ر": "ر.ق",
+    "ق. ر": "ر.ق",
+    "ب.د": "د.ب",
+    "ب. د": "د.ب",
+    "أ.د": "د.أ",
+    "أ. د": "د.أ",
+}
+_CURRENCY_INVERTED_RE = re.compile(
+    r"\b(ع\.\s*د|س\.\s*ر|م\.\s*ج|ك\.\s*د|إ\.\s*د|ع\.\s*ر|ق\.\s*ر|ب\.\s*د|أ\.\s*د)\s+(\d+(?:[.,]\d+)?)\b"
+)
+
+
+def fix_currency(text: str) -> str:
+    """إصلاح ترتيب العملات العربية المنقلبة مع الأرقام (مثل ع.د 100 -> 100 د.ع)."""
+    if not text or "." not in text:
+        return text
+
+    def repl(m: re.Match[str]) -> str:
+        curr = re.sub(r"\s+", "", m.group(1))
+        fixed_curr = _CURRENCY_INVERTED_MAP.get(m.group(1), _CURRENCY_INVERTED_MAP.get(curr, curr))
+        return f"{m.group(2)} {fixed_curr}"
+
+    return _CURRENCY_INVERTED_RE.sub(repl, text)
+
+
+_BIDI_OPENERS: frozenset[str] = frozenset({"\u202a", "\u202b", "\u202d", "\u202e"})
+_BIDI_ISOLATE_OPENERS: frozenset[str] = frozenset({"\u2066", "\u2067", "\u2068"})
+_BIDI_ALL_CONTROLS: frozenset[str] = frozenset({
+    "\u202a", "\u202b", "\u202c", "\u202d", "\u202e",
+    "\u2066", "\u2067", "\u2068", "\u2069",
+})
+
+
+def balance_bidi_controls(text: str) -> str:
+    """
+    موازنة علامات التحكم الاتجاهي في اليونيكود (BiDi Stack Balancer).
+
+    1) يعكس أزواج الفتح والإغلاق المنقلبة بفعل عكس النص (\u202c...\u202e -> \u202e...\u202c).
+    2) يمنع تسميم الطرفية عبر إغلاق أي علامة RLO/LRO/LRE/RLE مفتوحة بمحرف \u202c.
+    3) يتخلص من علامات الإغلاق الشاردة التي لا يسبقها فتح في السطر.
+    """
+    if not any(c in text for c in _BIDI_ALL_CONTROLS):
+        return text
+
+    chars = list(text)
+    n = len(chars)
+
+    # 1. مبادلة علامات الفتح والإغلاق المنقلبة بفعل العكس البصري
+    for i in range(n):
+        if chars[i] == "\u202c":
+            for j in range(n - 1, i, -1):
+                if chars[j] in _BIDI_OPENERS:
+                    chars[i], chars[j] = chars[j], chars[i]
+                    break
+        elif chars[i] == "\u2069":
+            for j in range(n - 1, i, -1):
+                if chars[j] in _BIDI_ISOLATE_OPENERS:
+                    chars[i], chars[j] = chars[j], chars[i]
+                    break
+
+    # 2. مكدس موازنة علامات التحكم لتفادي التسميم
+    stack: list[str] = []
+    res: list[str] = []
+    for c in chars:
+        if c in _BIDI_OPENERS or c in _BIDI_ISOLATE_OPENERS:
+            stack.append(c)
+            res.append(c)
+        elif c == "\u202c":
+            idx = -1
+            for k in range(len(stack) - 1, -1, -1):
+                if stack[k] in _BIDI_OPENERS:
+                    idx = k
+                    break
+            if idx != -1:
+                stack.pop(idx)
+                res.append(c)
+            # إهمال علامة الإغلاق الشاردة غير المفتوحة
+        elif c == "\u2069":
+            idx = -1
+            for k in range(len(stack) - 1, -1, -1):
+                if stack[k] in _BIDI_ISOLATE_OPENERS:
+                    idx = k
+                    break
+            if idx != -1:
+                stack.pop(idx)
+                res.append(c)
+            # إهمال علامة الإغلاق الشاردة
+        else:
+            res.append(c)
+
+    # إغلاق أي علامة تحكم بقيت مفتوحة في نهاية السطر
+    while stack:
+        op = stack.pop()
+        if op in _BIDI_OPENERS:
+            res.append("\u202c")
+        elif op in _BIDI_ISOLATE_OPENERS:
+            res.append("\u2069")
+
+    return "".join(res)
+
+
 def relocate_sentence_punctuation(text: str) -> str:
     """
     انقل النقطة الملتصقة بمقدمة سنة/رقم إلى نهايتها (ترقيم جملة).
@@ -728,8 +851,43 @@ def reverse_visual_line(line: str, config: ReorderConfig | None = None) -> str:
     if not line:
         return line
 
+    # 1. فحص سطور الجداول النصية (Markdown / ASCII Table)
+    stripped = line.strip()
+    if (
+        stripped.startswith("|")
+        and stripped.endswith("|")
+        and stripped.count("|") >= 2
+        and not all(c in "-:| \t" for c in stripped)
+    ):
+        # سطر جدول حقيقي: اعكس خلايا السطر دون قلب ترتيب الأعمدة مع حفظ الهوامش البيضاء
+        cells = line.split("|")
+        rev_cells = []
+        for cell in cells:
+            if not cell.strip():
+                rev_cells.append(cell)
+            else:
+                l_pad = len(cell) - len(cell.lstrip())
+                r_pad = len(cell) - len(cell.rstrip())
+                rev = reverse_visual_line(cell.strip(), cfg)
+                rev_cells.append(f"{' ' * l_pad}{rev}{' ' * r_pad}")
+        out_table = "|".join(rev_cells)
+        return fix_currency(out_table)
+
+    # 2. تحديد علامات التشكيل المتقدمة تلقائياً في السطور المشكولة المعكوسة
+    forward_flank = cfg.forward_flank_marks
+    if not forward_flank and any(
+        t and unicodedata.category(t[0]) == "Mn" for t in line.split()
+    ):
+        forward_flank = True
+
+    # 3. فحص مواضع هوامش نهاية السطر المنقلبة
+    has_leading_dot = line.lstrip().startswith(".")
+    has_trailing_footnote = bool(
+        re.search(r"[()\[\]][0-9\u0660-\u0669]+[()\[\]]$", line.rstrip())
+    )
+
     units = (
-        grapheme_clusters(line, forward_flank_marks=cfg.forward_flank_marks)
+        grapheme_clusters(line, forward_flank_marks=forward_flank)
         if cfg.cluster_aware
         else list(line)
     )
@@ -759,6 +917,18 @@ def reverse_visual_line(line: str, config: ReorderConfig | None = None) -> str:
 
     if cfg.relocate_sentence_punct:
         out = relocate_sentence_punctuation(out)
+
+    # 4. إعادة تموضع رقم الهامش المقذوف إلى بداية السطر
+    if has_leading_dot and has_trailing_footnote:
+        m_fn = re.match(r"^([()\[\]][0-9\u0660-\u0669]+[()\[\]])\s+(.+)$", out)
+        if m_fn:
+            out = f"{m_fn.group(2)} {m_fn.group(1)}"
+
+    # 5. إصلاح العملات المنقلبة
+    out = fix_currency(out)
+
+    # 6. موازنة محارف التحكم الاتجاهي BiDi لمنع تسميم الطرفيات
+    out = balance_bidi_controls(out)
 
     return out
 

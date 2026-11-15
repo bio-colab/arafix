@@ -79,6 +79,7 @@ from .types import (
     RepairResult,
     Stage,
     TextBlock,
+    set_repair_handlers,
 )
 from .unicode_tables import is_arabic, is_presentation_form
 
@@ -943,6 +944,9 @@ def repair_blocks(
         _apply_harvested_lexicon_to_blocks(results, cfg)
 
     return BlocksResult(blocks=results)
+
+
+set_repair_handlers(repair_text, repair_blocks)
 
 
 def _coerce_block(raw: TextBlock | str | tuple | dict) -> TextBlock:
